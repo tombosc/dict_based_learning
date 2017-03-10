@@ -3,7 +3,7 @@ from theano import tensor
 from dictlearn.vocab import Vocabulary
 from dictlearn.ops import WordToIdOp
 
-from tests.test_util import (
+from tests.util import (
     TEST_VOCAB, temporary_content_path)
 
 def test_vocab_op():

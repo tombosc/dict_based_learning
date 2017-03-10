@@ -11,7 +11,7 @@ from dictlearn.retrieval import (
     vec2str, Dictionary, Retrieval)
 from dictlearn.ops import RetrievalOp
 
-from tests.test_util import (
+from tests.util import (
     TEST_VOCAB, TEST_DICT_JSON, temporary_content_path)
 
 

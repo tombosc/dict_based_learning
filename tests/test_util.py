@@ -1,35 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from dictlearn.util import vec2str, str2vec
 
-import os
-import tempfile
-from contextlib import contextmanager
+def test_vec2str():
+    vector = map(ord, 'abc') + [0, 0]
+    assert vec2str(vector) == 'abc'
 
-TEST_DICT_JSON = (
-"""
-{
- "a" : [["b", "c"], ["d", "e"]],
- "b" : [["e", "d"]],
- "d c" : [["a", "b"]]
-}
-""")
-
-TEST_VOCAB = (
-"""<unk>
-<bos>
-<eos>
-a
-b
-c
-d
-e"""
-)
-
-@contextmanager
-def temporary_content_path(content):
-    _, path = tempfile.mkstemp()
-    with open(path, 'w') as dst:
-        print(content, file=dst)
-    yield path
-    os.remove(path)
+def test_str2vec():
+    assert str2vec('def', 5).tolist() == [ord('d'), ord('e'), ord('f'), 0, 0]

@@ -1,6 +1,6 @@
 from dictlearn.retrieval import Dictionary
 
-from tests.test_util import temporary_content_path, TEST_DICT_JSON
+from tests.util import temporary_content_path, TEST_DICT_JSON
 
 def test_dict():
     with temporary_content_path(TEST_DICT_JSON) as path:
