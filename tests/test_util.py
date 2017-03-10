@@ -9,8 +9,9 @@ from contextlib import contextmanager
 TEST_DICT_JSON = (
 """
 {
- "A" : [["B", "C"], ["D", "E"]],
- "D C" : [["A", "B"]]
+ "a" : [["b", "c"], ["d", "e"]],
+ "b" : [["e", "d"]],
+ "d c" : [["a", "b"]]
 }
 """)
 
@@ -18,11 +19,11 @@ TEST_VOCAB = (
 """<unk>
 <bos>
 <eos>
-A
-B
-C
-D
-E"""
+a
+b
+c
+d
+e"""
 )
 
 @contextmanager
