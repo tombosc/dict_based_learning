@@ -4,8 +4,12 @@ from __future__ import print_function
 
 import numpy
 
+from theano import tensor
+
+from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import (
-    vec2str, Dictionary, Vocabulary, Retrieval)
+    vec2str, Dictionary, Retrieval)
+from dictlearn.ops import RetrievalOp
 
 from tests.test_util import (
     TEST_VOCAB, TEST_DICT_JSON, temporary_content_path)
@@ -45,7 +49,9 @@ def test_retrieval():
                         (1, 1, 0), (1, 1, 1),
                         (1, 2, 2)]
 
-
-
-
-
+    # check the op
+    retrieval_op = RetrievalOp(dict_, vocab)
+    batch = tensor.as_tensor_variable([[[ord('d'), ord(' '), ord('c'), 0, 0]]])
+    defs_var, def_map_var = retrieval_op(batch)
+    assert defs_var.eval().tolist() == [[3, 4]]
+    assert def_map_var.eval().tolist() == [[0, 0, 0]]
