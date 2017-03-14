@@ -99,7 +99,8 @@ class LanguageModel(Initializable):
 
         # The first token is not predicted
         logits = self._pre_softmax.apply(main_rnn_states[1:])
-        logs = self._softmax.categorical_cross_entropy(word_ids.T, logits)
+        logs = self._softmax.categorical_cross_entropy(
+            word_ids.T[1:], logits, extra_ndim=1)
         costs = logs.sum(axis=0)
         return costs
 

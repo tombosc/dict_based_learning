@@ -20,7 +20,7 @@ def test_language_model():
     with temporary_content_path(TEST_DICT_JSON) as path:
         dict_ = Dictionary(path)
 
-    data = [['a', 'a'], ['b', 'a']]
+    data = [['a', 'a'], ['b', 'a'], ['a', 'b']]
     data = [[str2vec(s, 3) for s in row] for row in data]
     data = numpy.array(data)
 
@@ -36,7 +36,8 @@ def test_language_model():
     def_spans, = VariableFilter(name='def_spans')(cg)
     f = theano.function([], [costs, def_spans])
     costs_value, def_spans_value = f()
-    assert def_spans_value.tolist() == [[0, 2], [2, 4], [4, 5], [5, 7]]
+    assert (def_spans_value.tolist() ==
+            [[0, 2], [2, 4], [4, 5], [5, 7], [7, 9], [9, 10]])
 
     # Without the dictionary
     lm2 = LanguageModel(
@@ -44,5 +45,5 @@ def test_language_model():
         weights_init=Uniform(width=0.1),
         biases_init=Uniform(width=0.1))
     costs2 = lm2.apply(tensor.as_tensor_variable(data),
-                     numpy.ones((data.shape[0], data.shape[1])))
+                       numpy.ones((data.shape[0], data.shape[1])))
     costs2.eval()
