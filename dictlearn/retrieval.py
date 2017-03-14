@@ -37,9 +37,9 @@ class Dictionary(object):
 
 class Retrieval(object):
 
-    def __init__(self, dictionary, vocab):
-        self._dictionary = dictionary
+    def __init__(self, vocab, dictionary):
         self._vocab = vocab
+        self._dictionary = dictionary
         self._stemmer = nltk.PorterStemmer()
 
         # Preprocess all the definitions to see token ids instead of chars

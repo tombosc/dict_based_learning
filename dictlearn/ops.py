@@ -33,11 +33,21 @@ class RetrievalOp(theano.Op):
 
     def make_node(self, input_):
         defs_type = tensor.TensorType('int64', [False, False])
+        def_mask_type = tensor.TensorType('float32', [False, False])
         # both type happened to be the same, but this is just a coincidence
         def_map_type = defs_type
-        return theano.Apply(self, [input_], [defs_type(), def_map_type()])
+        return theano.Apply(
+            self, [input_], [defs_type(), def_mask_type(), def_map_type()])
 
     def perform(self, node, inputs, output_storage):
         defs, def_map = self._retrieval.retrieve(inputs[0])
-        output_storage[0][0] = defs
-        output_storage[1][0] = def_map
+        # `defs` have variable length and have to be padded
+        max_def_length = max(map(len, defs))
+        def_array = numpy.zeros((len(defs), max_def_length), dtype='int64')
+        def_mask = numpy.ones_like(def_array, dtype='float32')
+        for i, def_ in enumerate(defs):
+            def_array[i, :len(def_)] = def_
+            def_mask[i, len(def_):] = 0.
+        output_storage[0][0] = def_array
+        output_storage[1][0] = def_mask
+        output_storage[2][0] = def_map

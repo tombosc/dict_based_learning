@@ -1,4 +1,10 @@
+import numpy
+
+import theano
 from theano import tensor
+from blocks.initialization import Uniform
+from blocks.filter import VariableFilter
+from blocks.graph import ComputationGraph
 
 from dictlearn.util import str2vec
 from dictlearn.vocab import Vocabulary
@@ -16,6 +22,17 @@ def test_language_model():
 
     data = [['a', 'a'], ['b', 'a']]
     data = [[str2vec(s, 3) for s in row] for row in data]
+    data = numpy.array(data)
 
-    lm = LanguageModel(vocab, dict_)
-    lm.apply(tensor.as_tensor_variable(data))
+    lm = LanguageModel(
+        vocab=vocab, dict_=dict_, dim=10,
+        weights_init=Uniform(width=0.1),
+        biases_init=Uniform(width=0.1))
+    lm.initialize()
+    costs = lm.apply(tensor.as_tensor_variable(data),
+                     numpy.ones((data.shape[0], data.shape[1])))
+    cg = ComputationGraph(costs)
+    def_spans, = VariableFilter(name='def_spans')(cg)
+    f = theano.function([], [costs, def_spans])
+    costs_value, def_spans_value = f()
+    assert def_spans_value.tolist() == [[0, 2], [2, 4], [4, 5], [5, 7]]
