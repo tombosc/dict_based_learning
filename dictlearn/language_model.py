@@ -17,31 +17,35 @@ class LanguageModel(Initializable):
     vocab
         The vocabulary object.
     dict_
-        The dictionary object.
+        The dictionary object. If `None`, the language model
+        does not use any dictionary.
     dim : int
         The default dimension for the components.
 
     """
-    def __init__(self, vocab, dict_, dim, **kwargs):
+    def __init__(self, dim, vocab, dict_=None, **kwargs):
         self._vocab = vocab
         self._dict = dict_
-
         self._word_to_id = WordToIdOp(self._vocab)
-        self._retrieve = RetrievalOp(self._vocab, self._dict)
+
+        if self._dict:
+            self._retrieve = RetrievalOp(self._vocab, self._dict)
 
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
+        children = []
         self._main_lookup = LookupTable(vocab.size(), dim, name='main_lookup')
         self._main_fork = Linear(dim, 4 * dim, name='main_fork')
         self._main_rnn = LSTM(dim, name='main_rnn')
-        self._def_lookup = LookupTable(vocab.size(), dim, name='def_lookup')
-        self._def_fork = Linear(dim, 4 * dim, name='def_fork')
-        self._def_rnn = LSTM(dim, name='def_rnn')
+        children.extend([self._main_lookup, self._main_fork, self._main_rnn])
+        if self._dict:
+            self._def_lookup = LookupTable(vocab.size(), dim, name='def_lookup')
+            self._def_fork = Linear(dim, 4 * dim, name='def_fork')
+            self._def_rnn = LSTM(dim, name='def_rnn')
+            children.extend([self._def_lookup, self._def_fork, self._def_rnn])
         self._pre_softmax = Linear(dim, vocab.size())
         self._softmax = NDimensionalSoftmax()
-        children = [self._main_lookup, self._main_fork, self._main_rnn,
-                    self._def_lookup, self._def_fork, self._def_rnn,
-                    self._pre_softmax, self._softmax]
+        children.extend([self._pre_softmax, self._softmax])
 
         super(LanguageModel, self).__init__(children=children, **kwargs)
 
@@ -58,37 +62,39 @@ class LanguageModel(Initializable):
             A float32 matrix of shape (B, T). Zeros indicate the padding.
 
         """
-        word_ids = self._word_to_id(words)
-        defs, def_mask, def_map = self._retrieve(words)
+        if self._dict:
+            defs, def_mask, def_map = self._retrieve(words)
+            embedded_def_words = self._def_lookup.apply(defs)
+            def_embeddings = self._def_rnn.apply(
+                tensor.transpose(self._def_fork.apply(embedded_def_words), (1, 0, 2)),
+                mask=def_mask.T)[0][-1]
+            # Reorder and copy embeddings so that the embeddings of all the definitions
+            # that correspond to a position in the text form a continuous span of a tensor
+            def_embeddings = def_embeddings[def_map[2]]
 
-        embedded_def_words = self._def_lookup.apply(defs)
-        def_embeddings = self._def_rnn.apply(
-            tensor.transpose(self._def_fork.apply(embedded_def_words), (1, 0, 2)),
-            mask=def_mask.T)[0][-1]
-        # Reorder and copy embeddings so that the embeddings of all the definitions
-        # that correspond to a position in the text form a continuous span of a tensor
-        def_embeddings = def_embeddings[def_map[2]]
+            # Compute the spans corresponding to text positions
+            num_defs = tensor.zeros((1 + words.shape[0] * words.shape[1],), dtype='int64')
+            num_defs = tensor.inc_subtensor(
+                num_defs[1 + def_map[:, 0] * words.shape[1] + def_map[:, 1]], 1)
+            cum_sum_defs = tensor.cumsum(num_defs)
+            def_spans = tensor.concatenate([cum_sum_defs[:-1, None], cum_sum_defs[1:, None]],
+                                        axis=1)
+            application_call.add_auxiliary_variable(def_spans, name='def_spans')
 
-        # Compute the spans corresponding to text positions
-        num_defs = tensor.zeros((1 + words.shape[0] * words.shape[1],), dtype='int64')
-        num_defs = tensor.inc_subtensor(
-            num_defs[1 + def_map[:, 0] * words.shape[1] + def_map[:, 1]], 1)
-        cum_sum_defs = tensor.cumsum(num_defs)
-        def_spans = tensor.concatenate([cum_sum_defs[:-1, None], cum_sum_defs[1:, None]],
-                                       axis=1)
-        application_call.add_auxiliary_variable(def_spans, name='def_spans')
-
-        # Mean-pooling of definitions
-        def_sum = tensor.zeros((words.shape[0] * words.shape[1], def_embeddings.shape[1]))
-        def_sum = tensor.inc_subtensor(def_sum[def_map[0] * words.shape[1] + def_map[1]],
-                                       def_embeddings)
-        def_mean = def_sum / (def_spans[:, 1] - def_spans[:, 0])[:, None]
-        def_mean = def_mean.reshape((words.shape[0], words.shape[1], -1))
+            # Mean-pooling of definitions
+            def_sum = tensor.zeros((words.shape[0] * words.shape[1], def_embeddings.shape[1]))
+            def_sum = tensor.inc_subtensor(def_sum[def_map[0] * words.shape[1] + def_map[1]],
+                                        def_embeddings)
+            def_mean = def_sum / (def_spans[:, 1] - def_spans[:, 0])[:, None]
+            def_mean = def_mean.reshape((words.shape[0], words.shape[1], -1))
 
         # Run the main rnn with combined inputs
-        embedded_words = self._main_lookup.apply(word_ids)
+        word_ids = self._word_to_id(words)
+        rnn_inputs = self._main_lookup.apply(word_ids)
+        if self._dict:
+            rnn_inputs += def_mean
         main_rnn_states = self._main_rnn.apply(
-            tensor.transpose(self._main_fork.apply(embedded_words + def_mean), (1, 0, 2)),
+            tensor.transpose(self._main_fork.apply(rnn_inputs), (1, 0, 2)),
             mask=mask.T)[0]
 
         # The first token is not predicted

@@ -24,6 +24,7 @@ def test_language_model():
     data = [[str2vec(s, 3) for s in row] for row in data]
     data = numpy.array(data)
 
+    # With the dictionary
     lm = LanguageModel(
         vocab=vocab, dict_=dict_, dim=10,
         weights_init=Uniform(width=0.1),
@@ -36,3 +37,12 @@ def test_language_model():
     f = theano.function([], [costs, def_spans])
     costs_value, def_spans_value = f()
     assert def_spans_value.tolist() == [[0, 2], [2, 4], [4, 5], [5, 7]]
+
+    # Without the dictionary
+    lm2 = LanguageModel(
+        vocab=vocab, dim=10,
+        weights_init=Uniform(width=0.1),
+        biases_init=Uniform(width=0.1))
+    costs2 = lm2.apply(tensor.as_tensor_variable(data),
+                     numpy.ones((data.shape[0], data.shape[1])))
+    costs2.eval()
