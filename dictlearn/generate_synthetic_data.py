@@ -62,12 +62,12 @@ class FakeTextGenerator(object):
         # tokens are composed of a..z letters 
         alphabet = ''.join([chr(c) for c in range(97, 97+26)]) # str(a..z)
         # tokens all have the same size tok_len
-        tok_len = int(np.log(vocabulary_size) / np.log(len(alphabet)) + 1)
+        self.tok_len = int(np.log(vocabulary_size) / np.log(len(alphabet)) + 1)
         n_homonyms = int(self.V * pc_double_meaning)
         # enumerate all the tokens
         self.vocabulary = []
         for i, tok in zip(range(self.V - n_homonyms),
-                          itertools.product(alphabet, repeat=tok_len)):
+                          itertools.product(alphabet, repeat=self.tok_len)):
             self.vocabulary.append(''.join(tok))
         for i in range(n_homonyms):
             tok = np.random.choice(self.V - n_homonyms)
