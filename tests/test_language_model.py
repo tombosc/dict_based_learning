@@ -23,6 +23,8 @@ def test_language_model():
     data = [['a', 'a'], ['b', 'a'], ['a', 'b']]
     data = [[str2vec(s, 3) for s in row] for row in data]
     data = numpy.array(data)
+    mask = numpy.ones((data.shape[0], data.shape[1]),
+                      dtype=theano.floatX)
 
     # With the dictionary
     lm = LanguageModel(
@@ -30,8 +32,7 @@ def test_language_model():
         weights_init=Uniform(width=0.1),
         biases_init=Uniform(width=0.1))
     lm.initialize()
-    costs = lm.apply(tensor.as_tensor_variable(data),
-                     numpy.ones((data.shape[0], data.shape[1])))
+    costs = lm.apply(tensor.as_tensor_variable(data), mask)
     cg = ComputationGraph(costs)
     def_spans, = VariableFilter(name='def_spans')(cg)
     f = theano.function([], [costs, def_spans])
@@ -44,6 +45,5 @@ def test_language_model():
         vocab=vocab, dim=10,
         weights_init=Uniform(width=0.1),
         biases_init=Uniform(width=0.1))
-    costs2 = lm2.apply(tensor.as_tensor_variable(data),
-                       numpy.ones((data.shape[0], data.shape[1])))
+    costs2 = lm2.apply(tensor.as_tensor_variable(data), mask)
     costs2.eval()

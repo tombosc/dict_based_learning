@@ -1,4 +1,5 @@
 """A dictionary-equipped language model."""
+import theano
 from theano import tensor
 
 from blocks.bricks import Initializable, Linear, NDimensionalSoftmax
@@ -78,14 +79,15 @@ class LanguageModel(Initializable):
                 num_defs[1 + def_map[:, 0] * words.shape[1] + def_map[:, 1]], 1)
             cum_sum_defs = tensor.cumsum(num_defs)
             def_spans = tensor.concatenate([cum_sum_defs[:-1, None], cum_sum_defs[1:, None]],
-                                        axis=1)
+                                           axis=1)
             application_call.add_auxiliary_variable(def_spans, name='def_spans')
 
             # Mean-pooling of definitions
             def_sum = tensor.zeros((words.shape[0] * words.shape[1], def_embeddings.shape[1]))
             def_sum = tensor.inc_subtensor(def_sum[def_map[0] * words.shape[1] + def_map[1]],
                                         def_embeddings)
-            def_mean = def_sum / (def_spans[:, 1] - def_spans[:, 0])[:, None]
+            def_lens = (def_spans[:, 1] - def_spans[:, 0]).astype(theano.config.floatX)
+            def_mean = def_sum / def_lens[:, None]
             def_mean = def_mean.reshape((words.shape[0], words.shape[1], -1))
 
         # Run the main rnn with combined inputs

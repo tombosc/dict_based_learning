@@ -1,4 +1,4 @@
-from dictlearn.language_data import TextDataset
+from dictlearn.text_dataset import TextDataset
 
 from tests.util import (
     TEST_TEXT, temporary_content_path)
