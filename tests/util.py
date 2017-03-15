@@ -27,6 +27,14 @@ d
 e"""
 )
 
+TEST_TEXT = (
+"""abc abc def
+def def xyz
+xyz
+abc def xyz
+"""
+)
+
 @contextmanager
 def temporary_content_path(content):
     _, path = tempfile.mkstemp()

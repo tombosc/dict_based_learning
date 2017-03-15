@@ -16,7 +16,7 @@ from dictlearn.generate_synthetic_data import FakeTextGenerator
 from tests.util import (
     TEST_VOCAB, TEST_DICT_JSON, temporary_content_path)
 
-def test_language_model():
+def t_e_s_t_language_model():
     V = 50
     gen = FakeTextGenerator(V, 6, 6, 1.0, 0.2)
     n_sentences = 3

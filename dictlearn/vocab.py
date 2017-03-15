@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import Counter
+
 import numpy
 
 class Vocabulary(object):
@@ -10,7 +12,16 @@ class Vocabulary(object):
     EOS = '<eos>'
     UNK = '<unk>'
 
-    def __init__(self, filename_or_words):
+    def __init__(self, filename_or_words, top_k=None):
+        """Initialize the vocabulary.
+
+        filename_or_words
+            Either a list of words or a path to the file with them.
+        top_k
+            If not `None`, only the first `top_k` entries will be left.
+            Note, this does not include the special tokens.
+
+        """
         if isinstance(filename_or_words, str):
             with open(filename_or_words) as f:
                 words = [line.strip() for line in f]
@@ -19,20 +30,29 @@ class Vocabulary(object):
 
         self._id_to_word = []
         self._word_to_id = {}
-        self._unk = -1
-        self._bos = -1
-        self._eos = -1
+        self.unk = -1
+        self.bos = -1
+        self.eos = -1
 
+        n_regular_tokens = 0
         for idx, word_name in enumerate(words):
+            if top_k and n_regular_tokens == top_k:
+                break
+
             if word_name == Vocabulary.BOS:
                 self.bos = idx
             elif word_name == Vocabulary.EOS:
                 self.eos = idx
             elif word_name == Vocabulary.UNK:
                 self.unk = idx
+            else:
+                n_regular_tokens += 1
 
             self._id_to_word.append(word_name)
             self._word_to_id[word_name] = idx
+
+        if -1 in [self.unk, self.bos, self.eos]:
+            raise ValueError("special token not found in the vocabulary")
 
     def size(self):
         return len(self._id_to_word)
@@ -69,9 +89,7 @@ class Vocabulary(object):
         words = [w for w, _ in count_pairs]
         if top_k:
             words = words[:top_k]
-        for special in [Vocabulary.BOS, Vocabulary.EOS, Vocabulary.UNK]:
-            if not special in words:
-                words.append(special)
+        words = [Vocabulary.BOS, Vocabulary.EOS, Vocabulary.UNK] + words
 
         return Vocabulary(words)
 
