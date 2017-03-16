@@ -5,7 +5,7 @@ from __future__ import print_function
 import os
 import tempfile
 
-from dictlearn.data import Data
+from dictlearn.data import Data, RandomSpanScheme
 from tests.util import TEST_TEXT
 
 def test_data():
@@ -43,3 +43,9 @@ def test_data():
 
     os.remove(train_path)
     os.rmdir(temp_dir)
+
+
+def test_random_span_scheme():
+    scheme = RandomSpanScheme(10000, 100, 1)
+    req_it = scheme.get_request_iterator()
+    assert next(req_it) == slice(235, 335, None)

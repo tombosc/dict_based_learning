@@ -16,8 +16,11 @@ Currently the following layouts are supported:
 import os
 import functools
 
+import numpy
+
+import fuel
 from fuel.transformers import Mapping, Batch, Padding
-from fuel.schemes import ConstantScheme
+from fuel.schemes import IterationScheme, ConstantScheme
 
 from dictlearn.vocab import Vocabulary
 from dictlearn.text_dataset import TextDataset
@@ -41,6 +44,20 @@ def vectorize(example):
 
 def add_bos(bos, example):
     return tuple([bos] + source for source in example)
+
+
+class RandomSpanScheme(IterationScheme):
+    def __init__(self, dataset_size, span_size, seed=None):
+        self._dataset_size = dataset_size
+        self._span_size = span_size
+        if not seed:
+            seed = fuel.config.default_seed
+        self._rng = numpy.random.RandomState(seed)
+
+    def get_request_iterator(self):
+        while True:
+            start = self._rng.randint(0, self._dataset_size - self._span_size)
+            yield slice(start, start + self._span_size)
 
 
 class Data(object):
