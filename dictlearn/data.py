@@ -1,4 +1,17 @@
-"""Dataset layout and data preparation."""
+"""Dataset layout and data preparation.
+
+Currently the following layouts are supported:
+
+- standard
+    The training, validation and development data are in
+    train.txt, valid.txt and test.txt. All files are read
+    sequentially.
+- lambada
+    Like standard, but the training data is stored in an
+    HDF5 file "train.h5". The training data is read randomly
+    by taking random spans.
+
+"""
 
 import os
 import functools
