@@ -16,7 +16,7 @@ from fuel.datasets import Dataset
 
 class TextDataset(Dataset):
     """Provides basic access to lines of a text file."""
-    provides_sources = ('lines',)
+    provides_sources = ('words',)
     example_iteration_scheme = None
 
     def __init__(self, path, **kwargs):

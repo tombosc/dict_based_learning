@@ -5,6 +5,9 @@ from __future__ import print_function
 import os
 import tempfile
 
+from fuel.datasets import IndexableDataset
+from fuel.streams import DataStream
+
 from dictlearn.data import Data, RandomSpanScheme
 from tests.util import TEST_TEXT
 
@@ -49,3 +52,9 @@ def test_random_span_scheme():
     scheme = RandomSpanScheme(10000, 100, 1)
     req_it = scheme.get_request_iterator()
     assert next(req_it) == slice(235, 335, None)
+
+    dataset = IndexableDataset(['abc', 'def', 'xyz', 'ter'])
+    scheme = RandomSpanScheme(4, 2, 1)
+    stream = DataStream(dataset, iteration_scheme=scheme)
+    it = stream.get_epoch_iterator()
+    assert next(it) == (['def', 'xyz'],)

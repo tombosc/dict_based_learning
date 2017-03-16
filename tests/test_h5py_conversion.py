@@ -26,3 +26,7 @@ def test_text_to_h5py_dataset():
     assert next(it)[0] == 'été'
     assert next(it)[0] == 'abc'
     assert next(it)[0] == 'Δίας'
+
+    os.remove(text_path)
+    os.remove(h5_path)
+    os.rmdir(test_dir)

@@ -21,6 +21,8 @@ import numpy
 import fuel
 from fuel.transformers import Mapping, Batch, Padding
 from fuel.schemes import IterationScheme, ConstantScheme
+from fuel.streams import DataStream
+from fuel.datasets import H5PYDataset
 
 from dictlearn.vocab import Vocabulary
 from dictlearn.text_dataset import TextDataset
@@ -42,11 +44,17 @@ def vectorize(example):
                  for source in example)
 
 
+def listify(example):
+    return tuple(list(source) for source in example)
+
+
 def add_bos(bos, example):
     return tuple([bos] + source for source in example)
 
 
 class RandomSpanScheme(IterationScheme):
+    requests_examples = True
+
     def __init__(self, dataset_size, span_size, seed=None):
         self._dataset_size = dataset_size
         self._span_size = span_size
@@ -65,8 +73,8 @@ class Data(object):
     def __init__(self, path, layout):
         self._path = path
         self._layout = layout
-        if not self._layout in ['standard']:
-            raise "Only the standard layout is currently supported."
+        if not self._layout in ['standard', 'lambada']:
+            raise "layout {} is not supposed".format(self._layout)
 
         self._vocab = None
         self._dataset_cache = {}
@@ -79,17 +87,31 @@ class Data(object):
 
     def get_dataset(self, part):
         if not part in self._dataset_cache:
-            part_map = {'train': 'train.txt',
-                        'valid': 'valid.txt',
-                        'test': 'test.txt'}
+            if self._layout == 'standard':
+                part_map = {'train': 'train.txt',
+                            'valid': 'valid.txt',
+                            'test': 'test.txt'}
+            elif self._layout == 'lambada':
+                part_map = {'train' : 'train.h5',
+                            'valid' : 'lambada_development_plain_text.txt',
+                            'test' : 'lambada_test_plain_text.txt'}
             part_path = os.path.join(self._path, part_map[part])
-            dataset = TextDataset(part_path)
-            self._dataset_cache[part] = dataset
+            if self._layout == 'lambada' and part == 'train':
+                self._dataset_cache[part] = H5PYDataset(part_path, ('train',))
+            else:
+                self._dataset_cache[part] = TextDataset(part_path)
         return self._dataset_cache[part]
 
-    def get_stream(self, part, batch_size=None):
+    def get_stream(self, part, batch_size=None, max_length=None):
         dataset = self.get_dataset(part)
-        stream = dataset.get_example_stream()
+        if self._layout == 'lambada' and part == 'train':
+            stream = DataStream(
+                dataset,
+                iteration_scheme=RandomSpanScheme(dataset.num_examples, max_length))
+            stream = Mapping(stream, listify)
+        else:
+            stream = dataset.get_example_stream()
+
         stream = Mapping(stream, functools.partial(add_bos, Vocabulary.BOS))
         stream = Mapping(stream, vectorize)
         if not batch_size:

@@ -101,7 +101,6 @@ class LanguageModel(Initializable):
 
         # The first token is not predicted
         logits = self._pre_softmax.apply(main_rnn_states[:-1])
-        predictions = logits.argmax(axis=2)
         targets = word_ids.T[1:]
         targets_mask = mask.T[1:]
         minus_logs = self._softmax.categorical_cross_entropy(
@@ -109,9 +108,12 @@ class LanguageModel(Initializable):
         costs = (minus_logs * targets_mask).sum(axis=0)
 
         # Analyze predictions
-        correct = tensor.eq(predictions, targets)
-        last_correct = correct[(targets_mask.sum(axis=0) - 1).astype('int64'),
-                                tensor.arange(correct.shape[1])]
+        last_indices = (targets_mask.sum(axis=0) - 1).astype('int64')
+        batch_indices = tensor.arange(logits.shape[1])
+        last_logits = logits[last_indices, batch_indices]
+        last_predictions = last_logits.argmax(axis=1)
+        last_targets = targets[last_indices, batch_indices]
+        last_correct = tensor.eq(last_predictions, last_targets).astype('int64')
         application_call.add_auxiliary_variable(
             last_correct, name='last_correct')
 
