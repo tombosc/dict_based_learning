@@ -27,4 +27,4 @@ class TextDataset(Dataset):
         return open(self._path, 'r')
 
     def get_data(self, state, request=None):
-        return (state.readline().strip().split(),)
+        return (next(state).strip().split(),)

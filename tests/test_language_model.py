@@ -24,7 +24,7 @@ def test_language_model():
     data = [[str2vec(s, 3) for s in row] for row in data]
     data = numpy.array(data)
     mask = numpy.ones((data.shape[0], data.shape[1]),
-                      dtype=theano.floatX)
+                      dtype=theano.config.floatX)
 
     # With the dictionary
     lm = LanguageModel(
