@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+
 import argparse
 
 from dictlearn.vocab import Vocabulary
