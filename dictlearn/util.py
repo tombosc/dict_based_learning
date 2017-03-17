@@ -4,7 +4,9 @@ def vec2str(vector):
     return "".join(map(chr, vector)).strip('\00')
 
 def str2vec(str_, length):
-    return numpy.pad(numpy.array(map(ord, str_)), (0, length - len(str_)), 'constant')
+    vector = numpy.array(map(ord, str_))[:length]
+    pad_length = max(0, length - len(str_))
+    return numpy.pad(vector, (0, pad_length), 'constant')
 
 def rename(var, name):
     var.name = name
