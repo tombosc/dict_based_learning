@@ -1,3 +1,6 @@
+import os
+import logging
+
 import theano
 from theano import tensor
 
@@ -7,16 +10,29 @@ from blocks.graph import ComputationGraph
 from blocks.model import Model
 from blocks.filter import VariableFilter
 from blocks.extensions import FinishAfter, Timing, Printing
-from blocks.extensions.saveload import Checkpoint
+from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
 
 from dictlearn.util import rename
 from dictlearn.data import Data
+from dictlearn.extensions import DumpTensorflowSummaries
 from dictlearn.language_model import LanguageModel
 
+logger = logging.getLogger()
+
+
 def train_language_model(data_path, layout, fast_start, config, save_path):
+    new_training_job = False
+    if not os.path.exists(save_path):
+        logger.info("Start a new job")
+        new_training_job = True
+        os.mkdir(save_path)
+    else:
+        logger.info("Continue an existing job")
+    main_loop_path = os.path.join(save_path, 'main_loop.tar')
+
     data = Data(data_path, layout)
     c = config
 
@@ -47,6 +63,8 @@ def train_language_model(data_path, layout, fast_start, config, save_path):
         parameters=cg.parameters,
         step_rule=Adam(learning_rate=c['learning_rate']))
     extensions = [
+        Load(main_loop_path, load_iteration_state=True, load_log=True)
+            .set_conditions(before_training=not new_training_job),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
             [cost, last_correct_acc], prefix="train",
@@ -57,10 +75,12 @@ def train_language_model(data_path, layout, fast_start, config, save_path):
             prefix="valid").set_conditions(
                 before_training=not fast_start,
                 every_n_batches=c['mon_freq_valid']),
-        Printing(every_n_batches=c['mon_freq_train']),
-        Checkpoint(save_path,
+        Checkpoint(main_loop_path,
                    before_training=not fast_start,
-                   every_n_batches=c['save_freq_batches'])
+                   every_n_batches=c['save_freq_batches']),
+        DumpTensorflowSummaries(save_path,
+                                every_n_batches=c['mon_freq_train']),
+        Printing(every_n_batches=c['mon_freq_train']),
     ]
     training_stream = data.get_stream(
         'train', batch_size=c['batch_size'], max_length=c['max_length'])
@@ -68,5 +88,6 @@ def train_language_model(data_path, layout, fast_start, config, save_path):
     main_loop = MainLoop(
         algorithm,
         training_stream,
+        model=Model(cost),
         extensions=extensions)
     main_loop.run()
