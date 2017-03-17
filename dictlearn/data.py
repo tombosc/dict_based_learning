@@ -63,9 +63,17 @@ class RandomSpanScheme(IterationScheme):
         self._rng = numpy.random.RandomState(seed)
 
     def get_request_iterator(self):
-        while True:
-            start = self._rng.randint(0, self._dataset_size - self._span_size)
-            yield slice(start, start + self._span_size)
+        # As for now this scheme produces an infinite stateless scheme,
+        # it can itself play the role of an iterator. If we want to add
+        # a state later, this trick will not cut it any more.
+        return self
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        start = self._rng.randint(0, self._dataset_size - self._span_size)
+        return slice(start, start + self._span_size)
 
 
 class Data(object):
