@@ -7,6 +7,7 @@ import os
 import logging
 import time
 import shutil
+import traceback
 from collections import Counter, defaultdict
 
 import numpy
@@ -96,7 +97,12 @@ class Dictionary(object):
             # 100 is a safery margin, I don't want to DDoS Wordnik :)
             if self._remaining_calls < _MIN_REMAINING_CALLS:
                 self._wait_until_quota_reset()
-            definitions = self._word_api.getDefinitions(word)
+            try:
+                definitions = self._word_api.getDefinitions(word)
+            except:
+                logger.error("error during fetching '{}'".format(word))
+                logger.error(traceback.format_exc())
+                continue
             self._remaining_calls -= 1
             self._last_saved += 1
 
