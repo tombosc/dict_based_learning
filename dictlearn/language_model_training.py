@@ -5,7 +5,8 @@ import theano
 from theano import tensor
 
 from blocks.initialization import Uniform, Constant
-from blocks.algorithms import Adam, GradientDescent
+from blocks.algorithms import (
+    Adam, GradientDescent, Adam, StepClipping, CompositeRule)
 from blocks.graph import ComputationGraph
 from blocks.model import Model
 from blocks.filter import VariableFilter
@@ -33,8 +34,8 @@ def train_language_model(data_path, layout, fast_start, config, save_path):
         logger.info("Continue an existing job")
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
 
-    data = Data(data_path, layout)
     c = config
+    data = Data(data_path, layout, c['top_k_words'])
 
     lm = LanguageModel(c['dim'], data.vocab,
                        weights_init=Uniform(width=0.1),
@@ -61,7 +62,9 @@ def train_language_model(data_path, layout, fast_start, config, save_path):
     algorithm = GradientDescent(
         cost=cost,
         parameters=cg.parameters,
-        step_rule=Adam(learning_rate=c['learning_rate']))
+        step_rule=CompositeRule([
+            Adam(learning_rate=c['learning_rate']),
+            StepClipping(c['grad_clip_threshold'])]))
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),

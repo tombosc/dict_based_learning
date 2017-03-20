@@ -78,9 +78,10 @@ class RandomSpanScheme(IterationScheme):
 
 class Data(object):
     """Builds the data stream for different parts of the data."""
-    def __init__(self, path, layout):
+    def __init__(self, path, layout, top_k=None):
         self._path = path
         self._layout = layout
+        self._top_k = top_k
         if not self._layout in ['standard', 'lambada']:
             raise "layout {} is not supposed".format(self._layout)
 
@@ -90,7 +91,8 @@ class Data(object):
     @property
     def vocab(self):
         if not self._vocab:
-            self._vocab = Vocabulary(os.path.join(self._path, "vocab.txt"))
+            self._vocab = Vocabulary(
+                os.path.join(self._path, "vocab.txt"), top_k=self._top_k)
         return self._vocab
 
     def get_dataset(self, part):
