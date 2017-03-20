@@ -17,14 +17,14 @@ TEST_DICT_JSON = (
 """)
 
 TEST_VOCAB = (
-"""<unk>
-<bos>
-<eos>
-a
-b
-c
-d
-e"""
+"""<unk> 0
+<bos> 0
+<eos> 0
+a 9
+b 7
+c 3
+d 2
+e 1"""
 )
 
 TEST_TEXT = (

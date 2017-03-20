@@ -3,8 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import Counter
+import logging
 
 import numpy
+
+logger = logging.getLogger()
 
 class Vocabulary(object):
     """Class that holds a vocabulary for the dataset."""
@@ -12,30 +15,35 @@ class Vocabulary(object):
     EOS = '<eos>'
     UNK = '<unk>'
 
-    def __init__(self, filename_or_words, top_k=None):
+    def __init__(self, path_or_data, top_k=None):
         """Initialize the vocabulary.
 
-        filename_or_words
-            Either a list of words or a path to the file with them.
+        path_or_data
+            Either a list of words or the path to it.
         top_k
             If not `None`, only the first `top_k` entries will be left.
             Note, this does not include the special tokens.
 
         """
-        if isinstance(filename_or_words, str):
-            with open(filename_or_words) as f:
-                words = [line.strip() for line in f]
+        if isinstance(path_or_data, str):
+            words_and_freqs = []
+            with open(path_or_data) as f:
+                for line in f:
+                    word, freq_str = line.strip().split()
+                    freq = int(freq_str)
+                    words_and_freqs.append((word, freq))
         else:
-            words = list(filename_or_words)
+            words_and_freqs = path_or_data
 
         self._id_to_word = []
+        self._id_to_freq = []
         self._word_to_id = {}
         self.unk = -1
         self.bos = -1
         self.eos = -1
 
         n_regular_tokens = 0
-        for idx, word_name in enumerate(words):
+        for idx, (word_name, freq) in enumerate(words_and_freqs):
             if top_k and n_regular_tokens == top_k:
                 break
 
@@ -49,6 +57,7 @@ class Vocabulary(object):
                 n_regular_tokens += 1
 
             self._id_to_word.append(word_name)
+            self._id_to_freq.append(freq)
             self._word_to_id[word_name] = idx
 
         if -1 in [self.unk, self.bos, self.eos]:
@@ -56,6 +65,10 @@ class Vocabulary(object):
 
     def size(self):
         return len(self._id_to_word)
+
+    @property
+    def words(self):
+        return self._id_to_word
 
     def word_to_id(self, word):
         if word in self._word_to_id:
@@ -82,18 +95,21 @@ class Vocabulary(object):
                     for word in line.strip().split():
                         yield word
             counter = Counter(data())
+            logger.info("Data is read")
         # It was not immediately clear to me
         # if counter.most_common() selects consistenly among
         # the words with the same counts. Hence, let's just sort.
-        count_pairs = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
-        words = [w for w, _ in count_pairs]
+        words_and_freqs = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
+        logger.info("Words are sorted")
         if top_k:
-            words = words[:top_k]
-        words = [Vocabulary.BOS, Vocabulary.EOS, Vocabulary.UNK] + words
+            words_and_freqs  = words_and_freqs[:top_k]
+        words_and_freqs = (
+            [(Vocabulary.BOS, 0), (Vocabulary.EOS, 0), (Vocabulary.UNK, 0)]
+            + words_and_freqs)
 
-        return Vocabulary(words)
+        return Vocabulary(words_and_freqs)
 
     def save(self, filename):
         with open(filename, 'w') as f:
-            for word in self._id_to_word:
-                print(word, file=f)
+            for word, freq in zip(self._id_to_word, self._id_to_freq):
+                print(word, freq, file=f)
