@@ -83,7 +83,7 @@ class Data(object):
         self._layout = layout
         self._top_k = top_k
         if not self._layout in ['standard', 'lambada']:
-            raise "layout {} is not supposed".format(self._layout)
+            raise "layout {} is not supported".format(self._layout)
 
         self._vocab = None
         self._dataset_cache = {}

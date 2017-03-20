@@ -24,7 +24,7 @@ from dictlearn.language_model import LanguageModel
 logger = logging.getLogger()
 
 
-def train_language_model(data_path, layout, fast_start, config, save_path):
+def train_language_model(config, save_path, fast_start):
     new_training_job = False
     if not os.path.exists(save_path):
         logger.info("Start a new job")
@@ -35,7 +35,7 @@ def train_language_model(data_path, layout, fast_start, config, save_path):
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
 
     c = config
-    data = Data(data_path, layout, c['top_k_words'])
+    data = Data(c['data_path'], c['layout'], c['top_k_words'])
 
     lm = LanguageModel(c['dim'], data.vocab,
                        weights_init=Uniform(width=0.1),
@@ -57,7 +57,6 @@ def train_language_model(data_path, layout, fast_start, config, save_path):
     cg = ComputationGraph(cost)
     last_correct, = VariableFilter(name='last_correct')(cg)
     last_correct_acc = rename(last_correct.mean(), 'last_correct_acc')
-
 
     algorithm = GradientDescent(
         cost=cost,
