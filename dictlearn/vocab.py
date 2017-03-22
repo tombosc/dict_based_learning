@@ -11,9 +11,18 @@ logger = logging.getLogger()
 
 class Vocabulary(object):
     """Class that holds a vocabulary for the dataset."""
-    BOS = '<bos>'
-    EOS = '<eos>'
-    UNK = '<unk>'
+    BOS = '<bos>' # beginning-of-sequence
+    EOS = '<eos>' # end-of-sequence
+    BOD = '<bod>' # beginning-of-definition
+    EOD = '<eod>' # end-of-definition
+    UNK = '<unk>' # unknown token
+    SPECIAL_TOKEN_MAP = {
+        BOS: 'bos',
+        EOS: 'eos',
+        BOD: 'bod',
+        EOD: 'eod',
+        UNK: 'unk'
+    }
 
     def __init__(self, path_or_data, top_k=None):
         """Initialize the vocabulary.
@@ -38,21 +47,18 @@ class Vocabulary(object):
         self._id_to_word = []
         self._id_to_freq = []
         self._word_to_id = {}
+        self.bos = self.eos = -1
+        self.bod = self.eod = -1
         self.unk = -1
-        self.bos = -1
-        self.eos = -1
 
         n_regular_tokens = 0
         for idx, (word_name, freq) in enumerate(words_and_freqs):
             if top_k and n_regular_tokens == top_k:
                 break
 
-            if word_name == Vocabulary.BOS:
-                self.bos = idx
-            elif word_name == Vocabulary.EOS:
-                self.eos = idx
-            elif word_name == Vocabulary.UNK:
-                self.unk = idx
+            token_attr = self.SPECIAL_TOKEN_MAP.get(word_name)
+            if token_attr is not None:
+                setattr(self, token_attr, idx)
             else:
                 n_regular_tokens += 1
 
@@ -60,7 +66,8 @@ class Vocabulary(object):
             self._id_to_freq.append(freq)
             self._word_to_id[word_name] = idx
 
-        if -1 in [self.unk, self.bos, self.eos]:
+        if -1 in [getattr(self, attr)
+                  for attr in self.SPECIAL_TOKEN_MAP.values()]:
             raise ValueError("special token not found in the vocabulary")
 
     def size(self):
@@ -104,7 +111,11 @@ class Vocabulary(object):
         if top_k:
             words_and_freqs  = words_and_freqs[:top_k]
         words_and_freqs = (
-            [(Vocabulary.BOS, 0), (Vocabulary.EOS, 0), (Vocabulary.UNK, 0)]
+            [(Vocabulary.BOS, 0),
+             (Vocabulary.EOS, 0),
+             (Vocabulary.BOD, 0),
+             (Vocabulary.EOD, 0),
+             (Vocabulary.UNK, 0)]
             + words_and_freqs)
 
         return Vocabulary(words_and_freqs)

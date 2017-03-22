@@ -24,7 +24,9 @@ a 9
 b 7
 c 3
 d 2
-e 1"""
+e 1
+<bod> 0
+<eod> 0"""
 )
 
 TEST_TEXT = (
