@@ -50,4 +50,4 @@ class RetrievalOp(theano.Op):
             def_mask[i, len(def_):] = 0.
         output_storage[0][0] = def_array
         output_storage[1][0] = def_mask
-        output_storage[2][0] = def_map
+        output_storage[2][0] = numpy.array(def_map)

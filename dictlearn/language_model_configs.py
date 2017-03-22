@@ -13,6 +13,7 @@ lm_config_registry.set_root_config({
 
     # model
     'dim' : 128,
+    'standalone_def_rnn' : True,
     'learning_rate' : 0.001,
     'grad_clip_threshold' : 5.0,
 

@@ -22,9 +22,13 @@ class LanguageModel(Initializable):
         does not use any dictionary.
     dim : int
         The default dimension for the components.
+    standalone_def_rnn : bool
+        If `True`, a standalone RNN with separate word embeddings is used
+        to embed definition. If `False` the language model is reused.
 
     """
-    def __init__(self, dim, vocab, dict_=None, **kwargs):
+    def __init__(self, dim, vocab,
+                 dict_=None, standalone_def_rnn=True, **kwargs):
         self._vocab = vocab
         self._dict = dict_
         self._word_to_id = WordToIdOp(self._vocab)
@@ -40,10 +44,15 @@ class LanguageModel(Initializable):
         self._main_rnn = LSTM(dim, name='main_rnn')
         children.extend([self._main_lookup, self._main_fork, self._main_rnn])
         if self._dict:
-            self._def_lookup = LookupTable(vocab.size(), dim, name='def_lookup')
-            self._def_fork = Linear(dim, 4 * dim, name='def_fork')
-            self._def_rnn = LSTM(dim, name='def_rnn')
-            children.extend([self._def_lookup, self._def_fork, self._def_rnn])
+            if standalone_def_rnn:
+                self._def_lookup = LookupTable(vocab.size(), dim, name='def_lookup')
+                self._def_fork = Linear(dim, 4 * dim, name='def_fork')
+                self._def_rnn = LSTM(dim, name='def_rnn')
+                children.extend([self._def_lookup, self._def_fork, self._def_rnn])
+            else:
+                self._def_lookup = self._main_lookup
+                self._def_fork = self._main_fork
+                self._def_rnn = self._main_rnn
         self._pre_softmax = Linear(dim, vocab.size())
         self._softmax = NDimensionalSoftmax()
         children.extend([self._pre_softmax, self._softmax])
@@ -71,10 +80,10 @@ class LanguageModel(Initializable):
                 mask=def_mask.T)[0][-1]
             # Reorder and copy embeddings so that the embeddings of all the definitions
             # that correspond to a position in the text form a continuous span of a tensor
-            def_embeddings = def_embeddings[def_map[2]]
+            def_embeddings = def_embeddings[def_map[:, 2]]
 
             # Compute the spans corresponding to text positions
-            num_defs = tensor.zeros((1 + words.shape[0] * words.shape[1],), dtype='int64')
+            num_defs = tensor.zeros((1 + words.shape[0] * words.shape[1],), dtype='int32')
             num_defs = tensor.inc_subtensor(
                 num_defs[1 + def_map[:, 0] * words.shape[1] + def_map[:, 1]], 1)
             cum_sum_defs = tensor.cumsum(num_defs)
@@ -84,11 +93,18 @@ class LanguageModel(Initializable):
 
             # Mean-pooling of definitions
             def_sum = tensor.zeros((words.shape[0] * words.shape[1], def_embeddings.shape[1]))
-            def_sum = tensor.inc_subtensor(def_sum[def_map[0] * words.shape[1] + def_map[1]],
-                                        def_embeddings)
+            def_sum = tensor.inc_subtensor(
+                def_sum[def_map[:, 0] * words.shape[1] + def_map[:, 1]],
+                def_embeddings)
             def_lens = (def_spans[:, 1] - def_spans[:, 0]).astype(theano.config.floatX)
-            def_mean = def_sum / def_lens[:, None]
+            def_mean = def_sum / tensor.maximum(def_lens[:, None], 1)
             def_mean = def_mean.reshape((words.shape[0], words.shape[1], -1))
+
+            # Auxililary variable for debugging
+            application_call.add_auxiliary_variable(
+                defs.shape[0], name="num_definitions")
+            application_call.add_auxiliary_variable(
+                defs.shape[1], name="max_definition_length")
 
         # Run the main rnn with combined inputs
         word_ids = self._word_to_id(words)

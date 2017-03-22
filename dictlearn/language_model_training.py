@@ -1,4 +1,5 @@
 import os
+import pprint
 import logging
 
 import theano
@@ -20,6 +21,7 @@ from dictlearn.util import rename
 from dictlearn.data import Data
 from dictlearn.extensions import DumpTensorflowSummaries
 from dictlearn.language_model import LanguageModel
+from dictlearn.retrieval import Dictionary
 
 logger = logging.getLogger()
 
@@ -36,8 +38,12 @@ def train_language_model(config, save_path, fast_start):
 
     c = config
     data = Data(c['data_path'], c['layout'], c['top_k_words'])
+    dict_ = None
+    if c['dict_path']:
+        dict_ = Dictionary(c['dict_path'])
 
-    lm = LanguageModel(c['dim'], data.vocab,
+    lm = LanguageModel(c['dim'], data.vocab, dict_,
+                       c['standalone_def_rnn'],
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
@@ -54,13 +60,25 @@ def train_language_model(config, save_path, fast_start):
     costs = lm.apply(words, words_mask)
     cost = rename(costs.mean(), 'mean_cost')
 
-    cg = ComputationGraph(cost)
+    cg = Model(cost)
     last_correct, = VariableFilter(name='last_correct')(cg)
     last_correct_acc = rename(last_correct.mean(), 'last_correct_acc')
+    monitored_vars = [cost, last_correct_acc]
+    if c['dict_path']:
+        num_definitions, = VariableFilter(name='num_definitions')(cg)
+        max_definition_length, = VariableFilter(name='max_definition_length')(cg)
+        monitored_vars.extend([num_definitions, max_definition_length])
+
+    parameters = cg.get_parameter_dict()
+    logger.info("Trainable parameters" + "\n" +
+                pprint.pformat(
+                    [(key, parameters[key].get_value().shape)
+                     for key in sorted(parameters.keys())],
+                    width=120))
 
     algorithm = GradientDescent(
         cost=cost,
-        parameters=cg.parameters,
+        parameters=parameters.values(),
         step_rule=CompositeRule([
             Adam(learning_rate=c['learning_rate']),
             StepClipping(c['grad_clip_threshold'])]))
@@ -69,10 +87,10 @@ def train_language_model(config, save_path, fast_start):
             .set_conditions(before_training=not new_training_job),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
-            [cost, last_correct_acc], prefix="train",
+            monitored_vars, prefix="train",
             every_n_batches=c['mon_freq_train']),
         DataStreamMonitoring(
-            [cost, last_correct_acc],
+            monitored_vars,
             data.get_stream('valid', batch_size=c['batch_size_valid']),
             prefix="valid").set_conditions(
                 before_training=not fast_start,
