@@ -53,8 +53,24 @@ class Dictionary(object):
             logger.debug("sleep until quota reset")
             time.sleep(60.)
 
+    def crawl_lemmas(self, vocab):
+        """Add Wordnet lemmas as definitions."""
+        lemmatizer = nltk.WordNetLemmatizer()
+        for word in vocab.words:
+            definitions = []
+            try:
+                for part_of_speech in ['a', 's', 'r', 'n', 'v']:
+                    lemma = lemmatizer.lemmatize(word, part_of_speech)
+                    if lemma != word and not [lemma] in definitions:
+                        definitions.append([lemma])
+            except:
+                logger.error("lemmatizer crashed on {}".format(word))
+            if definitions:
+                self._data[word] = definitions
+        with open(self._path, 'w') as dst:
+            json.dump(self._data, dst, indent=2)
 
-    def crawl(self, vocab, api_key, call_quota=15000):
+    def crawl_wordnik(self, vocab, api_key, call_quota=15000):
         """Download and preprocess definitions from Wordnik.
 
         vocab
@@ -125,7 +141,6 @@ class Retrieval(object):
     def __init__(self, vocab, dictionary):
         self._vocab = vocab
         self._dictionary = dictionary
-        self._stemmer = nltk.PorterStemmer()
 
         # Preprocess all the definitions to see token ids instead of chars
 
@@ -136,25 +151,27 @@ class Retrieval(object):
 
         """
         definitions = []
-        stem_def_indices = defaultdict(list)
         def_map = []
+        word_def_indices = defaultdict(list)
 
         for seq_pos, sequence in enumerate(batch):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
                     word = vec2str(word)
-                stem  = self._stemmer.stem(word)
-                if stem not in stem_def_indices:
-                    # The first time a stem is encountered in a batch
-                    stem_defs = self._dictionary.get_definitions(stem)
-                    if not stem_defs:
-                        # No defition for this stem
+                if word not in word_def_indices:
+                    # The first time a word is encountered in a batch
+                    word_defs = self._dictionary.get_definitions(word)
+                    if not word_defs:
+                        # No defition for this word
                         continue
-                    for i, def_ in enumerate(stem_defs):
-                        def_ = [self._vocab.word_to_id(token) for token in def_]
-                        stem_def_indices[stem].append(len(definitions))
-                        definitions.append(def_)
-                for def_index in stem_def_indices[stem]:
+                    for i, def_ in enumerate(word_defs):
+                        final_def_ = [self._vocab.bod]
+                        for token in def_:
+                            final_def_.append(self._vocab.word_to_id(token))
+                        final_def_.append(self._vocab.eod)
+                        word_def_indices[word].append(len(definitions))
+                        definitions.append(final_def_)
+                for def_index in word_def_indices[word]:
                     def_map.append((seq_pos, word_pos, def_index))
 
         return definitions, def_map
