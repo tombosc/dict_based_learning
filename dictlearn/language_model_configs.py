@@ -10,10 +10,13 @@ lm_config_registry.set_root_config({
     'max_length' : 100,
     'batch_size' : 32,
     'batch_size_valid' : 32,
+    'max_def_length' : 1000,
+    'exclude_top_k' : -1,
 
     # model
     'dim' : 128,
     'standalone_def_rnn' : True,
+    'disregard_word_embeddings' : False,
     'learning_rate' : 0.001,
     'grad_clip_threshold' : 5.0,
 

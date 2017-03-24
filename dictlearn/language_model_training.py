@@ -1,6 +1,12 @@
 import os
+import time
+import socket
+import atexit
+import signal
 import pprint
 import logging
+import cPickle
+import subprocess
 
 import theano
 from theano import tensor
@@ -17,16 +23,18 @@ from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
 
+from fuel.streams import ServerDataStream
+
 from dictlearn.util import rename
 from dictlearn.data import Data
 from dictlearn.extensions import DumpTensorflowSummaries
 from dictlearn.language_model import LanguageModel
-from dictlearn.retrieval import Dictionary
+from dictlearn.retrieval import Retrieval, Dictionary
 
 logger = logging.getLogger()
 
 
-def train_language_model(config, save_path, fast_start):
+def train_language_model(config, save_path, fast_start, fuel_server):
     new_training_job = False
     if not os.path.exists(save_path):
         logger.info("Start a new job")
@@ -35,15 +43,18 @@ def train_language_model(config, save_path, fast_start):
     else:
         logger.info("Continue an existing job")
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
+    stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
     data = Data(c['data_path'], c['layout'], c['top_k_words'])
-    dict_ = None
+    retrieval = None
     if c['dict_path']:
-        dict_ = Dictionary(c['dict_path'])
+        retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
+                              c['max_def_length'], c['exclude_top_k'])
 
-    lm = LanguageModel(c['dim'], data.vocab, dict_,
+    lm = LanguageModel(c['dim'], data.vocab, retrieval,
                        c['standalone_def_rnn'],
+                       c['disregard_word_embeddings'],
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
@@ -82,12 +93,15 @@ def train_language_model(config, save_path, fast_start):
         step_rule=CompositeRule([
             Adam(learning_rate=c['learning_rate']),
             StepClipping(c['grad_clip_threshold'])]))
+    train_monitored_vars = list(monitored_vars)
+    train_monitored_vars.append(algorithm.total_gradient_norm)
+
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
-            monitored_vars, prefix="train",
+            train_monitored_vars, prefix="train",
             every_n_batches=c['mon_freq_train']),
         DataStreamMonitoring(
             monitored_vars,
@@ -104,6 +118,24 @@ def train_language_model(config, save_path, fast_start):
     ]
     training_stream = data.get_stream(
         'train', batch_size=c['batch_size'], max_length=c['max_length'])
+    if fuel_server:
+        with open(stream_path, 'w') as dst:
+            cPickle.dump(training_stream, dst, 0)
+        # Copy-paste from
+        # http://stackoverflow.com/questions/2838244/get-open-tcp-port-in-python
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("", 0))
+        port = s.getsockname()[1]
+        s.close()
+        ret = subprocess.Popen(["start_fuel_server.py", stream_path, str(port)])
+        time.sleep(0.1)
+        if ret.returncode is not None:
+            raise Exception()
+        atexit.register(lambda: os.kill(ret.pid, signal.SIGKILL))
+        training_stream = ServerDataStream(
+            sources=training_stream.sources,
+            produces_examples=training_stream.produces_examples,
+            port=port)
 
     main_loop = MainLoop(
         algorithm,

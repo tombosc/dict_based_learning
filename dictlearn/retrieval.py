@@ -36,11 +36,18 @@ class Dictionary(object):
         self._tmp_path = os.path.join(os.path.dirname(path),
                                          self._path + '.tmp')
         if self._path and os.path.exists(self._path):
-            self.load(self._path)
+            self.load()
 
-    def load(self, path):
-        with open(path, 'r') as src:
+    def load(self):
+        with open(self._path, 'r') as src:
             self._data = json.load(src)
+
+    def save(self):
+        logger.debug("saving...")
+        with open(self._tmp_path, 'w') as dst:
+            json.dump(self._data, dst, indent=2)
+        shutil.move(self._tmp_path, self._path)
+        logger.debug("saved")
 
     def _wait_until_quota_reset(self):
         while True:
@@ -52,6 +59,19 @@ class Dictionary(object):
                 return
             logger.debug("sleep until quota reset")
             time.sleep(60.)
+
+    def setup_identity_mapping(self, vocab):
+        for word in vocab.words:
+            self._data[word] = [[word]]
+        self.save()
+
+    def setup_spelling(self, vocab):
+        for word in vocab.words:
+            def_ = word.decode('utf-8')
+            if len(def_) > 10:
+                def_ = u"{}-{}".format(def_[:5], def_[-5:])
+            self._data[word] = [list(def_)]
+        self.save()
 
     def crawl_lemmas(self, vocab):
         """Add Wordnet lemmas as definitions."""
@@ -69,6 +89,7 @@ class Dictionary(object):
                 self._data[word] = definitions
         with open(self._path, 'w') as dst:
             json.dump(self._data, dst, indent=2)
+        self.save()
 
     def crawl_wordnik(self, vocab, api_key, call_quota=15000):
         """Download and preprocess definitions from Wordnik.
@@ -90,14 +111,6 @@ class Dictionary(object):
         self._account_api = AccountApi.AccountApi(client)
         toktok = nltk.ToktokTokenizer()
 
-        def save():
-            logger.debug("saving...")
-            with open(self._tmp_path, 'w') as dst:
-                json.dump(self._data, dst, indent=2)
-            shutil.move(self._tmp_path, self._path)
-            logger.debug("saved")
-            self._last_saved = 0
-
         # Here, for now, we don't do any stemming or lemmatization.
         # Stemming is useless because the dictionary is not indexed with
         # lemmas, not stems. Lemmatizers, on the other hand, can not be
@@ -108,7 +121,8 @@ class Dictionary(object):
                 continue
 
             if self._last_saved >= _SAVE_EVERY_CALLS:
-                save()
+                self.save()
+                self._last_saved = 0
 
             # 100 is a safery margin, I don't want to DDoS Wordnik :)
             if self._remaining_calls < _MIN_REMAINING_CALLS:
@@ -130,7 +144,8 @@ class Dictionary(object):
                                  for token in toktok.tokenize(def_.text.lower())]
                 self._data[word].append(tokenized_def)
             logger.debug("definitions for '{}' fetched".format(word))
-        save()
+        self.save()
+        self._last_saved = 0
 
     def get_definitions(self, key):
         return self._data.get(key, [])
@@ -138,9 +153,25 @@ class Dictionary(object):
 
 class Retrieval(object):
 
-    def __init__(self, vocab, dictionary):
+    def __init__(self, vocab, dictionary,
+                 max_def_length=1000, exclude_top_k=None):
+        """Retrieves the definitions.
+
+        vocab
+            The vocabulary.
+        dictionary
+            The dictionary of the definitions.
+        max_def_length
+            Disregard definitions that are longer than that.
+        exclude_top_k
+            Do not provide defitions for the first top k
+            words of the vocabulary (typically the most frequent ones).
+
+        """
         self._vocab = vocab
         self._dictionary = dictionary
+        self._max_def_length = max_def_length
+        self._exclude_top_k = exclude_top_k
 
         # Preprocess all the definitions to see token ids instead of chars
 
@@ -148,6 +179,14 @@ class Retrieval(object):
         """Retrieves all definitions for a batch of words sequences.
 
         TODO: definitions of phrases, phrasal verbs, etc.
+
+        Returns
+        -------
+        defs
+            A list of word definitions, each definition is a list of words.
+        def_map
+            A list of triples (batch_index, time_step, def_index). Maps
+            words to their respective definitions from `defs`.
 
         """
         definitions = []
@@ -158,6 +197,9 @@ class Retrieval(object):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
                     word = vec2str(word)
+                if (self._exclude_top_k
+                    and self._vocab.word_to_id(word) < self._exclude_top_k):
+                    continue
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
@@ -165,6 +207,8 @@ class Retrieval(object):
                         # No defition for this word
                         continue
                     for i, def_ in enumerate(word_defs):
+                        if len(def_) > self._max_def_length:
+                            continue
                         final_def_ = [self._vocab.bod]
                         for token in def_:
                             final_def_.append(self._vocab.word_to_id(token))

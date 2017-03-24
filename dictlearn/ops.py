@@ -28,8 +28,8 @@ class WordToIdOp(theano.Op):
 
 class RetrievalOp(theano.Op):
     """Retrieves the definitions from the dictionary."""
-    def __init__(self, vocab, dict_):
-        self._retrieval = Retrieval(vocab, dict_)
+    def __init__(self, retrieval):
+        self._retrieval = retrieval
 
     def make_node(self, input_):
         defs_type = tensor.TensorType('int64', [False, False])

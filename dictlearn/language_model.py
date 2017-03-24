@@ -17,24 +17,31 @@ class LanguageModel(Initializable):
     ----------
     vocab
         The vocabulary object.
-    dict_
-        The dictionary object. If `None`, the language model
+    retrieval
+        The dictionary retrieval algorithm. If `None`, the language model
         does not use any dictionary.
     dim : int
         The default dimension for the components.
     standalone_def_rnn : bool
         If `True`, a standalone RNN with separate word embeddings is used
         to embed definition. If `False` the language model is reused.
+    disregard_word_embeddings : bool
+        If `True`, the word embeddings are not used, only the information
+        from the definitions is used.
 
     """
-    def __init__(self, dim, vocab,
-                 dict_=None, standalone_def_rnn=True, **kwargs):
+    def __init__(self, dim, vocab, retrieval=None,
+                 standalone_def_rnn=True,
+                 disregard_word_embeddings=False,
+                 **kwargs):
         self._vocab = vocab
-        self._dict = dict_
+        self._retrieval = retrieval
+        self._disregard_word_embeddings = disregard_word_embeddings
+
         self._word_to_id = WordToIdOp(self._vocab)
 
-        if self._dict:
-            self._retrieve = RetrievalOp(self._vocab, self._dict)
+        if self._retrieval:
+            self._retrieve = RetrievalOp(retrieval)
 
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
@@ -43,7 +50,7 @@ class LanguageModel(Initializable):
         self._main_fork = Linear(dim, 4 * dim, name='main_fork')
         self._main_rnn = LSTM(dim, name='main_rnn')
         children.extend([self._main_lookup, self._main_fork, self._main_rnn])
-        if self._dict:
+        if self._retrieval:
             if standalone_def_rnn:
                 self._def_lookup = LookupTable(vocab.size(), dim, name='def_lookup')
                 self._def_fork = Linear(dim, 4 * dim, name='def_fork')
@@ -72,7 +79,7 @@ class LanguageModel(Initializable):
             A float32 matrix of shape (B, T). Zeros indicate the padding.
 
         """
-        if self._dict:
+        if self._retrieval:
             defs, def_mask, def_map = self._retrieve(words)
             embedded_def_words = self._def_lookup.apply(defs)
             def_embeddings = self._def_rnn.apply(
@@ -109,8 +116,10 @@ class LanguageModel(Initializable):
         # Run the main rnn with combined inputs
         word_ids = self._word_to_id(words)
         rnn_inputs = self._main_lookup.apply(word_ids)
-        if self._dict:
+        if self._retrieval:
             rnn_inputs += def_mean
+        if self._disregard_word_embeddings:
+            rnn_inputs = def_mean
         main_rnn_states = self._main_rnn.apply(
             tensor.transpose(self._main_fork.apply(rnn_inputs), (1, 0, 2)),
             mask=mask.T)[0]
@@ -134,5 +143,3 @@ class LanguageModel(Initializable):
             last_correct, name='last_correct')
 
         return costs
-
-

@@ -8,7 +8,7 @@ from blocks.graph import ComputationGraph
 
 from dictlearn.util import str2vec
 from dictlearn.vocab import Vocabulary
-from dictlearn.retrieval import Dictionary
+from dictlearn.retrieval import Retrieval, Dictionary
 from dictlearn.language_model import LanguageModel
 
 from tests.util import (
@@ -28,7 +28,7 @@ def test_language_model():
 
     # With the dictionary
     lm = LanguageModel(
-        vocab=vocab, dict_=dict_, dim=10,
+        vocab=vocab, retrieval=Retrieval(vocab, dict_), dim=10,
         weights_init=Uniform(width=0.1),
         biases_init=Uniform(width=0.1))
     lm.initialize()

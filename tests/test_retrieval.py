@@ -54,7 +54,7 @@ def test_retrieval():
                        (1, 2, 2)]
 
     # check the op
-    retrieval_op = RetrievalOp(vocab, dict_)
+    retrieval_op = RetrievalOp(Retrieval(vocab, dict_))
     batch = tensor.as_tensor_variable(
         [[[ord('d'), ord(' '), ord('c'), 0, 0],
           [ord('e'), 0, 0, 0, 0]]])
