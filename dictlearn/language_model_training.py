@@ -87,18 +87,20 @@ def train_language_model(config, save_path, fast_start, fuel_server):
                      for key in sorted(parameters.keys())],
                     width=120))
 
+    rules = [Adam(learning_rate=c['learning_rate'])]
+    if c['grad_clip_threshold']:
+        rules.append(StepClipping(c['grad_clip_threshold']))
     algorithm = GradientDescent(
         cost=cost,
         parameters=parameters.values(),
-        step_rule=CompositeRule([
-            Adam(learning_rate=c['learning_rate']),
-            StepClipping(c['grad_clip_threshold'])]))
+        step_rule=CompositeRule(rules))
     train_monitored_vars = list(monitored_vars)
-    train_monitored_vars.append(algorithm.total_gradient_norm)
+    if c['grad_clip_threshold']:
+        train_monitored_vars.append(algorithm.total_gradient_norm)
 
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
-            .set_conditions(before_training=not new_training_job),
+            .set_conditions(before_training=not new_training_job and not fast_start),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
@@ -111,7 +113,8 @@ def train_language_model(config, save_path, fast_start, fuel_server):
                 every_n_batches=c['mon_freq_valid']),
         Checkpoint(main_loop_path,
                    before_training=not fast_start,
-                   every_n_batches=c['save_freq_batches']),
+                   every_n_batches=c['save_freq_batches'],
+                   after_training=not fast_start),
         DumpTensorflowSummaries(save_path,
                                 every_n_batches=c['mon_freq_train']),
         Printing(every_n_batches=c['mon_freq_train']),
