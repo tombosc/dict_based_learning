@@ -35,4 +35,5 @@ c['batch_size_valid'] = 16
 c['top_k_words'] = 60000
 c['dim'] = 512
 c['mon_freq_train'] = 100
+c['grad_clip_threshold'] = 20.
 lm_config_registry['lambada'] = c
