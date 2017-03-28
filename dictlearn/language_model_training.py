@@ -72,9 +72,11 @@ def train_language_model(config, save_path, fast_start, fuel_server):
     cost = rename(costs.mean(), 'mean_cost')
 
     cg = Model(cost)
+    length = rename(words.shape[1], 'length')
     last_correct, = VariableFilter(name='last_correct')(cg)
     last_correct_acc = rename(last_correct.mean(), 'last_correct_acc')
-    monitored_vars = [cost, last_correct_acc]
+    perplexity, = VariableFilter(name='perplexity')(cg)
+    monitored_vars = [length, cost, last_correct_acc, perplexity]
     if c['dict_path']:
         num_definitions, = VariableFilter(name='num_definitions')(cg)
         max_definition_length, = VariableFilter(name='max_definition_length')(cg)

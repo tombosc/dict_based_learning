@@ -8,6 +8,7 @@ from blocks.bricks.recurrent import LSTM
 from blocks.bricks.lookup import LookupTable
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
+from dictlearn.aggregation_schemes import Perplexity
 
 
 class LanguageModel(Initializable):
@@ -131,6 +132,11 @@ class LanguageModel(Initializable):
         minus_logs = self._softmax.categorical_cross_entropy(
             targets, logits, extra_ndim=1)
         costs = (minus_logs * targets_mask).sum(axis=0)
+        perplexity = tensor.exp(costs.sum() / targets_mask.sum())
+        perplexity.tag.aggregation_scheme = Perplexity(
+            costs.sum(), targets_mask.sum())
+        application_call.add_auxiliary_variable(
+            perplexity, name='perplexity')
 
         # Analyze predictions
         last_indices = (targets_mask.sum(axis=0) - 1).astype('int64')

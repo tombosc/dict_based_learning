@@ -36,5 +36,3 @@ c['top_k_words'] = 60000
 c['dim'] = 512
 c['mon_freq_train'] = 100
 lm_config_registry['lambada'] = c
-
-
