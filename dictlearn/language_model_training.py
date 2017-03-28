@@ -22,6 +22,7 @@ from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
+from blocks.serialization import load_parameters
 
 from fuel.streams import ServerDataStream
 
@@ -34,7 +35,7 @@ from dictlearn.retrieval import Retrieval, Dictionary
 logger = logging.getLogger()
 
 
-def train_language_model(config, save_path, fast_start, fuel_server):
+def train_language_model(config, save_path, params, fast_start, fuel_server):
     new_training_job = False
     if not os.path.exists(save_path):
         logger.info("Start a new job")
@@ -73,6 +74,12 @@ def train_language_model(config, save_path, fast_start, fuel_server):
     cost = rename(costs.mean(), 'mean_cost')
 
     cg = Model(cost)
+    if params:
+        logger.debug("Load parameters from {}".format(params))
+        with open(params) as src:
+            cg.set_parameter_values(load_parameters(src))
+
+
     length = rename(words.shape[1], 'length')
     last_correct, = VariableFilter(name='last_correct')(cg)
     last_correct_acc = rename(last_correct.mean(), 'last_correct_acc')

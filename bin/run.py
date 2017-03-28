@@ -19,6 +19,8 @@ if __name__ == "__main__":
                         help="Start faster by skipping a few things at the start")
     parser.add_argument("--fuel-server", action="store_true",
                         help="Use standalone Fuel dataset server")
+    parser.add_argument("--params",
+                        help="Load parameters from a main loop")
     parser.add_argument("config", help="The configuration")
     parser.add_argument("save_path", help="The destination for saving")
 
@@ -50,4 +52,4 @@ if __name__ == "__main__":
     # For now this script just runs the language model training.
     # More stuff to come.
     train_language_model(config, args.save_path,
-                         args.fast_start, args.fuel_server)
+                         args.params, args.fast_start, args.fuel_server)
