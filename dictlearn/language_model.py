@@ -11,6 +11,10 @@ from dictlearn.ops import WordToIdOp, RetrievalOp
 from dictlearn.aggregation_schemes import Perplexity
 
 
+def masked_root_mean_square(x, mask):
+    return (((x * mask[:, :, None]) ** 2).sum() / mask.sum()) ** 0.5
+
+
 class LanguageModel(Initializable):
     """The dictionary-equipped language model.
 
@@ -31,7 +35,7 @@ class LanguageModel(Initializable):
         from the definitions is used.
     compose_type : str
         If 'mean', the definition and word embeddings are averaged
-        If 'fully_connected', a learned perceptron compose the 2 embeddings 
+        If 'fully_connected', a learned perceptron compose the 2 embeddings
 
     """
     def __init__(self, dim, vocab, retrieval=None,
@@ -67,7 +71,8 @@ class LanguageModel(Initializable):
                 self._def_fork = self._main_fork
                 self._def_rnn = self._main_rnn
         if compose_type == 'fully_connected':
-            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[2*dim, dim])
+            self._def_state_compose = MLP(
+                activations=[None], dims=[2 * dim, dim])
             children.append(self._def_state_compose)
         elif compose_type == 'mean':
             pass
@@ -126,10 +131,14 @@ class LanguageModel(Initializable):
                 defs.shape[0], name="num_definitions")
             application_call.add_auxiliary_variable(
                 defs.shape[1], name="max_definition_length")
+            application_call.add_auxiliary_variable(
+                masked_root_mean_square(def_mean, mask), name='def_mean_rootmean2')
 
         # Run the main rnn with combined inputs
         word_ids = self._word_to_id(words)
         rnn_inputs = self._main_lookup.apply(word_ids)
+        application_call.add_auxiliary_variable(
+            masked_root_mean_square(rnn_inputs, mask), name='rnn_input_rootmean2')
         if self._retrieval:
             if self._compose_type == 'mean':
                 rnn_inputs += def_mean

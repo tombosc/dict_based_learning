@@ -15,6 +15,7 @@ lm_config_registry.set_root_config({
 
     # model
     'dim' : 128,
+    'compose_type' : 'fully_connected',
     'standalone_def_rnn' : True,
     'disregard_word_embeddings' : False,
     'learning_rate' : 0.001,

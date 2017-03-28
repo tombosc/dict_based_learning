@@ -101,6 +101,10 @@ def train_language_model(config, save_path, fast_start, fuel_server):
     if c['grad_clip_threshold']:
         train_monitored_vars.append(algorithm.total_gradient_norm)
 
+    def_mean_rootmean2, = VariableFilter(name='def_mean_rootmean2')(cg)
+    rnn_input_rootmean2, = VariableFilter(name='rnn_input_rootmean2')(cg)
+    train_monitored_vars.extend([def_mean_rootmean2, rnn_input_rootmean2])
+
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job and not fast_start),
