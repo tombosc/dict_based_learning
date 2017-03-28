@@ -2,7 +2,7 @@
 import theano
 from theano import tensor
 
-from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh
+from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
 from blocks.bricks.base import application
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.lookup import LookupTable
@@ -70,11 +70,17 @@ class LanguageModel(Initializable):
                 self._def_lookup = self._main_lookup
                 self._def_fork = self._main_fork
                 self._def_rnn = self._main_rnn
-        if compose_type == 'fully_connected':
-            self._def_state_compose = MLP(
-                activations=[None], dims=[2 * dim, dim])
+        if compose_type == 'fully_connected_tanh':
+            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[2*dim, dim])
             children.append(self._def_state_compose)
-        elif compose_type == 'mean':
+        elif compose_type == 'fully_connected_relu':
+            self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
+                                          dims=[2*dim, dim])
+            children.append(self._def_state_compose)
+        elif compose_type == 'fully_connected_linear':
+            self._def_state_compose = Linear(2*dim, dim, name="def_state_compose")
+            children.append(self._def_state_compose)
+        elif compose_type == 'sum':
             pass
         elif not disregard_word_embeddings:
             raise Exception("Error: composition of embeddings and def not understood")
