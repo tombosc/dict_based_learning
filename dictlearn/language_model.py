@@ -2,7 +2,7 @@
 import theano
 from theano import tensor
 
-from blocks.bricks import Initializable, Linear, NDimensionalSoftmax
+from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh
 from blocks.bricks.base import application
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.lookup import LookupTable
@@ -28,15 +28,20 @@ class LanguageModel(Initializable):
     disregard_word_embeddings : bool
         If `True`, the word embeddings are not used, only the information
         from the definitions is used.
+    compose_type : str
+        If 'mean', the definition and word embeddings are averaged
+        If 'fully_connected', a learned perceptron compose the 2 embeddings 
 
     """
     def __init__(self, dim, vocab, retrieval=None,
                  standalone_def_rnn=True,
                  disregard_word_embeddings=False,
+                 compose_type='mean',
                  **kwargs):
         self._vocab = vocab
         self._retrieval = retrieval
         self._disregard_word_embeddings = disregard_word_embeddings
+        self._compose_type = compose_type
 
         self._word_to_id = WordToIdOp(self._vocab)
 
@@ -60,6 +65,14 @@ class LanguageModel(Initializable):
                 self._def_lookup = self._main_lookup
                 self._def_fork = self._main_fork
                 self._def_rnn = self._main_rnn
+        if compose_type == 'fully_connected':
+            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[2*dim, dim])
+            children.append(self._def_state_compose)
+        elif compose_type == 'mean':
+            pass
+        elif not disregard_word_embeddings:
+            raise Exception("Error: composition of embeddings and def not understood")
+
         self._pre_softmax = Linear(dim, vocab.size())
         self._softmax = NDimensionalSoftmax()
         children.extend([self._pre_softmax, self._softmax])
@@ -117,7 +130,11 @@ class LanguageModel(Initializable):
         word_ids = self._word_to_id(words)
         rnn_inputs = self._main_lookup.apply(word_ids)
         if self._retrieval:
-            rnn_inputs += def_mean
+            if self._compose_type == 'mean':
+                rnn_inputs += def_mean
+            elif self._compose_type == 'fully_connected':
+                concat = tensor.concatenate([rnn_inputs, def_mean], axis=2)
+                rnn_inputs = self._def_state_compose.apply(concat)
         if self._disregard_word_embeddings:
             rnn_inputs = def_mean
         main_rnn_states = self._main_rnn.apply(

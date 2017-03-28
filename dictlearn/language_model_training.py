@@ -55,6 +55,7 @@ def train_language_model(config, save_path, fast_start, fuel_server):
     lm = LanguageModel(c['dim'], data.vocab, retrieval,
                        c['standalone_def_rnn'],
                        c['disregard_word_embeddings'],
+                       c['compose_type'],
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
