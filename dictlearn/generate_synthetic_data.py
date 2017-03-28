@@ -36,7 +36,8 @@ class FakeTextGenerator(object):
     because 2 tokens can have different meanings and thus embeddings (homonyms)
     """
     def __init__(self, vocabulary_size, features_size, markov_order, 
-                 temperature=1.0, pc_double_meaning=0.2):
+                 temperature=1.0, pc_double_meaning=0.2, markov_order_dict=1,
+                 min_len_definitions=4, max_len_definitions=8):
         """
         markov_order: integer at least 1 such that
             p(x_t|x_t-1:x_1) = p(x_t|x_t-1:x_t-markov_order)
@@ -48,9 +49,10 @@ class FakeTextGenerator(object):
         self.mo = markov_order
         self.V = vocabulary_size
         self.T = temperature
+        self.mo_d = markov_order_dict # markov order for the dictionary definitions
+        self.min_len_def = min_len_definitions
+        self.max_len_def = max_len_definitions
 
-        self.mo_d = 7 # markov order for the dictionary definitions
-        self.len_definition = 4
         self.params = normal(0,1,(self.mo * features_size, self.V))
         self.params_d = normal(0,1,(self.mo_d * features_size, self.V))
         # trying to regulate the norm of the features.
@@ -98,7 +100,9 @@ class FakeTextGenerator(object):
         """
         tokens = [self.vocabulary[token_idx]]
         features = [self.features[token_idx]]
-        for i in range(self.len_definition):
+        len_def = (np.random.choice(self.max_len_def - self.min_len_def)
+                   + self.min_len_def)
+        for i in range(len_def):
             order = min(self.mo_d, len(tokens))
             feature = np.concatenate(features[-order:])
             params = self.params_d[-order*self.features_size:]
@@ -125,6 +129,17 @@ class FakeTextGenerator(object):
             tokens.append(self.vocabulary[s])
             features.append(self.features[s])
         return tokens
+
+        #def __getstate__(self):
+        #    for k in self.__dict__.keys():
+        #        print k
+        #        #self.__dict__[k] = state[k]
+        #    return state
+
+        #def __setstate__(self, state):
+        #    for k in state.keys():
+        #        self.__dict__[k] = state[k]
+
 
 if __name__ == "__main__":
     model = FakeTextGenerator(100, 3, 2)
