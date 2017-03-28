@@ -12,7 +12,8 @@ from dictlearn.aggregation_schemes import Perplexity
 
 
 def masked_root_mean_square(x, mask):
-    return (((x * mask[:, :, None]) ** 2).sum() / mask.sum()) ** 0.5
+    """Masked room mean square for a 3D tensor"""
+    return (((x * mask[:, :, None]) ** 2).sum() / x.shape[2] / mask.sum()) ** 0.5
 
 
 class LanguageModel(Initializable):
@@ -78,7 +79,8 @@ class LanguageModel(Initializable):
                                           dims=[2*dim, dim])
             children.append(self._def_state_compose)
         elif compose_type == 'fully_connected_linear':
-            self._def_state_compose = Linear(2*dim, dim, name="def_state_compose")
+            self._def_state_compose = MLP(activations=[None],
+                                          dims=[2*dim, dim])
             children.append(self._def_state_compose)
         elif compose_type == 'sum':
             pass
@@ -148,7 +150,7 @@ class LanguageModel(Initializable):
         if self._retrieval:
             if self._compose_type == 'mean':
                 rnn_inputs += def_mean
-            elif self._compose_type == 'fully_connected':
+            elif self._compose_type.startswith('fully_connected'):
                 concat = tensor.concatenate([rnn_inputs, def_mean], axis=2)
                 rnn_inputs = self._def_state_compose.apply(concat)
         if self._disregard_word_embeddings:
