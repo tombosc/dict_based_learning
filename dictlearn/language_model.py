@@ -35,14 +35,17 @@ class LanguageModel(Initializable):
         If `True`, the word embeddings are not used, only the information
         from the definitions is used.
     compose_type : str
-        If 'mean', the definition and word embeddings are averaged
-        If 'fully_connected', a learned perceptron compose the 2 embeddings
+        If 'sum', the definition and word embeddings are averaged
+        If 'fully_connected_linear', a learned perceptron compose the 2 
+        embeddings linearly
+        If 'fully_connected_relu', ...
+        If 'fully_connected_tanh', ...
 
     """
     def __init__(self, dim, vocab, retrieval=None,
                  standalone_def_rnn=True,
                  disregard_word_embeddings=False,
-                 compose_type='mean',
+                 compose_type='sum',
                  **kwargs):
         self._vocab = vocab
         self._retrieval = retrieval
@@ -148,7 +151,7 @@ class LanguageModel(Initializable):
         application_call.add_auxiliary_variable(
             masked_root_mean_square(rnn_inputs, mask), name='rnn_input_rootmean2')
         if self._retrieval:
-            if self._compose_type == 'mean':
+            if self._compose_type == 'sum':
                 rnn_inputs += def_mean
             elif self._compose_type.startswith('fully_connected'):
                 concat = tensor.concatenate([rnn_inputs, def_mean], axis=2)
