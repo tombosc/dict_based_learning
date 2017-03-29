@@ -36,7 +36,7 @@ class LanguageModel(Initializable):
         from the definitions is used.
     compose_type : str
         If 'sum', the definition and word embeddings are averaged
-        If 'fully_connected_linear', a learned perceptron compose the 2 
+        If 'fully_connected_linear', a learned perceptron compose the 2
         embeddings linearly
         If 'fully_connected_relu', ...
         If 'fully_connected_tanh', ...
@@ -156,6 +156,8 @@ class LanguageModel(Initializable):
             elif self._compose_type.startswith('fully_connected'):
                 concat = tensor.concatenate([rnn_inputs, def_mean], axis=2)
                 rnn_inputs = self._def_state_compose.apply(concat)
+            else:
+                assert False
         if self._disregard_word_embeddings:
             rnn_inputs = def_mean
         main_rnn_states = self._main_rnn.apply(
