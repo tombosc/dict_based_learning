@@ -25,6 +25,7 @@ lm_config_registry.set_root_config({
     'mon_freq_train' : 10,
     'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
+    'n_batches' : 0,
 })
 
 c = lm_config_registry['root']
@@ -36,5 +37,5 @@ c['batch_size_valid'] = 16
 c['top_k_words'] = 60000
 c['dim'] = 512
 c['mon_freq_train'] = 100
-c['grad_clip_threshold'] = 20.
+c['grad_clip_threshold'] = 50.
 lm_config_registry['lambada'] = c
