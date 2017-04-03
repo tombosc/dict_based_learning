@@ -1,4 +1,10 @@
+from __future__ import division
+
 import numpy
+
+def softmax(v, T):
+    exp_v = numpy.exp(v/T)
+    return exp_v / numpy.sum(exp_v)
 
 def vec2str(vector):
     return "".join(map(chr, vector)).strip('\00')
