@@ -53,6 +53,13 @@ def test_retrieval():
                        (1, 1, 0), (1, 1, 1),
                        (1, 2, 2)]
 
+    # check a complex case with exclude top k
+    batch = [['a', 'b', 'c', 'd'], ['a', 'e', 'b']]
+    exclude_top_k = 4 # should exclude 'a', 'b', 'c', 'd' and only define 'e'
+    defs, def_map = Retrieval(vocab, dict_, exclude_top_k=exclude_top_k).retrieve(batch)
+    assert defs == [[8, 4, 5, 6, 9]]
+    assert def_map == [(1, 1, 0)]
+
     # check the op
     retrieval_op = RetrievalOp(Retrieval(vocab, dict_))
     batch = tensor.as_tensor_variable(
