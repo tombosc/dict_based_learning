@@ -167,8 +167,12 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
+    # We use a completely random seed on purpose. With Fuel server
+    # it's currently not possible to restore the state of the training
+    # stream. That's why it's probably better to just have it stateless.
     training_stream = data.get_stream(
-        'train', batch_size=c['batch_size'], max_length=c['max_length'])
+        'train', batch_size=c['batch_size'], max_length=c['max_length'],
+        seed=numpy.random.randint(0, 10000000))
     if fuel_server:
         with open(stream_path, 'w') as dst:
             cPickle.dump(training_stream, dst, 0)
@@ -176,17 +180,16 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         # http://stackoverflow.com/questions/2838244/get-open-tcp-port-in-python
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
-        port = s.getsockname()[1]
+        port = ServerDataStream.PORT = s.getsockname()[1]
         s.close()
         ret = subprocess.Popen(["start_fuel_server.py", stream_path, str(port)])
         time.sleep(0.1)
         if ret.returncode is not None:
             raise Exception()
-        atexit.register(lambda: os.kill(ret.pid, signal.SIGKILL))
+        atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
         training_stream = ServerDataStream(
             sources=training_stream.sources,
-            produces_examples=training_stream.produces_examples,
-            port=port)
+            produces_examples=training_stream.produces_examples)
 
     main_loop = MainLoop(
         algorithm,

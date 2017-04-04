@@ -112,12 +112,13 @@ class Data(object):
                 self._dataset_cache[part] = TextDataset(part_path)
         return self._dataset_cache[part]
 
-    def get_stream(self, part, batch_size=None, max_length=None):
+    def get_stream(self, part, batch_size=None, max_length=None, seed=None):
         dataset = self.get_dataset(part)
         if self._layout == 'lambada' and part == 'train':
             stream = DataStream(
                 dataset,
-                iteration_scheme=RandomSpanScheme(dataset.num_examples, max_length))
+                iteration_scheme=RandomSpanScheme(
+                    dataset.num_examples, max_length, seed))
             stream = Mapping(stream, listify)
         else:
             stream = dataset.get_example_stream()
