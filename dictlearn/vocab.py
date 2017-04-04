@@ -77,6 +77,10 @@ class Vocabulary(object):
     def words(self):
         return self._id_to_word
 
+    @property
+    def frequencies(self):
+        return self._id_to_freq
+
     def word_to_id(self, word):
         if word in self._word_to_id:
             return self._word_to_id[word]
