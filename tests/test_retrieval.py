@@ -55,7 +55,7 @@ def test_retrieval():
 
     # check a complex case with exclude top k
     batch = [['a', 'b', 'c', 'd'], ['a', 'e', 'b']]
-    exclude_top_k = 4 # should exclude 'a', 'b', 'c', 'd' and only define 'e'
+    exclude_top_k = 7 # should exclude 'a', 'b', 'c', 'd' and only define 'e'
     defs, def_map = Retrieval(vocab, dict_, exclude_top_k=exclude_top_k).retrieve(batch)
     assert defs == [[8, 4, 5, 6, 9]]
     assert def_map == [(1, 1, 0)]
