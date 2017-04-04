@@ -197,8 +197,10 @@ class Retrieval(object):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
                     word = vec2str(word)
+                word_id = self._vocab.word_to_id(word)
                 if (self._exclude_top_k
-                    and self._vocab.word_to_id(word) < self._exclude_top_k):
+                    and word_id != self._vocab.unk
+                    and word_id < self._exclude_top_k):
                     continue
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
