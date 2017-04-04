@@ -19,6 +19,7 @@ lm_config_registry.set_root_config({
     'standalone_def_rnn' : True,
     'disregard_word_embeddings' : False,
     'learning_rate' : 0.001,
+    'momentum' : 0.9,
     'grad_clip_threshold' : 5.0,
 
     # monitoring and checkpointing
@@ -26,6 +27,7 @@ lm_config_registry.set_root_config({
     'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
     'n_batches' : 0,
+    'monitor_parameters' : False
 })
 
 c = lm_config_registry['root']

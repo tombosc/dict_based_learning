@@ -9,6 +9,7 @@ from blocks.bricks.lookup import LookupTable
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
 from dictlearn.aggregation_schemes import Perplexity
+from dictlearn.stuff import DebugLSTM
 
 
 def masked_root_mean_square(x, mask):
@@ -62,13 +63,13 @@ class LanguageModel(Initializable):
         children = []
         self._main_lookup = LookupTable(vocab.size(), dim, name='main_lookup')
         self._main_fork = Linear(dim, 4 * dim, name='main_fork')
-        self._main_rnn = LSTM(dim, name='main_rnn')
+        self._main_rnn = DebugLSTM(dim, name='main_rnn')
         children.extend([self._main_lookup, self._main_fork, self._main_rnn])
         if self._retrieval:
             if standalone_def_rnn:
                 self._def_lookup = LookupTable(vocab.size(), dim, name='def_lookup')
                 self._def_fork = Linear(dim, 4 * dim, name='def_fork')
-                self._def_rnn = LSTM(dim, name='def_rnn')
+                self._def_rnn = DebugLSTM(dim, name='def_rnn')
                 children.extend([self._def_lookup, self._def_fork, self._def_rnn])
             else:
                 self._def_lookup = self._main_lookup
@@ -161,6 +162,9 @@ class LanguageModel(Initializable):
                 rnn_inputs = self._def_state_compose.apply(concat)
             else:
                 assert False
+            application_call.add_auxiliary_variable(
+                masked_root_mean_square(rnn_inputs, mask),
+                name='merged_input_rootmean2')
         if self._disregard_word_embeddings:
             rnn_inputs = def_mean
         main_rnn_states = self._main_rnn.apply(

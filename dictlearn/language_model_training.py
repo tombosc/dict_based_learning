@@ -27,7 +27,7 @@ from blocks.serialization import load_parameters
 
 from fuel.streams import ServerDataStream
 
-from dictlearn.util import rename
+from dictlearn.util import rename, masked_root_mean_square
 from dictlearn.data import Data
 from dictlearn.extensions import DumpTensorflowSummaries
 from dictlearn.language_model import LanguageModel
@@ -98,9 +98,11 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
                      for key in sorted(parameters.keys())],
                     width=120))
 
-    rules = [Adam(learning_rate=c['learning_rate'])]
+    rules = []
     if c['grad_clip_threshold']:
         rules.append(StepClipping(c['grad_clip_threshold']))
+    rules.append(Adam(learning_rate=c['learning_rate'],
+                      beta1=c['momentum']))
     algorithm = GradientDescent(
         cost=cost,
         parameters=parameters.values(),
@@ -111,9 +113,35 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
 
     if c['dict_path']:
         def_mean_rootmean2, = VariableFilter(name='def_mean_rootmean2')(cg)
-        train_monitored_vars.append(def_mean_rootmean2)
+        merged_input_rootmean2, = VariableFilter(name='merged_input_rootmean2')(cg)
+        train_monitored_vars.extend([def_mean_rootmean2, merged_input_rootmean2])
     rnn_input_rootmean2, = VariableFilter(name='rnn_input_rootmean2')(cg)
     train_monitored_vars.append(rnn_input_rootmean2)
+
+    if 0:
+        input_gates, = VariableFilter(bricks=[lm._main_rnn], name='input_gates')(cg)
+        forget_gates, = VariableFilter(bricks=[lm._main_rnn], name='forget_gates')(cg)
+        output_gates, = VariableFilter(bricks=[lm._main_rnn], name='output_gates')(cg)
+        train_monitored_vars.append(
+            rename(masked_root_mean_square(input_gates, words_mask.T), 'input_gate_root_mean2'))
+        train_monitored_vars.append(
+            rename(masked_root_mean_square(forget_gates, words_mask.T), 'forget_gate_root_mean2'))
+        train_monitored_vars.append(
+            rename(masked_root_mean_square(output_gates, words_mask.T), 'output_gate_root_mean2'))
+    if 1:
+        main_rnn_states = VariableFilter(applications=[lm._main_rnn.apply], name='states')(cg)[-1]
+        train_monitored_vars.append(
+            rename(masked_root_mean_square(main_rnn_states, words_mask.T), 'main_rnn_states_root_mean2'))
+
+    if c['monitor_parameters']:
+        for name, param in parameters.items():
+            num_elements = numpy.product(param.get_value().shape)
+            norm = param.norm(2) / num_elements ** 0.5
+            grad_norm = algorithm.gradients[param].norm(2) / num_elements ** 0.5
+            step_norm = algorithm.steps[param].norm(2) / num_elements ** 0.5
+            stats = tensor.stack(norm, grad_norm, step_norm, step_norm / grad_norm)
+            stats.name = name + '_stats'
+            train_monitored_vars.append(stats)
 
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
