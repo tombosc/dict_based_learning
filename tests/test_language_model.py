@@ -20,11 +20,13 @@ def test_language_model():
     with temporary_content_path(TEST_DICT_JSON) as path:
         dict_ = Dictionary(path)
 
-    data = [['a', 'a'], ['b', 'a'], ['a', 'b']]
-    data = [[str2vec(s, 3) for s in row] for row in data]
-    data = numpy.array(data)
-    mask = numpy.ones((data.shape[0], data.shape[1]),
-                      dtype=theano.config.floatX)
+    def make_data_and_mask(data):
+        data = [[str2vec(s, 3) for s in row] for row in data]
+        data = numpy.array(data)
+        mask = numpy.ones((data.shape[0], data.shape[1]),
+                        dtype=theano.config.floatX)
+        return data, mask
+    data, mask = make_data_and_mask([['a', 'a'], ['b', 'a'], ['a', 'b']])
 
     # With the dictionary
     lm = LanguageModel(
@@ -47,3 +49,7 @@ def test_language_model():
         biases_init=Uniform(width=0.1))
     costs2 = lm2.apply(tensor.as_tensor_variable(data), mask)
     costs2.eval()
+
+    # With the dictionary but without definitions
+    data_no_def, mask_no_def  = make_data_and_mask([['p', 'p'], ['p', 'p']])
+    lm.apply(tensor.as_tensor_variable(data_no_def), mask_no_def).eval()

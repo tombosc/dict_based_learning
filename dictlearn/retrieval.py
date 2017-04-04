@@ -219,3 +219,12 @@ class Retrieval(object):
                     def_map.append((seq_pos, word_pos, def_index))
 
         return definitions, def_map
+
+    def sentinel_definition(self):
+        """An empty definition.
+
+        If you ever need a definition that is syntactically correct but
+        doesn't mean a thing, call me.
+
+        """
+        return [self._vocab.bod, self._vocab.eod]
