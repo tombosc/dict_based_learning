@@ -30,22 +30,22 @@ def test_retrieval():
     # check a super simple case
     batch = [['a']]
     defs, def_map = Retrieval(vocab, dict_).retrieve(batch)
-    assert defs == [[8, 4, 5, 9], [8, 6, 7, 9]]
+    assert defs == [[3, 6, 7, 4], [3, 8, 9, 4]]
     assert def_map == [(0, 0, 0), (0, 0, 1)]
 
     # check that vectors are handled correctly
     batch = numpy.array([ord('d'), ord(' '), ord('c'), 0, 0])[None, None, :]
     defs, def_map = Retrieval(vocab, dict_).retrieve(batch)
-    assert defs == [[8, 3, 4, 9]]
+    assert defs == [[3, 5, 6, 4]]
     assert def_map == [(0, 0, 0)]
 
     # check a complex case
     batch = [['a', 'b', 'b'], ['d c', 'a', 'b']]
     defs, def_map = Retrieval(vocab, dict_).retrieve(batch)
-    assert defs == [[8, 4, 5, 9],
-                    [8, 6, 7, 9],
-                    [8, 7, 6, 9],
-                    [8, 3, 4, 9]]
+    assert defs == [[3, 6, 7, 4],
+                    [3, 8, 9, 4],
+                    [3, 9, 8, 4],
+                    [3, 5, 6, 4]]
     assert def_map == [(0, 0, 0), (0, 0, 1),
                        (0, 1, 2),
                        (0, 2, 2),
@@ -57,7 +57,7 @@ def test_retrieval():
     batch = [['a', 'b', 'c', 'd'], ['a', 'e', 'b']]
     exclude_top_k = 7 # should exclude 'a', 'b', 'c', 'd' and only define 'e'
     defs, def_map = Retrieval(vocab, dict_, exclude_top_k=exclude_top_k).retrieve(batch)
-    assert defs == [[8, 4, 5, 6, 9]]
+    assert defs == [[3, 6, 7, 8, 4]]
     assert def_map == [(1, 1, 0)]
 
     # check the op
@@ -66,7 +66,7 @@ def test_retrieval():
         [[[ord('d'), ord(' '), ord('c'), 0, 0],
           [ord('e'), 0, 0, 0, 0]]])
     defs_var, mask_var,  def_map_var = retrieval_op(batch)
-    assert defs_var.eval().tolist() == [[8, 3, 4, 9, 0],
-                                        [8, 4, 5, 6, 9]]
+    assert defs_var.eval().tolist() == [[3, 5, 6, 4, 0],
+                                        [3, 6, 7, 8, 4]]
     assert_allclose(mask_var.eval(), [[1, 1, 1, 1, 0], [1, 1, 1, 1, 1]])
     assert def_map_var.eval().tolist() == [[0, 0, 0], [0, 1, 1]]

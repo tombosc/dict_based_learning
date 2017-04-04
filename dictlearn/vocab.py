@@ -51,16 +51,13 @@ class Vocabulary(object):
         self.bod = self.eod = -1
         self.unk = -1
 
-        n_regular_tokens = 0
         for idx, (word_name, freq) in enumerate(words_and_freqs):
-            if top_k and n_regular_tokens == top_k:
+            if top_k and idx == top_k:
                 break
 
             token_attr = self.SPECIAL_TOKEN_MAP.get(word_name)
             if token_attr is not None:
                 setattr(self, token_attr, idx)
-            else:
-                n_regular_tokens += 1
 
             self._id_to_word.append(word_name)
             self._id_to_freq.append(freq)

@@ -20,13 +20,13 @@ TEST_VOCAB = (
 """<unk> 0
 <bos> 0
 <eos> 0
+<bod> 0
+<eod> 0
 a 9
 b 7
 c 3
 d 2
-e 1
-<bod> 0
-<eod> 0"""
+e 1"""
 )
 
 TEST_TEXT = (
