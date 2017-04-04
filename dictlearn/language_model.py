@@ -160,6 +160,8 @@ class LanguageModel(Initializable):
             elif self._compose_type.startswith('fully_connected'):
                 concat = tensor.concatenate([rnn_inputs, def_mean], axis=2)
                 rnn_inputs = self._def_state_compose.apply(concat)
+            elif self._compose_type.startswith('linear_and_sum'):
+                rnn_inputs += self._def_state_transform.apply(def_mean)
             else:
                 assert False
             application_call.add_auxiliary_variable(
