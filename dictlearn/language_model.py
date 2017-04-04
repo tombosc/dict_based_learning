@@ -85,6 +85,9 @@ class LanguageModel(Initializable):
             self._def_state_compose = MLP(activations=[None],
                                           dims=[2*dim, dim])
             children.append(self._def_state_compose)
+        elif compose_type == 'linear_and_sum':
+            self._def_state_transform = Linear(dim, dim)
+            children.append(self._def_state_transform)
         elif compose_type == 'sum':
             pass
         elif not disregard_word_embeddings:
