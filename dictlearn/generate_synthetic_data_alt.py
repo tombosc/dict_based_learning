@@ -6,6 +6,7 @@ from numpy.random import normal, uniform
 from collections import defaultdict, Counter
 from random import shuffle
 from util import softmax
+import progressbar
 
 class FakeTextGenerator(object):
     """
@@ -95,13 +96,18 @@ class FakeTextGenerator(object):
 
         non_prime_pos = [] # store positions of non primes
         max_tokens = 100
-        for i in range(max_tokens):
+
+        prob_prime = 1-(1/avg_len)
+
+        while True:
+            prime = np.random.choice(2, p=[1-prob_prime, prob_prime], size=max_len) 
+            if min_len-prime[:min_len].sum() <= max_num_np:
+                break
+        for i in range(max_len):
             order = min(self.mo, len(features))
             feature = np.concatenate(features[-order:])
             # mixture model
-            p = 1-(1/avg_len)
-            prime = np.random.choice(2, p=[1-p, p]) 
-            if prime == 1:
+            if prime[i] == 1:
                 begin = 0
                 end = self.np
             else:
@@ -116,10 +122,8 @@ class FakeTextGenerator(object):
                 break
             tokens.append(self.vocabulary[s])
             features.append(self.features[s])
-        if min_len < len(tokens) < max_len:
-            return tokens, non_prime_pos[:-1]
-        else:
-            return self.sample_sentence(max_num_np, avg_len, min_len, max_len)
+
+        return tokens, non_prime_pos[:-1]
 
     def create_corpus(self, n_sentences, min_len, max_len, train_ratio, 
                       valid_ratio):
@@ -134,7 +138,8 @@ class FakeTextGenerator(object):
         train, valid, test = set(), set(), set()
         n_words = 0
         counts_len = Counter()
-        for i in range(int(n_sentences)):
+        bar = progressbar.ProgressBar()
+        for i in bar(range(int(n_sentences))):
             s, non_prime_pos = self.sample_sentence(1, 6, min_len, max_len)
             for p in non_prime_pos:
                 counts[s[p]] += 1
