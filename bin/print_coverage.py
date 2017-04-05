@@ -27,6 +27,7 @@ def main():
         for i in range(args.top_k, len(freqs)):
             if dict_.get_definitions(words[i]):
                 n_covered_by_dict += freqs[i]
+        print("Dictionary has {} entries".format(dict_.num_entries()))
         print("Dictionary covers {}% in addition to the vocab".format(n_covered_by_dict / total))
 
 

@@ -73,6 +73,29 @@ class Dictionary(object):
             self._data[word] = [list(def_)]
         self.save()
 
+    def add_from_lemma_definitions(self, vocab):
+        """Add lemma definitions for non-lemmas.
+
+        This code covers the following scenario: supposed a dictionary is crawled,
+        but only for word lemmas.
+
+        """
+        lemmatizer = nltk.WordNetLemmatizer()
+        for word in vocab.words:
+            try:
+                for part_of_speech in ['a', 's', 'r', 'n', 'v']:
+                    lemma = lemmatizer.lemmatize(word, part_of_speech)
+                    lemma_defs = self._data.get(lemma)
+                    if lemma != word and lemma_defs:
+                        # This can be quite slow. But this code will not be used
+                        # very often.
+                        for def_ in lemma_defs:
+                            if not def_ in self._data[word]:
+                                self._data[word].append(def_)
+            except:
+                logger.error("lemmatizer crashed on {}".format(word))
+        self.save()
+
     def crawl_lemmas(self, vocab):
         """Add Wordnet lemmas as definitions."""
         lemmatizer = nltk.WordNetLemmatizer()
@@ -146,6 +169,9 @@ class Dictionary(object):
             logger.debug("definitions for '{}' fetched".format(word))
         self.save()
         self._last_saved = 0
+
+    def num_entries(self):
+        return len(self._data)
 
     def get_definitions(self, key):
         return self._data.get(key, [])

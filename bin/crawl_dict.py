@@ -16,6 +16,8 @@ def main():
                         help="Wordnik API key to use")
     parser.add_argument("--just-lemmas", action="store_true",
                         help="Just use the lemmas as the definition")
+    parser.add_argument("--add-lemma-defs", action="store_true",
+                        help="Add definitions from lemmas")
     parser.add_argument("--identity", action="store_true",
                         help="Identity mapping dictionary")
     parser.add_argument("--spelling", action="store_true",
@@ -28,6 +30,8 @@ def main():
     dict_ = Dictionary(args.dict)
     if args.api_key:
         dict_.crawl_wordnik(vocab, args.api_key)
+    elif args.add_lemma_defs:
+        dict_.add_from_lemma_definitions(vocab)
     elif args.just_lemmas:
         dict_.crawl_lemmas(vocab)
     elif args.identity:
