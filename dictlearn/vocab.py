@@ -95,7 +95,10 @@ class Vocabulary(object):
                             dtype=numpy.int32)
 
     @staticmethod
-    def build(filename, top_k=None):
+    def build(filename, top_k=None, sort_by='frequency'):
+        """
+        sort_by is either 'frequency' or 'lexicographical'
+        """
         # For now let's use a very stupid tokenization
         with open(filename) as file_:
             def data():
@@ -107,7 +110,13 @@ class Vocabulary(object):
         # It was not immediately clear to me
         # if counter.most_common() selects consistenly among
         # the words with the same counts. Hence, let's just sort.
-        words_and_freqs = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
+        if sort_by == 'frequency':
+            sortf = lambda x: (-x[1], x[0])
+        elif sort_by == 'lexicographical':
+            sortf = lambda x: (x[0], x[1])
+        else:
+            raise Exception("sort not understood:", sort_by)
+        words_and_freqs = sorted(counter.items(), key=sortf)
         logger.info("Words are sorted")
         if top_k:
             words_and_freqs  = words_and_freqs[:top_k]

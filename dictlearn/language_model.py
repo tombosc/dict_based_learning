@@ -187,7 +187,7 @@ class LanguageModel(Initializable):
             perplexity, name='perplexity')
 
         # Analyze predictions
-        last_indices = (targets_mask.sum(axis=0) - 1).astype('int64')
+        last_indices = tensor.max(tensor.arange(targets_mask.shape[0]).reshape((-1,1))*targets_mask, axis=0).astype('int64')
         batch_indices = tensor.arange(logits.shape[1])
         last_logits = logits[last_indices, batch_indices]
         last_predictions = last_logits.argmax(axis=1)

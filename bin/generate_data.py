@@ -55,7 +55,7 @@ def main():
 
     all_data = train_data+valid_data+test_data
     with temporary_content_path('\n'.join(all_data)) as path:
-        vocab = Vocabulary.build(path)
+        vocab = Vocabulary.build(path, sort_by='lexicographical')
         vocab.save(os.path.join(args.path, "vocab.txt"))
 
     dict_json = json.dumps(gen.dictionary, indent=4, sort_keys=True)

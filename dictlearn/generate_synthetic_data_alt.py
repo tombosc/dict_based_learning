@@ -2,10 +2,11 @@ from __future__ import division
 
 import numpy as np
 import itertools
-from numpy.random import normal
+from numpy.random import normal, uniform
 from collections import defaultdict, Counter
 from random import shuffle
 from util import softmax
+import progressbar
 
 class FakeTextGenerator(object):
     """
@@ -18,6 +19,8 @@ class FakeTextGenerator(object):
       composed: their definition is a sequence of prime tokens
                 their feature vectors is the mean of the features 
                 of the tokens in their definitions (possibly rescaled)
+
+    The model is a mixture model that chooses either from primes or composed tokens.
 
     token: string that represent a word as it will appear in the data
 
@@ -58,8 +61,8 @@ class FakeTextGenerator(object):
                           itertools.product(alphabet, repeat=self.tok_len)):
             self.vocabulary.append(''.join(tok))
 
-        self.params = normal(0,1,(self.mo * features_size, self.np))
-        self.features = normal(0,1, (self.V,features_size))
+        self.params = uniform(0,1,(self.mo * features_size, self.V))
+        self.features = uniform(0,1,(self.V,features_size))
         self.dictionary = {}
         for i in range(self.np, self.np+self.nc):
             # sample len of def, sample def, store in dictionary
@@ -71,11 +74,11 @@ class FakeTextGenerator(object):
             self.dictionary[tok] = [self.vocabulary[e] for e in definition]
             #factor = np.random.beta(a=3, b=2.5) # closer to 1 than 0
             #factor = np.random.beta(a=1, b=3) # closer to 0 than 1
-            factor = 1
+            factor = 1#1/(8*self.nc)
             f = factor * np.mean([self.features[e] for e in definition], axis=0)
             self.features[i] = f
 
-        self.initial_features = normal(0,1/features_size,(self.mo, features_size))
+        self.initial_features = uniform(0,1,(self.mo, features_size))
 
     def proba(self, features, params):
         """
@@ -84,57 +87,68 @@ class FakeTextGenerator(object):
         product = np.dot(features, params)
         return softmax(product, self.T)
 
-    def sample_sentence(self, n):
+    def sample_sentence(self, max_num_np, avg_len, min_len, max_len):
         """
-        returns a sample sentence of n tokens
+        returns a tuple (sentence, list of positions of non primes)
         """
         tokens = []
         features = [f for f in self.initial_features[-1:]]
-        # we sample the position of the only non-prime word
-        # it is never the first (rare words occurs less in first positions)
-        # nor the last (because then it doesn't have any effect on prediction)
-        position_non_prime = np.random.choice(n-1) + 1
-        for i in range(n):
+
+        non_prime_pos = [] # store positions of non primes
+        max_tokens = 100
+
+        prob_prime = 1-(1/avg_len)
+
+        while True:
+            prime = np.random.choice(2, p=[1-prob_prime, prob_prime], size=max_len) 
+            if min_len-prime[:min_len].sum() <= max_num_np:
+                break
+        for i in range(max_len):
             order = min(self.mo, len(features))
             feature = np.concatenate(features[-order:])
-            params = self.params[-order*self.features_size:]
+            # mixture model
+            if prime[i] == 1:
+                begin = 0
+                end = self.np
+            else:
+                begin = self.np
+                end = self.V
+            params = self.params[-order*self.features_size:,begin:end]
             proba = self.proba(feature, params)
-            s = np.random.choice(self.np, p=proba)
-            if position_non_prime == i: # sample from non primes
-                # instead of using s, we will sample a token in non primes 
-                # that's close to s.
-                features_c = self.features[-self.nc:]
-                #norms_c = np.linalg.norm(features_c, axis=1)
-                dot_prod_c = np.dot(features_c, self.features[s])
-                soft = softmax(dot_prod_c, T=1/np.log(self.V))
-                #print soft.min(), soft.max(), soft.mean()
-                s = np.random.choice(self.nc, p=soft) + self.np
-                #print s
-
+            s = np.random.choice(end-begin, p=proba) + begin
+            if s > self.np: # s is a non prime
+                non_prime_pos.append(i)
+            if len(non_prime_pos) > max_num_np:
+                break
             tokens.append(self.vocabulary[s])
             features.append(self.features[s])
-        return tokens
+
+        return tokens, non_prime_pos[:-1]
 
     def create_corpus(self, n_sentences, min_len, max_len, train_ratio, 
                       valid_ratio):
         """
         Create a corpus (train, validation, test) using the model.
+
+        max_len is unused here. TODO
         """
         sentences = []
         counts = Counter()
         contains = defaultdict(list)
         train, valid, test = set(), set(), set()
         n_words = 0
-        for i in range(int(n_sentences)):
-            l = np.random.choice(max_len - min_len) + min_len
-            s = self.sample_sentence(l)
-            for w in s:
-                if w in self.dictionary: # non prime
-                    counts[w] += 1
-                    contains[w].append(i)
-            n_words += l
+        counts_len = Counter()
+        bar = progressbar.ProgressBar()
+        for i in bar(range(int(n_sentences))):
+            s, non_prime_pos = self.sample_sentence(1, 6, min_len, max_len)
+            for p in non_prime_pos:
+                counts[s[p]] += 1
+                contains[s[p]].append(i)
+            n_words += len(s)
+            counts_len[len(s)] += 1
             sentences.append(s)
             #print "non primes", n_p, "over", len(s) 
+        print counts_len
         print counts
         ordered_counts = counts.most_common()
         # good thing to leave this verbose probably...
