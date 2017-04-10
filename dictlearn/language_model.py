@@ -22,13 +22,17 @@ class LanguageModel(Initializable):
 
     Parameters
     ----------
+    dim : int
+        The default dimension for the components.
+    num_input_words : int
+        The size of the LM's input vocabulary.
+    num_output_words : int
+        The size of the LM's output vocabulary.
     vocab
         The vocabulary object.
     retrieval
         The dictionary retrieval algorithm. If `None`, the language model
         does not use any dictionary.
-    dim : int
-        The default dimension for the components.
     standalone_def_rnn : bool
         If `True`, a standalone RNN with separate word embeddings is used
         to embed definition. If `False` the language model is reused.
@@ -43,11 +47,14 @@ class LanguageModel(Initializable):
         If 'fully_connected_tanh', ...
 
     """
-    def __init__(self, dim, vocab, retrieval=None,
+    def __init__(self, dim, num_input_words, num_output_words,
+                 vocab, retrieval=None,
                  standalone_def_rnn=True,
                  disregard_word_embeddings=False,
                  compose_type='sum',
                  **kwargs):
+        self._num_input_words = num_input_words
+        self._num_output_words = num_output_words
         self._vocab = vocab
         self._retrieval = retrieval
         self._disregard_word_embeddings = disregard_word_embeddings
@@ -61,13 +68,13 @@ class LanguageModel(Initializable):
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
         children = []
-        self._main_lookup = LookupTable(vocab.size(), dim, name='main_lookup')
+        self._main_lookup = LookupTable(self._num_input_words, dim, name='main_lookup')
         self._main_fork = Linear(dim, 4 * dim, name='main_fork')
         self._main_rnn = DebugLSTM(dim, name='main_rnn')
         children.extend([self._main_lookup, self._main_fork, self._main_rnn])
         if self._retrieval:
             if standalone_def_rnn:
-                self._def_lookup = LookupTable(vocab.size(), dim, name='def_lookup')
+                self._def_lookup = LookupTable(self._num_input_words, dim, name='def_lookup')
                 self._def_fork = Linear(dim, 4 * dim, name='def_fork')
                 self._def_rnn = DebugLSTM(dim, name='def_rnn')
                 children.extend([self._def_lookup, self._def_fork, self._def_rnn])
@@ -94,7 +101,7 @@ class LanguageModel(Initializable):
         elif not disregard_word_embeddings:
             raise Exception("Error: composition of embeddings and def not understood")
 
-        self._pre_softmax = Linear(dim, vocab.size())
+        self._pre_softmax = Linear(dim, self._num_output_words)
         self._softmax = NDimensionalSoftmax()
         children.extend([self._pre_softmax, self._softmax])
 
@@ -115,6 +122,8 @@ class LanguageModel(Initializable):
         """
         if self._retrieval:
             defs, def_mask, def_map = self._retrieve(words)
+            defs = (tensor.lt(defs, self._num_input_words) * defs
+                    + tensor.ge(defs, self._num_input_words) * self._vocab.unk)
             embedded_def_words = self._def_lookup.apply(defs)
             def_embeddings = self._def_rnn.apply(
                 tensor.transpose(self._def_fork.apply(embedded_def_words), (1, 0, 2)),
@@ -149,9 +158,15 @@ class LanguageModel(Initializable):
             application_call.add_auxiliary_variable(
                 masked_root_mean_square(def_mean, mask), name='def_mean_rootmean2')
 
-        # Run the main rnn with combined inputs
+        # shortlisting
         word_ids = self._word_to_id(words)
-        rnn_inputs = self._main_lookup.apply(word_ids)
+        input_word_ids = (tensor.lt(word_ids, self._num_input_words) * word_ids
+                          + tensor.ge(word_ids, self._num_input_words) * self._vocab.unk)
+        output_word_ids = (tensor.lt(word_ids, self._num_output_words) * word_ids
+                          + tensor.ge(word_ids, self._num_output_words) * self._vocab.unk)
+
+        # Run the main rnn with combined inputs
+        rnn_inputs = self._main_lookup.apply(input_word_ids)
         application_call.add_auxiliary_variable(
             masked_root_mean_square(rnn_inputs, mask), name='rnn_input_rootmean2')
         if self._retrieval:
@@ -175,7 +190,7 @@ class LanguageModel(Initializable):
 
         # The first token is not predicted
         logits = self._pre_softmax.apply(main_rnn_states[:-1])
-        targets = word_ids.T[1:]
+        targets = output_word_ids.T[1:]
         targets_mask = mask.T[1:]
         minus_logs = self._softmax.categorical_cross_entropy(
             targets, logits, extra_ndim=1)

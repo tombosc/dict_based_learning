@@ -6,7 +6,8 @@ lm_config_registry.set_root_config({
     'data_path' : "",
     'dict_path' : "",
     'layout' : 'standard',
-    'top_k_words' : 10000,
+    'num_input_words' : 10000,
+    'num_output_words': 10000,
     'max_length' : 100,
     'batch_size' : 32,
     'batch_size_valid' : 32,
@@ -36,7 +37,7 @@ c['layout'] = 'lambada'
 # In LAMBADA validation and test sets have quite long sentences.
 # And this implementation for now is very memory inefficient.
 c['batch_size_valid'] = 16
-c['top_k_words'] = 60000
+c['num_input_words'] = 60000
 c['dim'] = 512
 c['mon_freq_train'] = 100
 c['grad_clip_threshold'] = 50.

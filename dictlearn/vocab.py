@@ -24,7 +24,7 @@ class Vocabulary(object):
         UNK: 'unk'
     }
 
-    def __init__(self, path_or_data, top_k=None):
+    def __init__(self, path_or_data):
         """Initialize the vocabulary.
 
         path_or_data
@@ -52,9 +52,6 @@ class Vocabulary(object):
         self.unk = -1
 
         for idx, (word_name, freq) in enumerate(words_and_freqs):
-            if top_k and idx == top_k:
-                break
-
             token_attr = self.SPECIAL_TOKEN_MAP.get(word_name)
             if token_attr is not None:
                 setattr(self, token_attr, idx)
@@ -78,9 +75,10 @@ class Vocabulary(object):
     def frequencies(self):
         return self._id_to_freq
 
-    def word_to_id(self, word):
-        if word in self._word_to_id:
-            return self._word_to_id[word]
+    def word_to_id(self, word, top_k=None):
+        id_ = self._word_to_id.get(word)
+        if id_ and (not top_k or id_ < top_k):
+            return id_
         return self.unk
 
     def id_to_word(self, cur_id):

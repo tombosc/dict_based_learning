@@ -48,13 +48,14 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
-    data = Data(c['data_path'], c['layout'], c['top_k_words'])
+    data = Data(c['data_path'], c['layout'])
     retrieval = None
     if c['dict_path']:
         retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
                               c['max_def_length'], c['exclude_top_k'])
 
-    lm = LanguageModel(c['dim'], data.vocab, retrieval,
+    lm = LanguageModel(c['dim'], c['num_input_words'], c['num_output_words'],
+                       data.vocab, retrieval,
                        c['standalone_def_rnn'],
                        c['disregard_word_embeddings'],
                        c['compose_type'],
