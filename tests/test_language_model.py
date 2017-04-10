@@ -31,6 +31,8 @@ def test_language_model():
     # With the dictionary
     lm = LanguageModel(
         vocab=vocab, retrieval=Retrieval(vocab, dict_), dim=10,
+        num_input_words=vocab.size(),
+        num_output_words=vocab.size(),
         weights_init=Uniform(width=0.1),
         biases_init=Uniform(width=0.1))
     lm.initialize()
@@ -45,6 +47,8 @@ def test_language_model():
     # Without the dictionary
     lm2 = LanguageModel(
         vocab=vocab, dim=10,
+        num_input_words=vocab.size(),
+        num_output_words=vocab.size(),
         weights_init=Uniform(width=0.1),
         biases_init=Uniform(width=0.1))
     costs2 = lm2.apply(tensor.as_tensor_variable(data), mask)
