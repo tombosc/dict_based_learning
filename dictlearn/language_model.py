@@ -10,11 +10,7 @@ from blocks.bricks.lookup import LookupTable
 from dictlearn.ops import WordToIdOp, RetrievalOp
 from dictlearn.aggregation_schemes import Perplexity
 from dictlearn.stuff import DebugLSTM
-
-
-def masked_root_mean_square(x, mask):
-    """Masked room mean square for a 3D tensor"""
-    return (((x * mask[:, :, None]) ** 2).sum() / x.shape[2] / mask.sum()) ** 0.5
+from dictlearn.util import masked_root_mean_square
 
 
 class LanguageModel(Initializable):

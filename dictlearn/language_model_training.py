@@ -28,7 +28,7 @@ from blocks.serialization import load_parameters
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
-from dictlearn.data import Data
+from dictlearn.data import LanguageModellingData
 from dictlearn.extensions import DumpTensorflowSummaries
 from dictlearn.language_model import LanguageModel
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -48,7 +48,7 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
-    data = Data(c['data_path'], c['layout'])
+    data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
     if c['dict_path']:
         retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
