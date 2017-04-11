@@ -27,7 +27,7 @@ from blocks.serialization import load_parameters
 
 from fuel.streams import ServerDataStream
 
-from dictlearn.util import rename, masked_root_mean_square
+from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.data import Data
 from dictlearn.extensions import DumpTensorflowSummaries
 from dictlearn.language_model import LanguageModel
@@ -177,12 +177,7 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     if fuel_server:
         with open(stream_path, 'w') as dst:
             cPickle.dump(training_stream, dst, 0)
-        # Copy-paste from
-        # http://stackoverflow.com/questions/2838244/get-open-tcp-port-in-python
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("", 0))
-        port = ServerDataStream.PORT = s.getsockname()[1]
-        s.close()
+        port = ServerDataStream.PORT = get_free_port()
         ret = subprocess.Popen(["start_fuel_server.py", stream_path, str(port)])
         time.sleep(0.1)
         if ret.returncode is not None:

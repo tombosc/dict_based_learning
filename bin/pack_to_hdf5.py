@@ -1,16 +1,35 @@
 #!/usr/bin/env python
 
 import argparse
+import logging
 
-from dictlearn.h5py_conversion import text_to_h5py_dataset
+from dictlearn.h5py_conversion import text_to_h5py_dataset, squad_to_h5py_dataset
+from dictlearn.corenlp import start_corenlp
+from dictlearn.util import get_free_port
 
 def main():
-    parser = argparse.ArgumentParser("Builds a dictionary")
-    parser.add_argument("text", help="The text to use")
+    logging.basicConfig(
+        level='INFO',
+        format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
+
+    parser = argparse.ArgumentParser("Converts text to HDF5")
+    parser.add_argument("--type", choices=("text", "squad"), default='text',
+                        help="What kind of data should be converted")
+    parser.add_argument("data", help="The data to convert")
     parser.add_argument("h5", help="Destination")
     args = parser.parse_args()
 
-    text_to_h5py_dataset(args.text, args.h5)
+    if args.type == 'text':
+        text_to_h5py_dataset(args.data, args.h5)
+    elif args.type == 'squad':
+        port = get_free_port()
+        try:
+            corenlp = start_corenlp(port)
+            squad_to_h5py_dataset(args.data, args.h5, "http://localhost:{}".format(port))
+        finally:
+            if corenlp and corenlp.returncode is None:
+                corenlp.kill()
+
 
 if __name__ == "__main__":
     main()

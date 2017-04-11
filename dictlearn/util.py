@@ -1,5 +1,7 @@
 from __future__ import division
 
+import socket
+
 import numpy
 
 def softmax(v, T):
@@ -30,3 +32,13 @@ def smart_sum(x):
 def masked_root_mean_square(x, mask):
     """Masked root mean square for a 3D tensor"""
     return (smart_sum((x * mask[:, :, None]) ** 2) / x.shape[2] / mask.sum()) ** 0.5
+
+
+def get_free_port():
+    # Copy-paste from
+    # http://stackoverflow.com/questions/2838244/get-open-tcp-port-in-python
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port

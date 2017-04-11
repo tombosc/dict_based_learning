@@ -8,7 +8,13 @@ import tempfile
 
 from fuel.datasets.hdf5 import H5PYDataset
 
-from dictlearn.h5py_conversion import text_to_h5py_dataset
+from dictlearn.corenlp import start_corenlp
+from dictlearn.h5py_conversion import (
+    text_to_h5py_dataset, squad_to_h5py_dataset)
+from dictlearn.datasets import SQuADDataset
+from dictlearn.util import get_free_port
+
+from tests.util import TEST_SQUAD_RAW_DATA
 
 def test_text_to_h5py_dataset():
     test_dir = tempfile.mkdtemp()
@@ -30,3 +36,31 @@ def test_text_to_h5py_dataset():
     os.remove(text_path)
     os.remove(h5_path)
     os.rmdir(test_dir)
+
+
+def test_squad_to_h5py_dataset():
+    corenlp = None
+    try:
+        port = get_free_port()
+        corenlp = start_corenlp(port)
+
+        test_dir = tempfile.mkdtemp()
+        json_path = os.path.join(test_dir, 'data.json')
+        h5_path = os.path.join(test_dir, 'data.h5')
+        with open(json_path, 'w') as json_file:
+            print(TEST_SQUAD_RAW_DATA, file=json_file)
+        squad_to_h5py_dataset(json_path, h5_path, "http://localhost:{}".format(port))
+
+        dataset = SQuADDataset(h5_path, ('all',))
+        stream = dataset.get_example_stream()
+        stream = dataset.apply_default_transformers(stream)
+        example = next(stream.get_epoch_iterator())
+        assert example[3].tolist() == [
+            u'To', u'whom', u'did', u'the', u'Virgin', u'Mary',
+            u'allegedly', u'appear', u'in', u'1858', u'in', u'Lourdes',
+            u'France', u'?']
+        assert example[2][example[0][0]:example[1][0]].tolist() == [
+            u'Saint', u'Bernadette', u'Soubirous']
+    finally:
+        if corenlp and corenlp.returncode is None:
+            corenlp.kill()

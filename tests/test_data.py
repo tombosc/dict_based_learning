@@ -4,20 +4,22 @@ from __future__ import print_function
 
 import os
 import tempfile
+import base64
 
 from fuel.datasets import IndexableDataset
 from fuel.streams import DataStream
 
-from dictlearn.data import Data, RandomSpanScheme
-from tests.util import TEST_TEXT
+from dictlearn.data import (
+    LanguageModellingData, ExtractiveQAData, RandomSpanScheme)
+from tests.util import TEST_TEXT, TEST_SQUAD_BASE64_HDF5_DATA
 
-def test_data():
+def test_languge_modelling_data():
     temp_dir = tempfile.mkdtemp()
     train_path = os.path.join(temp_dir, "train.txt")
     with open(train_path, 'w') as dst:
         print(TEST_TEXT, file=dst)
 
-    data = Data(temp_dir, 'standard')
+    data = LanguageModellingData(temp_dir, 'standard')
 
     # test without batches
     stream = data.get_stream('train')
@@ -46,6 +48,27 @@ def test_data():
 
     os.remove(train_path)
     os.rmdir(temp_dir)
+
+
+def test_squad_data():
+    temp_dir = tempfile.mkdtemp()
+    train_path = os.path.join(temp_dir, 'train.h5')
+    with open(train_path, 'wb') as dst:
+        print(base64.b64decode(TEST_SQUAD_BASE64_HDF5_DATA), file=dst)
+
+    data = ExtractiveQAData(temp_dir, 'squad')
+    stream = data.get_stream('train', batch_size=3, shuffle=True, seed=3)
+    assert set(stream.sources) == set(['contexts', 'contexts_mask',
+                                       'questions', 'questions_mask',
+                                       'answer_begins',
+                                       'answer_ends'])
+    batch = next(stream.get_epoch_iterator(as_dict=True))
+    assert batch['contexts'].ndim == 3
+    assert batch['contexts_mask'].ndim == 2
+    assert batch['questions'].ndim == 3
+    assert batch['questions_mask'].ndim == 2
+    assert batch['answer_begins'].tolist() == [45, 78, 117]
+    assert batch['answer_ends'].tolist() == [46, 80, 118]
 
 
 def test_random_span_scheme():
