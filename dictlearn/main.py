@@ -1,15 +1,11 @@
+
 #!/usr/bin/env python
 import pprint
 import argparse
 import logging
-import os
-import traceback
-
-from dictlearn.language_model_training import train_language_model
-from dictlearn.language_model_configs import lm_config_registry
 
 
-if __name__ == "__main__":
+def main(config_registry, training_func):
     logging.basicConfig(
         level='DEBUG',
         format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
@@ -25,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument("save_path", help="The destination for saving")
 
     # Add all configuration options to the command line parser
-    root_config = lm_config_registry.get_root_config()
+    root_config = config_registry.get_root_config()
     for key, value in root_config.items():
         if isinstance(value, bool):
             parser.add_argument(
@@ -42,14 +38,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Modify the configuration with the command line arguments
-    config = lm_config_registry[args.config]
+    config = config_registry[args.config]
     for key in config:
         if getattr(args, key) is not None:
             config[key] = getattr(args, key)
     pprint.pprint(config)
 
-
     # For now this script just runs the language model training.
     # More stuff to come.
-    train_language_model(config, args.save_path,
-                         args.params, args.fast_start, args.fuel_server)
+    training_func(config, args.save_path,
+                  args.params, args.fast_start, args.fuel_server)

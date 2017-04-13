@@ -11,6 +11,9 @@ from fuel.streams import DataStream
 
 from dictlearn.data import (
     LanguageModellingData, ExtractiveQAData, RandomSpanScheme)
+from dictlearn.vocab import Vocabulary
+from dictlearn.util import vec2str
+
 from tests.util import TEST_TEXT, TEST_SQUAD_BASE64_HDF5_DATA
 
 def test_languge_modelling_data():
@@ -69,6 +72,9 @@ def test_squad_data():
     assert batch['questions_mask'].ndim == 2
     assert batch['answer_begins'].tolist() == [45, 78, 117]
     assert batch['answer_ends'].tolist() == [46, 80, 118]
+
+    longest = batch['contexts_mask'].sum(axis=1).argmax()
+    assert vec2str(batch['contexts'][longest][-1]) == Vocabulary.EOS
 
 
 def test_random_span_scheme():

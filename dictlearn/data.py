@@ -42,8 +42,14 @@ def listify(example):
     return tuple(list(source) for source in example)
 
 
-def add_bos(bos, example):
-    return tuple([bos] + source for source in example)
+def add_bos(bos, source_data):
+    return [bos] + source_data
+
+
+def add_eos(eos, source_data):
+    source_data = list(source_data)
+    source_data.append(eos)
+    return source_data
 
 
 class SourcewiseMapping(AgnosticSourcewiseTransformer):
@@ -111,7 +117,7 @@ class Data(object):
                             'test' : 'lambada_test_plain_text.txt'}
             elif self._layout == 'squad':
                 part_map = {'train' : 'train.h5',
-                            'valid' : 'valid.h5'}
+                            'dev' : 'dev.h5'}
             part_path = os.path.join(self._path, part_map[part])
             if self._layout == 'lambada' and part == 'train':
                 self._dataset_cache[part] = H5PYDataset(part_path, ('train',))
@@ -137,7 +143,7 @@ class LanguageModellingData(Data):
         else:
             stream = dataset.get_example_stream()
 
-        stream = Mapping(stream, functools.partial(add_bos, Vocabulary.BOS))
+        stream = SourcewiseMapping(stream, functools.partial(add_bos, Vocabulary.BOS))
         stream = SourcewiseMapping(stream, vectorize)
         if not batch_size:
             return stream
@@ -168,9 +174,14 @@ class ExtractiveQAData(Data):
         else:
             stream = dataset.get_example_stream()
         stream = dataset.apply_default_transformers(stream)
+        # <eos> is added for two purposes: to serve a sentinel for coattention,
+        # and also to ensure the answer span ends at a token
+        stream = SourcewiseMapping(stream, functools.partial(add_eos, Vocabulary.EOS),
+                                   which_sources=('contexts'))
         stream = Mapping(stream, functools.partial(select_random_answer, rng),
                          mapping_accepts=dict)
-        stream = SourcewiseMapping(stream, vectorize, which_sources=('contexts', 'questions'))
+        stream = SourcewiseMapping(stream, vectorize,
+                                   which_sources=('contexts', 'questions'))
         if not batch_size:
             return stream
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))

@@ -9,10 +9,19 @@ def softmax(v, T):
     return exp_v / numpy.sum(exp_v)
 
 def vec2str(vector):
-    return "".join(map(chr, vector)).strip('\00')
+    """Transforms a fixed size vector into a unicode string."""
+    return u"".join(map(unichr, vector)).strip('\00')
 
 
 def str2vec(str_, length):
+    """Trasforms a string into a fixed size numpy.array
+
+    Adds padding, if necessary. Truncates, if necessary.
+
+    Importanty, if the input is a unicode string, the resulting
+    array with contain unicode codes.
+
+    """
     vector = numpy.array(map(ord, str_))[:length]
     pad_length = max(0, length - len(str_))
     return numpy.pad(vector, (0, pad_length), 'constant')
