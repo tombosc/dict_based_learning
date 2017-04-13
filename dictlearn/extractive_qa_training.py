@@ -89,7 +89,10 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     length = rename(contexts.shape[1], 'length')
     exact_match, = VariableFilter(name='exact_match')(cg)
     exact_match_ratio = rename(exact_match.mean(), 'exact_match_ratio')
-    monitored_vars = [length, cost, exact_match_ratio]
+    context_word_ids, = VariableFilter(name='context_word_ids')(cg)
+    num_unk = (tensor.eq(context_word_ids, data.vocab.unk) * context_mask).sum()
+    context_unk_ratio = rename(num_unk / context_mask.sum(), 'context_unk_ratio')
+    monitored_vars = [length, cost, exact_match_ratio, context_unk_ratio]
 
     parameters = cg.get_parameter_dict()
     logger.info("Cost parameters" + "\n" +
@@ -138,6 +141,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
             data.get_stream('dev', batch_size=c['batch_size_valid']),
             prefix="dev").set_conditions(
                 before_training=not fast_start,
+                after_epoch=True,
                 every_n_batches=c['mon_freq_valid']),
         Checkpoint(main_loop_path,
                    before_training=not fast_start,

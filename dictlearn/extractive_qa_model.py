@@ -83,6 +83,8 @@ class ExtractiveQAModel(Initializable):
         context_word_ids = (
             tensor.lt(context_word_ids, self._num_input_words) * context_word_ids
             + tensor.ge(context_word_ids, self._num_input_words) * self._vocab.unk)
+        application_call.add_auxiliary_variable(
+            context_word_ids, name='context_word_ids')
         question_word_ids = self._word_to_id(questions)
         question_word_ids = (
             tensor.lt(question_word_ids, self._num_input_words) * question_word_ids
