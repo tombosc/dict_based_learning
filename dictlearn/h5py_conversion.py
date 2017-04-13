@@ -4,8 +4,6 @@ import traceback
 
 import h5py
 
-from blocks.utils import reraise_as
-
 from fuel.datasets.hdf5 import H5PYDataset
 
 from dictlearn.corenlp import StanfordCoreNLP
