@@ -50,7 +50,7 @@ class ExtractiveQAModel(Initializable):
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
-        self._bidir_fork = Linear(2 * dim, 4 * dim, name='bidir_fork')
+        self._bidir_fork = Linear(3 * dim, 4 * dim, name='bidir_fork')
         self._bidir = Bidirectional(LSTM(dim), name='bidir')
         children.extend([self._lookup,
                          self._encoder_fork, self._encoder_rnn,
@@ -102,23 +102,29 @@ class ExtractiveQAModel(Initializable):
 
         # should be (batch size, context length, question_length)
         affinity = tensor.batched_dot(context_enc, flip12(question_enc))
+        affinity_mask = contexts_mask[:, :, None] * questions_mask[:, None, :]
+        affinity = affinity * affinity_mask - 1000 * (1 - affinity_mask)
+        # soft-aligns every position in the context to positions in the question
         d2q_att_weights = self._softmax.apply(affinity, extra_ndim=1)
-        d2q_att_weights *= questions_mask[:, None, :]
+        # soft-aligns every position in the question to positions in the document
         q2d_att_weights = self._softmax.apply(flip12(affinity), extra_ndim=1)
-        q2d_att_weights *= contexts_mask[:, None, :]
 
         # question encoding "in the view of the document"
         question_enc_informed = tensor.batched_dot(
             q2d_att_weights, context_enc)
-        question_enc_concatenated = tensor.concatenate([question_enc, question_enc_informed], 2)
+        question_enc_concatenated = tensor.concatenate(
+            [question_enc, question_enc_informed], 2)
+        # document encoding "in the view of the question"
         document_enc_informed = tensor.batched_dot(
             d2q_att_weights, question_enc_concatenated)
+        document_enc_concatenated = tensor.concatenate(
+            [context_enc, document_enc_informed], 2)
 
         # note: forward and backward LSTMs share the
         # input weights in the current impl
         bidir_states = flip01(
             self._bidir.apply(self._bidir_fork.apply(
-                flip01(document_enc_informed)))[0])
+                flip01(document_enc_concatenated)))[0])
 
         begin_readouts = self._begin_readout.apply(bidir_states)[:, :, 0]
         begin_readouts = begin_readouts * contexts_mask - 1000.0 * (1 - contexts_mask)
