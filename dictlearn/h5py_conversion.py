@@ -143,6 +143,6 @@ def add_words_ids_to_squad(h5_file, vocab):
         dst.create_dataset('text_ids', (dst['text'].shape[0],), 'int64')
         dst.create_dataset('vocab_words', (vocab.size(),), unicode_dtype)
         dst.create_dataset('vocab_freqs', (vocab.size(),), 'int64')
-        dst['text_ids'][:] = map(vocab.word_to_id, dst['text'])
+        dst['text_ids'][:] = map(vocab.word_to_id, dst['text'][:])
         dst['vocab_words'][:] = vocab.words
         dst['vocab_freqs'][:] = vocab.frequencies
