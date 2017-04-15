@@ -20,13 +20,15 @@ import h5py
 import numpy
 
 import fuel
-from fuel.transformers import Mapping, Batch, Padding, AgnosticSourcewiseTransformer
+from fuel.transformers import (
+    Mapping, Batch, Padding, AgnosticSourcewiseTransformer,
+    FilterSources)
 from fuel.schemes import IterationScheme, ConstantScheme, ShuffledExampleScheme
 from fuel.streams import DataStream
 from fuel.datasets import H5PYDataset
 
 from dictlearn.vocab import Vocabulary
-from dictlearn.datasets import TextDataset, SQuADDataset
+from dictlearn.datasets import TextDataset, SQuADDataset, PutTextTransfomer
 from dictlearn.util import str2vec
 
 # We have to pad all the words to contain the same
@@ -185,7 +187,8 @@ class ExtractiveQAData(Data):
                                              h5_file['vocab_freqs'][:]))
         return self._vocab
 
-    def get_stream(self, part, batch_size=None, shuffle=False, max_length=None, seed=None):
+    def get_stream(self, part, batch_size=None, shuffle=False, max_length=None,
+                   raw_text=False, q_ids=False, seed=None):
         if not seed:
             seed = fuel.config.default_seed
         rng = numpy.random.RandomState(seed)
@@ -196,10 +199,14 @@ class ExtractiveQAData(Data):
                 iteration_scheme=ShuffledExampleScheme(dataset.num_examples, rng=rng))
         else:
             stream = dataset.get_example_stream()
-        stream = dataset.apply_default_transformers(stream)
+        if not q_ids:
+            stream = FilterSources(stream, [source for source in dataset.sources
+                                            if source != 'q_ids'])
+        stream = PutTextTransfomer(stream, dataset, raw_text=raw_text)
         # <eos> is added for two purposes: to serve a sentinel for coattention,
         # and also to ensure the answer span ends at a token
-        stream = SourcewiseMapping(stream, functools.partial(add_eos, self.vocab.eos),
+        eos = self.vocab.EOS if raw_text else self.vocab_eos
+        stream = SourcewiseMapping(stream, functools.partial(add_eos, eos),
                                    which_sources=('contexts'))
         stream = Mapping(stream, functools.partial(select_random_answer, rng),
                          mapping_accepts=dict)

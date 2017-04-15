@@ -68,6 +68,7 @@ def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
 
     all_contexts = []
     all_questions = []
+    all_q_ids = []
     all_answer_begins = []
     all_answer_ends = []
 
@@ -96,6 +97,7 @@ def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
 
                     all_contexts.append((context_begin, context_end))
                     all_questions.append((question_begin, question_end))
+                    all_q_ids.append(qa['id'])
                     all_answer_begins.append(answer_begins)
                     all_answer_ends.append(answer_ends)
                 except ValueError:
@@ -113,12 +115,14 @@ def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
     dst.create_dataset('text', (len(text),), unicode_dtype)
     dst.create_dataset('contexts', (num_examples, 2), 'int64')
     dst.create_dataset('questions', (num_examples, 2), 'int64')
+    dst.create_dataset('q_ids', (num_examples,), unicode_dtype)
     vlen_int64 = h5py.special_dtype(vlen='int64')
     dst.create_dataset('answer_begins', (num_examples,), vlen_int64)
     dst.create_dataset('answer_ends', (num_examples,), vlen_int64)
     dst['text'][:] = text
     dst['contexts'][:] = all_contexts
     dst['questions'][:] = all_questions
+    dst['q_ids'][:] = all_q_ids
     dst['answer_begins'][:] = all_answer_begins
     dst['answer_ends'][:] = all_answer_ends
     dst.attrs['split'] = H5PYDataset.create_split_array({
@@ -126,7 +130,8 @@ def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
                 'contexts' : (0, num_examples),
                 'questions' : (0, num_examples),
                 'answer_begins' : (0, num_examples),
-                'answer_ends' : (0, num_examples)
+                'answer_ends' : (0, num_examples),
+                'q_ids' : (0, num_examples)
             }
         })
     dst.close()

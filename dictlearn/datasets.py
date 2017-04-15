@@ -33,11 +33,11 @@ class TextDataset(Dataset):
         return (next(state).strip().split(),)
 
 
-class _PutTextTransfomer(Transformer):
+class PutTextTransfomer(Transformer):
 
-    def __init__(self, data_stream, dataset, **kwargs):
-        super(_PutTextTransfomer, self).__init__(data_stream, **kwargs)
-        self._text = dataset.text
+    def __init__(self, data_stream, dataset, raw_text=False, **kwargs):
+        super(PutTextTransfomer, self).__init__(data_stream, **kwargs)
+        self._text = dataset.text if raw_text else dataset.text_ids
         self.produces_examples = data_stream.produces_examples
 
     def transform_example(self, example):
@@ -53,15 +53,16 @@ class _PutTextTransfomer(Transformer):
         return (self.transform_example(example) for example in batch)
 
 
-@do_not_pickle_attributes('text')
+@do_not_pickle_attributes('text', 'text_ids')
 class SQuADDataset(H5PYDataset):
     """Adds default transformers."""
     def __init__(self, *args, **kwargs):
         super(SQuADDataset, self).__init__(*args, **kwargs)
-        self.default_transformers = [(_PutTextTransfomer, [self], {},)]
+        self.default_transformers = [(PutTextTransfomer, [self], {},)]
 
     def load(self):
         super(SQuADDataset, self).load()
         self._out_of_memory_open()
-        self.text = self._file_handle['text_ids'][:]
+        self.text = self._file_handle['text'][:]
+        self.text_ids = self._file_handle['text_ids'][:]
         self._out_of_memory_close()

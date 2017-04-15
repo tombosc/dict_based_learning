@@ -88,9 +88,8 @@ class Vocabulary(object):
         return ' '.join([self.id_to_word(cur_id) for cur_id in cur_ids])
 
     def encode(self, sentence):
-        word_ids = [self.word_to_id(cur_word) for cur_word in sentence.split()]
-        return numpy.array([self.bos] + word_ids + [self.eos],
-                            dtype=numpy.int32)
+        word_ids = [self.word_to_id(cur_word) for cur_word in sentence]
+        return numpy.array(word_ids, dtype=numpy.int64)
 
     @staticmethod
     def build(filename_or_words, top_k=None, sort_by='frequency'):

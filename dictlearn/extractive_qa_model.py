@@ -64,6 +64,18 @@ class ExtractiveQAModel(Initializable):
 
         super(ExtractiveQAModel, self).__init__(children=children, **kwargs)
 
+        # create default input variables
+        self.contexts = tensor.lmatrix('contexts')
+        self.context_mask = tensor.matrix('contexts_mask')
+        self.questions = tensor.lmatrix('questions')
+        self.question_mask = tensor.matrix('questions_mask')
+        self.answer_begins = tensor.lvector('answer_begins')
+        self.answer_ends = tensor.lvector('answer_ends')
+        self.input_vars = [
+            self.contexts, self.context_mask,
+            self.questions, self.question_mask,
+            self.answer_begins, self.answer_ends]
+
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
@@ -113,16 +125,16 @@ class ExtractiveQAModel(Initializable):
         question_enc_concatenated = tensor.concatenate(
             [question_enc, question_enc_informed], 2)
         # document encoding "in the view of the question"
-        document_enc_informed = tensor.batched_dot(
+        context_enc_informed = tensor.batched_dot(
             d2q_att_weights, question_enc_concatenated)
-        document_enc_concatenated = tensor.concatenate(
-            [context_enc, document_enc_informed], 2)
+        context_enc_concatenated = tensor.concatenate(
+            [context_enc, context_enc_informed], 2)
 
         # note: forward and backward LSTMs share the
         # input weights in the current impl
         bidir_states = flip01(
             self._bidir.apply(self._bidir_fork.apply(
-                flip01(document_enc_concatenated)))[0])
+                flip01(context_enc_concatenated)))[0])
 
         begin_readouts = self._begin_readout.apply(bidir_states)[:, :, 0]
         begin_readouts = begin_readouts * contexts_mask - 1000.0 * (1 - contexts_mask)
@@ -139,6 +151,13 @@ class ExtractiveQAModel(Initializable):
         exact_match = (tensor.eq(predicted_begins, answer_begins) *
                        tensor.eq(predicted_ends, answer_ends))
         application_call.add_auxiliary_variable(
+            predicted_begins, name='predicted_begins')
+        application_call.add_auxiliary_variable(
+            predicted_ends, name='predicted_ends')
+        application_call.add_auxiliary_variable(
             exact_match, name='exact_match')
 
         return begin_costs + end_costs
+
+    def apply_with_default_vars(self):
+        return self.apply(*self.input_vars)
