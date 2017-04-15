@@ -63,5 +63,5 @@ class SQuADDataset(H5PYDataset):
     def load(self):
         super(SQuADDataset, self).load()
         self._out_of_memory_open()
-        self.text = self._file_handle['text'][:]
+        self.text = self._file_handle['text_ids'][:]
         self._out_of_memory_close()

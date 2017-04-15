@@ -19,7 +19,7 @@ from blocks.graph import ComputationGraph
 from blocks.model import Model
 from blocks.filter import VariableFilter
 from blocks.extensions import FinishAfter, Timing, Printing
-from blocks.extensions.saveload import Load, Checkpoint
+from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
@@ -29,7 +29,7 @@ from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.data import ExtractiveQAData
-from dictlearn.extensions import DumpTensorflowSummaries
+from dictlearn.extensions import DumpTensorflowSummaries, LoadNoUnpickling
 from dictlearn.extractive_qa_model import ExtractiveQAModel
 from dictlearn.retrieval import Retrieval, Dictionary
 
@@ -47,7 +47,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         os.mkdir(save_path)
     else:
         logger.info("Continue an existing job")
-    main_loop_path = os.path.join(save_path, 'main_loop.tar')
+    tar_path = os.path.join(save_path, 'training_state.tar')
 
     c = config
     data = ExtractiveQAData(c['data_path'], c['layout'])
@@ -59,10 +59,11 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     qam.initialize()
     if c['embedding_path']:
         qam.set_embeddings(numpy.load(c['embedding_path']))
+    logger.debug("Model created")
 
-    contexts = tensor.ltensor3('contexts')
+    contexts = tensor.lmatrix('contexts')
     context_mask = tensor.matrix('contexts_mask')
-    questions = tensor.ltensor3('questions')
+    questions = tensor.lmatrix('questions')
     question_mask = tensor.matrix('questions_mask')
     answer_begins = tensor.lvector('answer_begins')
     answer_ends = tensor.lvector('answer_ends')
@@ -87,12 +88,13 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
             cg.set_parameter_values(load_parameters(src))
 
     length = rename(contexts.shape[1], 'length')
+    batch_size = rename(contexts.shape[0], 'batch_size')
     exact_match, = VariableFilter(name='exact_match')(cg)
     exact_match_ratio = rename(exact_match.mean(), 'exact_match_ratio')
     context_word_ids, = VariableFilter(name='context_word_ids')(cg)
     num_unk = (tensor.eq(context_word_ids, data.vocab.unk) * context_mask).sum()
     context_unk_ratio = rename(num_unk / context_mask.sum(), 'context_unk_ratio')
-    monitored_vars = [length, cost, exact_match_ratio, context_unk_ratio]
+    monitored_vars = [length, batch_size, cost, exact_match_ratio, context_unk_ratio]
 
     parameters = cg.get_parameter_dict()
     logger.info("Cost parameters" + "\n" +
@@ -130,7 +132,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
             train_monitored_vars.append(stats)
 
     extensions = [
-        Load(main_loop_path, load_iteration_state=True, load_log=True)
+        LoadNoUnpickling(tar_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
@@ -143,7 +145,15 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
                 before_training=not fast_start,
                 after_epoch=True,
                 every_n_batches=c['mon_freq_valid']),
-        Checkpoint(main_loop_path,
+        # We often use pretrained word embeddings and we don't want
+        # to load and save them every time. To avoid that, we use
+        # save_main_loop=False, we only save the trained parameters,
+        # and we save the log and the iterations state separately
+        # in the tar file.
+        Checkpoint(tar_path,
+                   parameters=trained_parameters,
+                   save_main_loop=False,
+                   save_separately=['log', 'iteration_state'],
                    before_training=not fast_start,
                    every_n_batches=c['save_freq_batches'],
                    after_training=not fast_start),

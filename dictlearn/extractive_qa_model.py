@@ -49,7 +49,7 @@ class ExtractiveQAModel(Initializable):
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
-        self._bidir_fork = Linear(2 * dim, 4 * dim, name='bidir_fork')
+        self._bidir_fork = Linear(3 * dim, 4 * dim, name='bidir_fork')
         self._bidir = Bidirectional(LSTM(dim), name='bidir')
         children.extend([self._lookup,
                          self._encoder_fork, self._encoder_rnn,
@@ -78,18 +78,16 @@ class ExtractiveQAModel(Initializable):
         def flip12(x):
             return x.transpose((0, 2, 1))
 
-        context_word_ids = self._word_to_id(contexts)
-        context_word_ids = (
-            tensor.lt(context_word_ids, self._num_input_words) * context_word_ids
-            + tensor.ge(context_word_ids, self._num_input_words) * self._vocab.unk)
+        contexts = (
+            tensor.lt(contexts, self._num_input_words) * contexts
+            + tensor.ge(contexts, self._num_input_words) * self._vocab.unk)
         application_call.add_auxiliary_variable(
-            context_word_ids, name='context_word_ids')
-        question_word_ids = self._word_to_id(questions)
-        question_word_ids = (
-            tensor.lt(question_word_ids, self._num_input_words) * question_word_ids
-            + tensor.ge(question_word_ids, self._num_input_words) * self._vocab.unk)
-        context_embs = self._lookup.apply(context_word_ids)
-        question_embs = self._lookup.apply(question_word_ids)
+            contexts, name='context_word_ids')
+        questions = (
+            tensor.lt(questions, self._num_input_words) * questions
+            + tensor.ge(questions, self._num_input_words) * self._vocab.unk)
+        context_embs = self._lookup.apply(contexts)
+        question_embs = self._lookup.apply(questions)
 
         context_enc = flip01(
             self._encoder_rnn.apply(self._encoder_fork.apply(
@@ -101,23 +99,29 @@ class ExtractiveQAModel(Initializable):
 
         # should be (batch size, context length, question_length)
         affinity = tensor.batched_dot(context_enc, flip12(question_enc))
+        affinity_mask = contexts_mask[:, :, None] * questions_mask[:, None, :]
+        affinity = affinity * affinity_mask - 1000 * (1 - affinity_mask)
+        # soft-aligns every position in the context to positions in the question
         d2q_att_weights = self._softmax.apply(affinity, extra_ndim=1)
-        d2q_att_weights *= questions_mask[:, None, :]
+        # soft-aligns every position in the question to positions in the document
         q2d_att_weights = self._softmax.apply(flip12(affinity), extra_ndim=1)
-        q2d_att_weights *= contexts_mask[:, None, :]
 
         # question encoding "in the view of the document"
         question_enc_informed = tensor.batched_dot(
             q2d_att_weights, context_enc)
-        question_enc_concatenated = tensor.concatenate([question_enc, question_enc_informed], 2)
+        question_enc_concatenated = tensor.concatenate(
+            [question_enc, question_enc_informed], 2)
+        # document encoding "in the view of the question"
         document_enc_informed = tensor.batched_dot(
             d2q_att_weights, question_enc_concatenated)
+        document_enc_concatenated = tensor.concatenate(
+            [context_enc, document_enc_informed], 2)
 
         # note: forward and backward LSTMs share the
         # input weights in the current impl
         bidir_states = flip01(
             self._bidir.apply(self._bidir_fork.apply(
-                flip01(document_enc_informed)))[0])
+                flip01(document_enc_concatenated)))[0])
 
         begin_readouts = self._begin_readout.apply(bidir_states)[:, :, 0]
         begin_readouts = begin_readouts * contexts_mask - 1000.0 * (1 - contexts_mask)

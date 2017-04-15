@@ -3,7 +3,8 @@
 import argparse
 import logging
 
-from dictlearn.h5py_conversion import text_to_h5py_dataset, squad_to_h5py_dataset
+from dictlearn.h5py_conversion import (
+    text_to_h5py_dataset, squad_to_h5py_dataset, add_words_ids_to_squad)
 from dictlearn.corenlp import start_corenlp
 from dictlearn.util import get_free_port
 

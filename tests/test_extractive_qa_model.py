@@ -21,10 +21,10 @@ def test_language_model():
         dict_ = Dictionary(path)
 
     def make_data_and_mask(data):
-        data = [[str2vec(s, 3) for s in row] for row in data]
+        data = [[vocab.word_to_id(s) for s in row] for row in data]
         data = numpy.array(data)
         mask = numpy.ones((data.shape[0], data.shape[1]),
-                        dtype=theano.config.floatX)
+                          dtype=theano.config.floatX)
         return data, mask
     # create some dummy data
     contexts, context_mask = make_data_and_mask(
@@ -35,7 +35,7 @@ def test_language_model():
     answer_ends = [1, 2, 2]
 
     qam = ExtractiveQAModel(
-        vocab=vocab, dim=10, num_input_words=10,
+        vocab=vocab, dim=10, emb_dim=10, num_input_words=10,
         weights_init=Uniform(width=0.1),
         biases_init=Uniform(width=0.1))
     qam.initialize()

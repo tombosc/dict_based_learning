@@ -39,3 +39,9 @@ c = qa_config_registry['squad']
 c['embedding_path'] = '/data/lisatmp4/bahdanau/data/squad/glove_w_specials.npy'
 c['num_input_words'] = 0
 qa_config_registry['squad_glove'] = c
+
+c = qa_config_registry['squad_glove']
+c['batch_size'] = 256
+c['batch_size_valid'] = 256
+c['dim'] = 200
+qa_config_registry['squad_glove2'] = c

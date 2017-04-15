@@ -5,13 +5,15 @@ from __future__ import print_function
 
 import os
 import tempfile
+import h5py
 
 from fuel.datasets.hdf5 import H5PYDataset
 
 from dictlearn.corenlp import start_corenlp
 from dictlearn.h5py_conversion import (
-    text_to_h5py_dataset, squad_to_h5py_dataset)
+    text_to_h5py_dataset, squad_to_h5py_dataset, add_words_ids_to_squad)
 from dictlearn.datasets import SQuADDataset
+from dictlearn.vocab import Vocabulary
 from dictlearn.util import get_free_port
 
 from tests.util import TEST_SQUAD_RAW_DATA
@@ -50,17 +52,20 @@ def test_squad_to_h5py_dataset():
         with open(json_path, 'w') as json_file:
             print(TEST_SQUAD_RAW_DATA, file=json_file)
         squad_to_h5py_dataset(json_path, h5_path, "http://localhost:{}".format(port))
+        with h5py.File(h5_path, 'r') as h5_file:
+            vocab = Vocabulary.build(h5_file['text'], top_k=100)
+        add_words_ids_to_squad(h5_path, vocab)
 
         dataset = SQuADDataset(h5_path, ('all',))
         stream = dataset.get_example_stream()
         stream = dataset.apply_default_transformers(stream)
         example = next(stream.get_epoch_iterator())
-        assert example[3].tolist() == [
+        assert example[3].tolist() == map(vocab.word_to_id, [
             u'To', u'whom', u'did', u'the', u'Virgin', u'Mary',
             u'allegedly', u'appear', u'in', u'1858', u'in', u'Lourdes',
-            u'France', u'?']
-        assert example[2][example[0][0]:example[1][0]].tolist() == [
-            u'Saint', u'Bernadette', u'Soubirous']
+            u'France', u'?'])
+        assert example[2][example[0][0]:example[1][0]].tolist() == map(vocab.word_to_id,
+            [u'Saint', u'Bernadette', u'Soubirous'])
     finally:
         if corenlp and corenlp.returncode is None:
             corenlp.kill()
