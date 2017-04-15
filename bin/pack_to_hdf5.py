@@ -29,7 +29,13 @@ def main():
         finally:
             if corenlp and corenlp.returncode is None:
                 corenlp.kill()
+    elif args.type == 'snli':
+        pass
+        import fuel
+        from fuel.datasets import H5PYDataset
 
+    else:
+        raise NotImplementedError(args.type)
 
 if __name__ == "__main__":
     main()

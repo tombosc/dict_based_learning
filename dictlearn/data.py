@@ -118,6 +118,8 @@ class Data(object):
             elif self._layout == 'squad':
                 part_map = {'train' : 'train.h5',
                             'dev' : 'dev.h5'}
+            else:
+                raise NotImplementedError(self._layout)
             part_path = os.path.join(self._path, part_map[part])
             if self._layout == 'lambada' and part == 'train':
                 self._dataset_cache[part] = H5PYDataset(part_path, ('train',))
