@@ -134,4 +134,4 @@ class Vocabulary(object):
     def save(self, filename):
         with open(filename, 'w') as f:
             for word, freq in zip(self._id_to_word, self._id_to_freq):
-                print(word, freq, file=f)
+                print(word.encode('utf-8'), freq, file=f)
