@@ -19,7 +19,7 @@ from blocks.graph import ComputationGraph
 from blocks.model import Model
 from blocks.filter import VariableFilter
 from blocks.extensions import FinishAfter, Timing, Printing
-from blocks.extensions.saveload import Load, Checkpoint
+from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
@@ -29,7 +29,7 @@ from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.data import ExtractiveQAData
-from dictlearn.extensions import DumpTensorflowSummaries
+from dictlearn.extensions import DumpTensorflowSummaries, LoadNoUnpickling
 from dictlearn.extractive_qa_model import ExtractiveQAModel
 from dictlearn.retrieval import Retrieval, Dictionary
 
@@ -47,7 +47,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         os.mkdir(save_path)
     else:
         logger.info("Continue an existing job")
-    main_loop_path = os.path.join(save_path, 'main_loop.tar')
+    tar_path = os.path.join(save_path, 'training_state.tar')
 
     c = config
     data = ExtractiveQAData(c['data_path'], c['layout'])
@@ -132,7 +132,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
             train_monitored_vars.append(stats)
 
     extensions = [
-        Load(main_loop_path, load_iteration_state=True, load_log=True)
+        LoadNoUnpickling(tar_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
@@ -145,8 +145,15 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
                 before_training=not fast_start,
                 after_epoch=True,
                 every_n_batches=c['mon_freq_valid']),
-        Checkpoint(main_loop_path,
-                   parameters=parameters,
+        # We often use pretrained word embeddings and we don't want
+        # to load and save them every time. To avoid that, we use
+        # save_main_loop=False, we only save the trained parameters,
+        # and we save the log and the iterations state separately
+        # in the tar file.
+        Checkpoint(tar_path,
+                   parameters=trained_parameters,
+                   save_main_loop=False,
+                   save_separately=['log', 'iteration_state'],
                    before_training=not fast_start,
                    every_n_batches=c['save_freq_batches'],
                    after_training=not fast_start),
