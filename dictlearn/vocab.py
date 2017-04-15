@@ -108,6 +108,10 @@ class Vocabulary(object):
             logger.info("Data is read")
         else:
             counter = Counter(filename_or_words)
+            for word in list(counter.keys()):
+                if ' ' in word:
+                    logger.error("can't have tokens with spaces, skip {}".format(word))
+                    del counter[word]
         # It was not immediately clear to me
         # if counter.most_common() selects consistenly among
         # the words with the same counts. Hence, let's just sort.
