@@ -15,6 +15,7 @@ Currently the following layouts are supported:
 
 import os
 import functools
+import h5py
 
 import numpy
 
@@ -88,7 +89,11 @@ class RandomSpanScheme(IterationScheme):
 
 
 class Data(object):
-    """Builds the data stream for different parts of the data."""
+    """Builds the data stream for different parts of the data.
+
+    TODO: refactor, only leave the caching logic.
+
+    """
     def __init__(self, path, layout):
         self._path = path
         self._layout = layout
@@ -100,25 +105,25 @@ class Data(object):
 
     @property
     def vocab(self):
-        if not self._vocab:
-            self._vocab = Vocabulary(
-                os.path.join(self._path, "vocab.txt"))
-        return self._vocab
+        raise NotImplementedError()
+
+    def get_dataset_path(self, part):
+        if self._layout == 'standard':
+            part_map = {'train': 'train.txt',
+                        'valid': 'valid.txt',
+                        'test': 'test.txt'}
+        elif self._layout == 'lambada':
+            part_map = {'train' : 'train.h5',
+                        'valid' : 'lambada_development_plain_text.txt',
+                        'test' : 'lambada_test_plain_text.txt'}
+        elif self._layout == 'squad':
+            part_map = {'train' : 'train.h5',
+                        'dev' : 'dev.h5'}
+        return os.path.join(self._path, part_map[part])
 
     def get_dataset(self, part):
         if not part in self._dataset_cache:
-            if self._layout == 'standard':
-                part_map = {'train': 'train.txt',
-                            'valid': 'valid.txt',
-                            'test': 'test.txt'}
-            elif self._layout == 'lambada':
-                part_map = {'train' : 'train.h5',
-                            'valid' : 'lambada_development_plain_text.txt',
-                            'test' : 'lambada_test_plain_text.txt'}
-            elif self._layout == 'squad':
-                part_map = {'train' : 'train.h5',
-                            'dev' : 'dev.h5'}
-            part_path = os.path.join(self._path, part_map[part])
+            part_path = self.get_dataset_path(part)
             if self._layout == 'lambada' and part == 'train':
                 self._dataset_cache[part] = H5PYDataset(part_path, ('train',))
             elif self._layout == 'squad':
@@ -132,6 +137,14 @@ class Data(object):
 
 
 class LanguageModellingData(Data):
+
+    @property
+    def vocab(self):
+        if not self._vocab:
+            self._vocab = Vocabulary(
+                os.path.join(self._path, "vocab.txt"))
+        return self._vocab
+
     def get_stream(self, part, batch_size=None, max_length=None, seed=None):
         dataset = self.get_dataset(part)
         if self._layout == 'lambada' and part == 'train':
@@ -162,6 +175,16 @@ def select_random_answer(rng, example):
 
 
 class ExtractiveQAData(Data):
+
+    @property
+    def vocab(self):
+        if not self._vocab:
+            with h5py.File(self.get_dataset_path('train')) as h5_file:
+                # somehow reading the data before zipping is important
+                self._vocab = Vocabulary(zip(h5_file['vocab_words'][:],
+                                             h5_file['vocab_freqs'][:]))
+        return self._vocab
+
     def get_stream(self, part, batch_size=None, shuffle=False, max_length=None, seed=None):
         if not seed:
             seed = fuel.config.default_seed
@@ -176,12 +199,10 @@ class ExtractiveQAData(Data):
         stream = dataset.apply_default_transformers(stream)
         # <eos> is added for two purposes: to serve a sentinel for coattention,
         # and also to ensure the answer span ends at a token
-        stream = SourcewiseMapping(stream, functools.partial(add_eos, Vocabulary.EOS),
+        stream = SourcewiseMapping(stream, functools.partial(add_eos, self.vocab.eos),
                                    which_sources=('contexts'))
         stream = Mapping(stream, functools.partial(select_random_answer, rng),
                          mapping_accepts=dict)
-        stream = SourcewiseMapping(stream, vectorize,
-                                   which_sources=('contexts', 'questions'))
         if not batch_size:
             return stream
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))

@@ -1,7 +1,6 @@
 import json
 import logging
 import traceback
-
 import h5py
 
 from fuel.datasets.hdf5 import H5PYDataset
@@ -131,3 +130,19 @@ def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
             }
         })
     dst.close()
+
+
+def add_words_ids_to_squad(h5_file, vocab):
+    """Digitizes test with a vocabulary.
+
+    Also saves the vocabulary into the hdf5 file.
+
+    """
+    with h5py.File(h5_file, 'a') as dst:
+        unicode_dtype = h5py.special_dtype(vlen=unicode)
+        dst.create_dataset('text_ids', (dst['text'].shape[0],), 'int64')
+        dst.create_dataset('vocab_words', (vocab.size(),), unicode_dtype)
+        dst.create_dataset('vocab_freqs', (vocab.size(),), 'int64')
+        dst['text_ids'][:] = map(vocab.word_to_id, dst['text'])
+        dst['vocab_words'][:] = vocab.words
+        dst['vocab_freqs'][:] = vocab.frequencies

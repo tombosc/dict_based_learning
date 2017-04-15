@@ -93,18 +93,21 @@ class Vocabulary(object):
                             dtype=numpy.int32)
 
     @staticmethod
-    def build(filename, top_k=None, sort_by='frequency'):
+    def build(filename_or_words, top_k=None, sort_by='frequency'):
         """
         sort_by is either 'frequency' or 'lexicographical'
         """
         # For now let's use a very stupid tokenization
-        with open(filename) as file_:
-            def data():
-                for line in file_:
-                    for word in line.strip().split():
-                        yield word
-            counter = Counter(data())
+        if isinstance(filename_or_words, str):
+            with open(filename_or_words) as file_:
+                def data():
+                    for line in file_:
+                        for word in line.strip().split():
+                            yield word
+                counter = Counter(data())
             logger.info("Data is read")
+        else:
+            counter = Counter(filename_or_words)
         # It was not immediately clear to me
         # if counter.most_common() selects consistenly among
         # the words with the same counts. Hence, let's just sort.

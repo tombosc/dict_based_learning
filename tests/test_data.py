@@ -66,15 +66,15 @@ def test_squad_data():
                                        'answer_begins',
                                        'answer_ends'])
     batch = next(stream.get_epoch_iterator(as_dict=True))
-    assert batch['contexts'].ndim == 3
+    assert batch['contexts'].ndim == 2
     assert batch['contexts_mask'].ndim == 2
-    assert batch['questions'].ndim == 3
+    assert batch['questions'].ndim == 2
     assert batch['questions_mask'].ndim == 2
     assert batch['answer_begins'].tolist() == [45, 78, 117]
     assert batch['answer_ends'].tolist() == [46, 80, 118]
 
     longest = batch['contexts_mask'].sum(axis=1).argmax()
-    assert vec2str(batch['contexts'][longest][-1]) == Vocabulary.EOS
+    assert batch['contexts'][longest][-1] == data.vocab.eos
 
 
 def test_random_span_scheme():
