@@ -25,9 +25,8 @@ from blocks.extensions.monitoring import (DataStreamMonitoring,
 from blocks.main_loop import MainLoop
 from blocks.serialization import load_parameters
 
-from fuel.streams import ServerDataStream
-
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
+from dictlearn.theano_util import parameter_stats
 from dictlearn.data import ExtractiveQAData
 from dictlearn.extensions import DumpTensorflowSummaries, LoadNoUnpickling
 from dictlearn.extractive_qa_model import ExtractiveQAModel
@@ -122,14 +121,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         train_monitored_vars.append(algorithm.total_gradient_norm)
 
     if c['monitor_parameters']:
-        for name, param in parameters.items():
-            num_elements = numpy.product(param.get_value().shape)
-            norm = param.norm(2) / num_elements ** 0.5
-            grad_norm = algorithm.gradients[param].norm(2) / num_elements ** 0.5
-            step_norm = algorithm.steps[param].norm(2) / num_elements ** 0.5
-            stats = tensor.stack(norm, grad_norm, step_norm, step_norm / grad_norm)
-            stats.name = name + '_stats'
-            train_monitored_vars.append(stats)
+        train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 
     extensions = [
         LoadNoUnpickling(tar_path, load_iteration_state=True, load_log=True)
