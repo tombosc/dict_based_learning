@@ -49,6 +49,7 @@ from dictlearn.util import get_free_port
 from dictlearn.extensions import DumpTensorflowSummaries, SimpleExtension
 from dictlearn.data import SNLIData
 from dictlearn.snli_baseline_model import SNLIBaseline
+from dictlearn.retrieval import Retrieval, Dictionary
 
 import pandas as pd
 from collections import defaultdict
@@ -105,9 +106,20 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # Load data
     data = SNLIData(c['data_path'], c['layout'])
 
+    # Dict
+    if c['dict_path']:
+        dict = Dictionary(c['dict_path'])
+        retrieval = Retrieval(vocab=data.vocab, dictionary=dict)
+    else:
+        retrieval = None
+
     # Initialize
-    baseline = SNLIBaseline(translate_dim=c['translate_dim'],
-        emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'])
+    baseline = SNLIBaseline(
+        emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
+        # Dict lookup kwargs (will get refactored)
+        translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
+        disregard_word_embeddings=c['disregard_word_embeddings']
+        )
     baseline.initialize()
     embeddings = np.load(c['embedding_path'])
     baseline.embeddings_var().set_value(embeddings.astype(theano.config.floatX))
