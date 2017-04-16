@@ -88,9 +88,8 @@ class Vocabulary(object):
         return ' '.join([self.id_to_word(cur_id) for cur_id in cur_ids])
 
     def encode(self, sentence):
-        word_ids = [self.word_to_id(cur_word) for cur_word in sentence.split()]
-        return numpy.array([self.bos] + word_ids + [self.eos],
-                            dtype=numpy.int32)
+        word_ids = [self.word_to_id(cur_word) for cur_word in sentence]
+        return numpy.array(word_ids, dtype=numpy.int64)
 
     @staticmethod
     def build(filename_or_words, top_k=None, sort_by='frequency'):
@@ -108,6 +107,10 @@ class Vocabulary(object):
             logger.info("Data is read")
         else:
             counter = Counter(filename_or_words)
+            for word in list(counter.keys()):
+                if ' ' in word:
+                    logger.error("can't have tokens with spaces, skip {}".format(word))
+                    del counter[word]
         # It was not immediately clear to me
         # if counter.most_common() selects consistenly among
         # the words with the same counts. Hence, let's just sort.

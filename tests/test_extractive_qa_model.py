@@ -14,7 +14,7 @@ from dictlearn.extractive_qa_model import ExtractiveQAModel
 from tests.util import (
     TEST_VOCAB, TEST_DICT_JSON, temporary_content_path)
 
-def test_language_model():
+def test_extractive_qa_model():
     with temporary_content_path(TEST_VOCAB) as path:
         vocab = Vocabulary(path)
     with temporary_content_path(TEST_DICT_JSON) as path:

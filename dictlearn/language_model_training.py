@@ -28,6 +28,7 @@ from blocks.serialization import load_parameters
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
+from dictlearn.theano_util import parameter_stats
 from dictlearn.data import LanguageModellingData
 from dictlearn.extensions import DumpTensorflowSummaries
 from dictlearn.language_model import LanguageModel
@@ -135,14 +136,7 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
             rename(masked_root_mean_square(main_rnn_states, words_mask.T), 'main_rnn_states_root_mean2'))
 
     if c['monitor_parameters']:
-        for name, param in parameters.items():
-            num_elements = numpy.product(param.get_value().shape)
-            norm = param.norm(2) / num_elements ** 0.5
-            grad_norm = algorithm.gradients[param].norm(2) / num_elements ** 0.5
-            step_norm = algorithm.steps[param].norm(2) / num_elements ** 0.5
-            stats = tensor.stack(norm, grad_norm, step_norm, step_norm / grad_norm)
-            stats.name = name + '_stats'
-            train_monitored_vars.append(stats)
+        train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)

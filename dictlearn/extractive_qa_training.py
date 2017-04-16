@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 import time
 import socket
@@ -11,6 +15,7 @@ import subprocess
 import numpy
 import theano
 from theano import tensor
+from nltk.tokenize.moses import MosesDetokenizer
 
 from blocks.initialization import Uniform, Constant
 from blocks.algorithms import (
@@ -25,15 +30,28 @@ from blocks.extensions.monitoring import (DataStreamMonitoring,
 from blocks.main_loop import MainLoop
 from blocks.serialization import load_parameters
 
-from fuel.streams import ServerDataStream
-
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
+from dictlearn.theano_util import parameter_stats
 from dictlearn.data import ExtractiveQAData
 from dictlearn.extensions import DumpTensorflowSummaries, LoadNoUnpickling
 from dictlearn.extractive_qa_model import ExtractiveQAModel
 from dictlearn.retrieval import Retrieval, Dictionary
 
 logger = logging.getLogger()
+
+
+def _initialize_data_and_model(config):
+    c = config
+    data = ExtractiveQAData(c['data_path'], c['layout'])
+    qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['num_input_words'],
+                            data.vocab,
+                            weights_init=Uniform(width=0.1),
+                            biases_init=Constant(0.))
+    qam.allocate()
+    if c['embedding_path']:
+        qam.set_embeddings(numpy.load(c['embedding_path']))
+    logger.debug("Model created")
+    return data, qam
 
 
 def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
@@ -50,35 +68,17 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     tar_path = os.path.join(save_path, 'training_state.tar')
 
     c = config
-    data = ExtractiveQAData(c['data_path'], c['layout'])
-
-    qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['num_input_words'],
-                            data.vocab,
-                            weights_init=Uniform(width=0.1),
-                            biases_init=Constant(0.))
+    data, qam = _initialize_data_and_model(c)
     qam.initialize()
-    if c['embedding_path']:
-        qam.set_embeddings(numpy.load(c['embedding_path']))
-    logger.debug("Model created")
-
-    contexts = tensor.lmatrix('contexts')
-    context_mask = tensor.matrix('contexts_mask')
-    questions = tensor.lmatrix('questions')
-    question_mask = tensor.matrix('questions_mask')
-    answer_begins = tensor.lvector('answer_begins')
-    answer_ends = tensor.lvector('answer_ends')
-    input_vars = [contexts, context_mask,
-                  questions, question_mask,
-                  answer_begins, answer_ends]
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
             data.get_stream('train', batch_size=4, max_length=5)
             .get_epoch_iterator(as_dict=True))
-        for var in input_vars:
+        for var in qam.input_vars:
             var.tag.test_value = test_value_data[var.name]
 
-    costs = qam.apply(*input_vars)
+    costs = qam.apply_with_default_vars()
     cost = rename(costs.mean(), 'mean_cost')
 
     cg = Model(cost)
@@ -87,13 +87,13 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         with open(params) as src:
             cg.set_parameter_values(load_parameters(src))
 
-    length = rename(contexts.shape[1], 'length')
-    batch_size = rename(contexts.shape[0], 'batch_size')
+    length = rename(qam.contexts.shape[1], 'length')
+    batch_size = rename(qam.contexts.shape[0], 'batch_size')
     exact_match, = VariableFilter(name='exact_match')(cg)
     exact_match_ratio = rename(exact_match.mean(), 'exact_match_ratio')
     context_word_ids, = VariableFilter(name='context_word_ids')(cg)
-    num_unk = (tensor.eq(context_word_ids, data.vocab.unk) * context_mask).sum()
-    context_unk_ratio = rename(num_unk / context_mask.sum(), 'context_unk_ratio')
+    num_unk = (tensor.eq(context_word_ids, data.vocab.unk) * qam.context_mask).sum()
+    context_unk_ratio = rename(num_unk / qam.context_mask.sum(), 'context_unk_ratio')
     monitored_vars = [length, batch_size, cost, exact_match_ratio, context_unk_ratio]
 
     parameters = cg.get_parameter_dict()
@@ -122,14 +122,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         train_monitored_vars.append(algorithm.total_gradient_norm)
 
     if c['monitor_parameters']:
-        for name, param in parameters.items():
-            num_elements = numpy.product(param.get_value().shape)
-            norm = param.norm(2) / num_elements ** 0.5
-            grad_norm = algorithm.gradients[param].norm(2) / num_elements ** 0.5
-            step_norm = algorithm.steps[param].norm(2) / num_elements ** 0.5
-            stats = tensor.stack(norm, grad_norm, step_norm, step_norm / grad_norm)
-            stats.name = name + '_stats'
-            train_monitored_vars.append(stats)
+        train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 
     extensions = [
         LoadNoUnpickling(tar_path, load_iteration_state=True, load_log=True)
@@ -159,9 +152,11 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
                    after_training=not fast_start),
         DumpTensorflowSummaries(
             save_path,
+            after_epoch=True,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
+        Printing(after_epoch=True,
+                 every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
     # We use a completely random seed on purpose. With Fuel server
@@ -177,3 +172,53 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         model=Model(cost),
         extensions=extensions)
     main_loop.run()
+
+
+def evaluate_extractive_qa(config, save_path, part, dest):
+    c = config
+    data, qam = _initialize_data_and_model(c)
+    costs = qam.apply_with_default_vars()
+    cg = Model(costs)
+
+    tar_path = os.path.join(save_path, 'training_state.tar')
+    with open(tar_path) as src:
+        cg.set_parameter_values(load_parameters(src))
+
+    detok = MosesDetokenizer()
+    def detokenize(str_):
+        return " ".join(detok.detokenize(str_))
+
+    predicted_begins, = VariableFilter(name='predicted_begins')(cg)
+    predicted_ends, = VariableFilter(name='predicted_ends')(cg)
+    predict_func = theano.function(qam.input_vars, [predicted_begins[0], predicted_ends[0]])
+
+    num_examples = 0
+    num_correct = 0
+    def print_stats():
+        print('EXACT MATCH RATIO: {}'.format(num_correct / float(num_examples)))
+
+    stream = data.get_stream(part, batch_size=1, shuffle=part == 'train', raw_text=True)
+    for example in stream.get_epoch_iterator(as_dict=True):
+        feed = dict(example)
+        feed['contexts'] = numpy.array(data.vocab.encode(example['contexts'][0]))[None, :]
+        feed['questions'] = numpy.array(data.vocab.encode(example['questions'][0]))[None, :]
+        correct_answer_span = slice(example['answer_begins'], example['answer_ends'])
+        predicted_answer_span = slice(*predict_func(**feed))
+        is_correct = correct_answer_span == predicted_answer_span
+
+        num_examples += 1
+        num_correct += is_correct
+
+        result = 'correct' if is_correct else 'wrong'
+        print('#{}'.format(num_examples))
+        print("CONTEXT:", detokenize(example['contexts'][0]))
+        print("QUESTION:", detokenize(example['questions'][0]))
+        print("ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
+                                                   predicted_answer_span.stop,
+                                                   result),
+              detokenize(example['contexts'][0, predicted_answer_span]))
+        print()
+
+        if num_examples % 100:
+            print_stats()
+    print_stats()

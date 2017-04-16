@@ -59,12 +59,13 @@ def test_squad_to_h5py_dataset():
         dataset = SQuADDataset(h5_path, ('all',))
         stream = dataset.get_example_stream()
         stream = dataset.apply_default_transformers(stream)
-        example = next(stream.get_epoch_iterator())
-        assert example[3].tolist() == map(vocab.word_to_id, [
+        example = next(stream.get_epoch_iterator(as_dict=True))
+        answer_span = slice(example['answer_begins'][0], example['answer_ends'][0])
+        assert example['questions'].tolist() == map(vocab.word_to_id, [
             u'To', u'whom', u'did', u'the', u'Virgin', u'Mary',
             u'allegedly', u'appear', u'in', u'1858', u'in', u'Lourdes',
             u'France', u'?'])
-        assert example[2][example[0][0]:example[1][0]].tolist() == map(vocab.word_to_id,
+        assert example['contexts'][answer_span].tolist() == map(vocab.word_to_id,
             [u'Saint', u'Bernadette', u'Soubirous'])
     finally:
         if corenlp and corenlp.returncode is None:

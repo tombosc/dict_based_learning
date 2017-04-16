@@ -2,10 +2,15 @@
 
 import h5py
 import argparse
+import logging
 
 from dictlearn.vocab import Vocabulary
 
 def main():
+    logging.basicConfig(
+        level='INFO',
+        format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
+
     parser = argparse.ArgumentParser("Builds a dictionary")
     parser.add_argument("--top_k", type=int, help="Top most frequent words to leave")
     parser.add_argument("text", help="The text to use")
