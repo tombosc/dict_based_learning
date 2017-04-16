@@ -4,49 +4,14 @@ Baseline SNLI model
 Inspired by https://github.com/Smerity/keras_snli
 """
 import theano
-from theano import tensor
-
-from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
-from blocks.bricks.base import application
-from blocks.bricks.recurrent import LSTM
-from blocks.bricks.lookup import LookupTable
-
-from dictlearn.ops import WordToIdOp, RetrievalOp
-from dictlearn.aggregation_schemes import Perplexity
-from dictlearn.stuff import DebugLSTM
-from dictlearn.util import masked_root_mean_square
-
-import sys
-from dictlearn import ops, vocab
-import dictlearn
-from dictlearn.ops import WordToIdOp
-from blocks.algorithms import GradientDescent, Scale
-from blocks.bricks import MLP, Tanh, Softmax
-from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
-from blocks.initialization import IsotropicGaussian, Constant
-from fuel.streams import DataStream
-from fuel.transformers import Flatten
-from fuel.datasets import MNIST
-from fuel.schemes import SequentialScheme
-from blocks.filter import VariableFilter
-from blocks.graph import ComputationGraph
-from blocks.model import Model
-from blocks.monitoring import aggregation
-from blocks.extensions import FinishAfter, Timing, Printing
-from blocks.extensions.saveload import Checkpoint
-from blocks.extensions.monitoring import (DataStreamMonitoring,
-                                          TrainingDataMonitoring)
-from blocks.main_loop import MainLoop
-from blocks.roles import WEIGHT
 import theano.tensor as T
-from blocks.bricks.cost import CategoricalCrossEntropy
+from blocks.bricks import Initializable, Linear, MLP
+from blocks.bricks import Softmax
+from blocks.bricks.bn import BatchNormalization
+from blocks.bricks.base import application, lazy
 from blocks.bricks.lookup import LookupTable
-from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
-from blocks.bricks.base import application
-from blocks.bricks.recurrent import LSTM
-from blocks.bricks.recurrent.misc import Bidirectional
-from blocks.bricks.lookup import LookupTable
-from blocks.graph import apply_dropout, apply_batch_normalization
+from blocks.initialization import IsotropicGaussian, Constant
+from theano import tensor
 
 
 class TimeDistributedDense(Linear):

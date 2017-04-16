@@ -97,7 +97,7 @@ class Data(object):
     def __init__(self, path, layout):
         self._path = path
         self._layout = layout
-        if not self._layout in ['standard', 'lambada', 'squad']:
+        if not self._layout in ['standard', 'lambada', 'squad', 'snli']:
             raise "layout {} is not supported".format(self._layout)
 
         self._vocab = None
@@ -119,12 +119,12 @@ class Data(object):
         elif self._layout == 'squad':
             part_map = {'train' : 'train.h5',
                         'dev' : 'dev.h5'}
-        elif self._layout == 'squad':
+        elif self._layout == 'snli':
             part_map = {'train' : 'train.h5',
                         'dev' : 'dev.h5',
                         'test': 'test.h5'}
         else:
-            raise NotImplementedError()
+            raise NotImplementedError('Not implemented layout ' + self._layout)
         return os.path.join(self._path, part_map[part])
 
     def get_dataset(self, part):
@@ -134,6 +134,9 @@ class Data(object):
                 self._dataset_cache[part] = H5PYDataset(part_path, ('train',))
             elif self._layout == 'squad':
                 self._dataset_cache[part] = SQuADDataset(part_path, ('all',))
+            elif self._layout == 'snli':
+                self._dataset_cache[part] = H5PYDataset(h5py.File(part_path, "r"), \
+                    ('all',), sources=('sentence1_ids', 'sentence2_ids', 'label',))
             else:
                 self._dataset_cache[part] = TextDataset(part_path)
         return self._dataset_cache[part]
@@ -225,10 +228,8 @@ class SNLIData(Data):
         return self._vocab
 
     def get_stream(self, part, batch_size=None, seed=None):
-        part_path = self.get_dataset(part)
-        d = H5PYDataset(h5py.File(part_path, "r"),
-            ('all',), sources=('sentence1_ids', 'sentence2_ids', 'label',))
-        it = ShuffledExampleScheme(d.num_examples, rng=seed)
+        d = self.get_dataset(part)
+        it = ShuffledExampleScheme(d.num_examples, rng=numpy.random.RandomState(seed))
 
         stream = DataStream(d, iteration_scheme=it)
         # TODO: Is constant what we want here?
