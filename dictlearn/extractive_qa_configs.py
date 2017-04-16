@@ -15,6 +15,7 @@ qa_config_registry.set_root_config({
     # model
     'dim' : 128,
     'emb_dim' : 0,
+    'coattention' : True,
     'learning_rate' : 0.001,
     'momentum' : 0.9,
     'grad_clip_threshold' : 5.0,

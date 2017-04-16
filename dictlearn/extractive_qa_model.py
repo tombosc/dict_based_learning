@@ -20,6 +20,8 @@ class ExtractiveQAModel(Initializable):
         The default dimensionality for the components.
     emd_dim : int
         The dimensionality for the embeddings. If 0, `dim` is used.
+    coattention : bool
+        Use the coattention mechanism.
     num_input_words : int
         The number of input words. If 0, `vocab.size()` is used.
     vocab
@@ -29,12 +31,13 @@ class ExtractiveQAModel(Initializable):
         does not use any dictionary.
 
     """
-    def __init__(self, dim, emb_dim, num_input_words, vocab, retrieval=None, **kwargs):
+    def __init__(self, dim, emb_dim, coattention, num_input_words, vocab, retrieval=None, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
         if num_input_words == 0:
             num_input_words = vocab.size()
+        self._coattention = coattention
         self._num_input_words = num_input_words
         self._retrieval = retrieval
 
@@ -50,7 +53,7 @@ class ExtractiveQAModel(Initializable):
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
-        self._bidir_fork = Linear(3 * dim, 4 * dim, name='bidir_fork')
+        self._bidir_fork = Linear(3 * dim if coattention else 2 * dim, 4 * dim, name='bidir_fork')
         self._bidir = Bidirectional(LSTM(dim), name='bidir')
         children.extend([self._lookup,
                          self._encoder_fork, self._encoder_rnn,
@@ -131,8 +134,15 @@ class ExtractiveQAModel(Initializable):
         # document encoding "in the view of the question"
         context_enc_informed = tensor.batched_dot(
             d2q_att_weights, question_enc_concatenated)
-        context_enc_concatenated = tensor.concatenate(
-            [context_enc, context_enc_informed], 2)
+
+        question_repr_repeated = tensor.repeat(
+            question_enc[:, [-1], :], context_enc.shape[1], axis=1)
+        if self._coattention:
+            context_enc_concatenated = tensor.concatenate(
+                [context_enc, context_enc_informed], 2)
+        else:
+            context_enc_concatenated = tensor.concatenate(
+                [context_enc, question_repr_repeated], 2)
 
         # note: forward and backward LSTMs share the
         # input weights in the current impl

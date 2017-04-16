@@ -43,7 +43,7 @@ logger = logging.getLogger()
 def _initialize_data_and_model(config):
     c = config
     data = ExtractiveQAData(c['data_path'], c['layout'])
-    qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['num_input_words'],
+    qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
                             data.vocab,
                             weights_init=Uniform(width=0.1),
                             biases_init=Constant(0.))

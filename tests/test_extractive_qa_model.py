@@ -34,14 +34,16 @@ def test_extractive_qa_model():
     answer_begins = [0, 0, 1]
     answer_ends = [1, 2, 2]
 
-    qam = ExtractiveQAModel(
-        vocab=vocab, dim=10, emb_dim=10, num_input_words=10,
-        weights_init=Uniform(width=0.1),
-        biases_init=Uniform(width=0.1))
-    qam.initialize()
+    for coattention in [False, True]:
+        qam = ExtractiveQAModel(
+            vocab=vocab, dim=10, emb_dim=10, num_input_words=10,
+            coattention=coattention,
+            weights_init=Uniform(width=0.1),
+            biases_init=Uniform(width=0.1))
+        qam.initialize()
 
-    costs = qam.apply(tensor.as_tensor_variable(contexts), context_mask,
-                      tensor.as_tensor_variable(questions), question_mask,
-                      tensor.as_tensor_variable(answer_begins),
-                      tensor.as_tensor_variable(answer_ends))
-    assert costs.eval().shape == (3,)
+        costs = qam.apply(tensor.as_tensor_variable(contexts), context_mask,
+                        tensor.as_tensor_variable(questions), question_mask,
+                        tensor.as_tensor_variable(answer_begins),
+                        tensor.as_tensor_variable(answer_ends))
+        assert costs.eval().shape == (3,)
