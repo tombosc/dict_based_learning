@@ -123,8 +123,12 @@ class ExtractiveQAModel(Initializable):
         affinity = affinity * affinity_mask - 1000 * (1 - affinity_mask)
         # soft-aligns every position in the context to positions in the question
         d2q_att_weights = self._softmax.apply(affinity, extra_ndim=1)
+        application_call.add_auxiliary_variable(
+            d2q_att_weights.copy(), name='d2q_att_weights')
         # soft-aligns every position in the question to positions in the document
         q2d_att_weights = self._softmax.apply(flip12(affinity), extra_ndim=1)
+        application_call.add_auxiliary_variable(
+            q2d_att_weights.copy(), name='q2d_att_weights')
 
         # question encoding "in the view of the document"
         question_enc_informed = tensor.batched_dot(

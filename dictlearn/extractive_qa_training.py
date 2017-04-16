@@ -29,6 +29,7 @@ from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
 from blocks.serialization import load_parameters
+from blocks.monitoring.evaluators import DatasetEvaluator
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.theano_util import parameter_stats
@@ -73,7 +74,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
-            data.get_stream('train', batch_size=4, max_length=5)
+            data.get_stream('train', shuffle=True, batch_size=4, max_length=5)
             .get_epoch_iterator(as_dict=True))
         for var in qam.input_vars:
             var.tag.test_value = test_value_data[var.name]
@@ -148,6 +149,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
                    save_main_loop=False,
                    save_separately=['log', 'iteration_state'],
                    before_training=not fast_start,
+                   every_n_epochs=c['save_freq_epochs'],
                    every_n_batches=c['save_freq_batches'],
                    after_training=not fast_start),
         DumpTensorflowSummaries(
