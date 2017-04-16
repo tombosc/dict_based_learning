@@ -205,7 +205,7 @@ class ExtractiveQAData(Data):
         stream = PutTextTransfomer(stream, dataset, raw_text=raw_text)
         # <eos> is added for two purposes: to serve a sentinel for coattention,
         # and also to ensure the answer span ends at a token
-        eos = self.vocab.EOS if raw_text else self.vocab_eos
+        eos = self.vocab.EOS if raw_text else self.vocab.eos
         stream = SourcewiseMapping(stream, functools.partial(add_eos, eos),
                                    which_sources=('contexts'))
         stream = Mapping(stream, functools.partial(select_random_answer, rng),

@@ -103,11 +103,15 @@ class ExtractiveQAModel(Initializable):
         question_embs = self._lookup.apply(questions)
 
         context_enc = flip01(
-            self._encoder_rnn.apply(self._encoder_fork.apply(
-                flip01(context_embs)))[0])
+            self._encoder_rnn.apply(
+                self._encoder_fork.apply(
+                    flip01(context_embs)),
+                mask=contexts_mask.T)[0])
         question_enc_pre = flip01(
-            self._encoder_rnn.apply(self._encoder_fork.apply(
-                flip01(question_embs)))[0])
+            self._encoder_rnn.apply(
+                self._encoder_fork.apply(
+                    flip01(question_embs)),
+                mask=questions_mask.T)[0])
         question_enc = tensor.tanh(self._question_transform.apply(question_enc_pre))
 
         # should be (batch size, context length, question_length)
@@ -133,8 +137,10 @@ class ExtractiveQAModel(Initializable):
         # note: forward and backward LSTMs share the
         # input weights in the current impl
         bidir_states = flip01(
-            self._bidir.apply(self._bidir_fork.apply(
-                flip01(context_enc_concatenated)))[0])
+            self._bidir.apply(
+                self._bidir_fork.apply(
+                    flip01(context_enc_concatenated)),
+                mask=contexts_mask.T)[0])
 
         begin_readouts = self._begin_readout.apply(bidir_states)[:, :, 0]
         begin_readouts = begin_readouts * contexts_mask - 1000.0 * (1 - contexts_mask)
