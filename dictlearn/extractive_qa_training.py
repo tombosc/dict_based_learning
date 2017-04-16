@@ -47,10 +47,11 @@ def _initialize_data_and_model(config):
                             data.vocab,
                             weights_init=Uniform(width=0.1),
                             biases_init=Constant(0.))
-    qam.allocate()
+    qam.initialize()
+    logger.debug("Model created")
     if c['embedding_path']:
         qam.set_embeddings(numpy.load(c['embedding_path']))
-    logger.debug("Model created")
+    logger.debug("Embeddings loaded")
     return data, qam
 
 
@@ -69,7 +70,6 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
 
     c = config
     data, qam = _initialize_data_and_model(c)
-    qam.initialize()
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
@@ -174,7 +174,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     main_loop.run()
 
 
-def evaluate_extractive_qa(config, save_path, part, dest):
+def evaluate_extractive_qa(config, save_path, part, num_examples, dest):
     c = config
     data, qam = _initialize_data_and_model(c)
     costs = qam.apply_with_default_vars()
@@ -184,33 +184,53 @@ def evaluate_extractive_qa(config, save_path, part, dest):
     with open(tar_path) as src:
         cg.set_parameter_values(load_parameters(src))
 
+    #evaluator = DatasetEvaluator([costs.mean()])
+    #print(evaluator.evaluate(data.get_stream('dev', batch_size=c['batch_size_valid'])))
+    #import sys
+    #sys.exit(0)
+
     detok = MosesDetokenizer()
     def detokenize(str_):
         return " ".join(detok.detokenize(str_))
 
     predicted_begins, = VariableFilter(name='predicted_begins')(cg)
     predicted_ends, = VariableFilter(name='predicted_ends')(cg)
-    predict_func = theano.function(qam.input_vars, [predicted_begins[0], predicted_ends[0]])
+    compute = [predicted_begins[0], predicted_ends[0]]
+    if c['coattention']:
+        d2q_att_weights, = VariableFilter(name='d2q_att_weights')(cg)
+        q2d_att_weights, = VariableFilter(name='q2d_att_weights')(cg)
+        compute.extend([d2q_att_weights, q2d_att_weights])
+    predict_func = theano.function(qam.input_vars, compute)
 
-    num_examples = 0
+    done_examples = 0
     num_correct = 0
     def print_stats():
-        print('EXACT MATCH RATIO: {}'.format(num_correct / float(num_examples)))
+        print('EXACT MATCH RATIO: {}'.format(num_correct / float(done_examples)))
+
+    d2q = []
+    q2d = []
 
     stream = data.get_stream(part, batch_size=1, shuffle=part == 'train', raw_text=True)
     for example in stream.get_epoch_iterator(as_dict=True):
+        if done_examples == num_examples:
+            break
         feed = dict(example)
         feed['contexts'] = numpy.array(data.vocab.encode(example['contexts'][0]))[None, :]
         feed['questions'] = numpy.array(data.vocab.encode(example['questions'][0]))[None, :]
+        result = predict_func(**feed)
         correct_answer_span = slice(example['answer_begins'], example['answer_ends'])
-        predicted_answer_span = slice(*predict_func(**feed))
+        predicted_answer_span = slice(*result[:2])
         is_correct = correct_answer_span == predicted_answer_span
 
-        num_examples += 1
+        if c['coattention']:
+            d2q.append(result[-2])
+            q2d.append(result[-1])
+
+        done_examples += 1
         num_correct += is_correct
 
         result = 'correct' if is_correct else 'wrong'
-        print('#{}'.format(num_examples))
+        print('#{}'.format(done_examples))
         print("CONTEXT:", detokenize(example['contexts'][0]))
         print("QUESTION:", detokenize(example['questions'][0]))
         print("ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
@@ -219,6 +239,9 @@ def evaluate_extractive_qa(config, save_path, part, dest):
               detokenize(example['contexts'][0, predicted_answer_span]))
         print()
 
-        if num_examples % 100:
+        if done_examples % 100 == 0:
             print_stats()
     print_stats()
+
+    with open(os.path.join(save_path, 'attention.pkl'), 'w') as dst:
+        cPickle.dump({'d2q': d2q, 'q2d': q2d}, dst)
