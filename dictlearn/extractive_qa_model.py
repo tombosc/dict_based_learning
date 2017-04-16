@@ -135,12 +135,12 @@ class ExtractiveQAModel(Initializable):
         context_enc_informed = tensor.batched_dot(
             d2q_att_weights, question_enc_concatenated)
 
-        question_repr_repeated = tensor.repeat(
-            question_enc[:, [-1], :], context_enc.shape[1], axis=1)
         if self._coattention:
             context_enc_concatenated = tensor.concatenate(
                 [context_enc, context_enc_informed], 2)
         else:
+            question_repr_repeated = tensor.repeat(
+                question_enc[:, [-1], :], context_enc.shape[1], axis=1)
             context_enc_concatenated = tensor.concatenate(
                 [context_enc, question_repr_repeated], 2)
 
