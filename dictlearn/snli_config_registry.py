@@ -10,7 +10,7 @@ snli_config_registry.set_root_config({
     'emb_dim': 300,
     'dict_path': '',
     'embedding_path': '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy',
-    'compose_type': 'sum',
+    'compose_type': '',
     'disregard_word_embeddings': False,
 
     "encoder": "sum",
@@ -29,8 +29,8 @@ snli_config_registry.set_root_config({
 })
 
 
-c = ConfigRegistry['root']
+c = snli_config_registry['root']
 c['dict_path'] = '/data/lisatmp4/bahdanau/data/lambada/dict.json'
-c['compose_type'] = 'sum'
+c['compose_type'] = 'fully_connected_linear' # Affine transformation
 c['disregard_word_embeddings'] = False
 snli_config_registry['small_dict'] = c

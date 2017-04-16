@@ -122,7 +122,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         )
     baseline.initialize()
     embeddings = np.load(c['embedding_path'])
-    baseline.embeddings_var().set_value(embeddings.astype(theano.config.floatX))
+    baseline.set_embeddings(embeddings.astype(theano.config.floatX))
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')

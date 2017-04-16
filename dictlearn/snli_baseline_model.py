@@ -4,6 +4,7 @@ Baseline SNLI model
 Inspired by https://github.com/Smerity/keras_snli
 
 TODO: Refactor SNLI baseline so that it takes embedded words (this will factor out dict lookup kwargs nicely)
+TODO: Add bn before LSTM
 """
 import theano
 import theano.tensor as T
@@ -44,10 +45,9 @@ class SNLIBaseline(Initializable):
         children = []
 
         if retrieval:
-            self._lookup = DictEnchancedLookup(retrieval=retrieval, vocab=vocab,
-                translate_dim=translate_dim, disregard_word_embeddings=disregard_word_embeddings,
-                num_input_words=num_input_words, compose_type=compose_type,
-                weights_init=GlorotUniform(), biases_init=Constant(0.0))
+            self._lookup = DictEnchancedLookup(emb_dim=emb_dim, retrieval=retrieval, vocab=vocab,
+                dim=translate_dim, disregard_word_embeddings=disregard_word_embeddings,
+                num_input_words=num_input_words, compose_type=compose_type)
             if self._encoder == "rnn":
                 # Translation serves as a "fork" to LSTM
                 self._rnn_fork = Linear(input_dim=translate_dim, output_dim=4 * translate_dim,
@@ -73,15 +73,15 @@ class SNLIBaseline(Initializable):
             elif self._encoder == "sum":
                 self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
+                children.append(self._translation)
             else:
                 raise NotImplementedError("Not implemented encoder")
-
         children.append(self._lookup)
-
 
 
         self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn")
         self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn")
+        children += [self._hyp_bn, self._prem_bn]
 
         self._mlp = []
         current_dim = 2 * translate_dim  # Joint
@@ -95,13 +95,10 @@ class SNLIBaseline(Initializable):
             self._mlp.append([dense, bn])
             cur_dim = 2 * translate_dim
 
-        children += [self._lookup, self._translation]
-        children += [self._hyp_bn, self._prem_bn]
 
         self._pred = MLP([Softmax()], [cur_dim, 3], \
             weights_init=GlorotUniform(), \
             biases_init=Constant(0))
-
         children.append(self._pred)
 
         super(SNLIBaseline, self).__init__(children=children, **kwargs)
@@ -110,7 +107,7 @@ class SNLIBaseline(Initializable):
         if isinstance(self._lookup, LookupTable):
             self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
         elif isinstance(self._lookup, DictEnchancedLookup):
-            self._lookup.embeddings_var().set_value(embeddings.astype(theano.config.floatX))
+            self._lookup.set_embeddings(embeddings)
         else:
             raise NotImplementedError()
 
@@ -118,9 +115,10 @@ class SNLIBaseline(Initializable):
         if isinstance(self._lookup, LookupTable):
             return self._lookup.parameters[0]
         elif isinstance(self._lookup, DictEnchancedLookup):
-            return self._lookup.embeddings_var()
+            raise NotImplementedError()
         else:
             raise NotImplementedError()
+
     def get_cg_transforms(self):
         return self._cg_transforms
 
@@ -149,14 +147,16 @@ class SNLIBaseline(Initializable):
             assert s1_transl.ndim == 3
         elif isinstance(self._lookup, DictEnchancedLookup):
             # This is hidden in DictEnchancedLookup then
-            s1_emb = self._lookup.apply(s1)
-            s2_emb = self._lookup.apply(s2)
-            s1_transl = self._rnn_fork.apply(s1_emb)
-            s2_transl = self._rnn_fork.apply(s2_emb)
+            s1_transl = self._lookup.apply(s1, s1_mask)
+            s2_transl = self._lookup.apply(s2, s1_mask)
+
+            if self._encoder == "rnn":
+                s1_transl = self._rnn_fork.apply(s1_transl)
+                s2_transl = self._rnn_fork.apply(s2_transl)
         else:
             raise NotImplementedError()
 
-        assert s2_emb.ndim == s1_emb.ndim == 3
+        assert s1_transl.ndim == s2_transl.ndim == 3
 
         # Construct entailment embedding
         if self._encoder == "sum":

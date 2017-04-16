@@ -3,16 +3,18 @@ Methods of constructing word embeddings
 
 TODO(kudkudak): Add unit test for it
 TODO(kudkudak): Refactor (non-dict) lookup from snli_baseline_model to a class here (name for instance EnchancedLookup)
+TODO(kudkudak): Add multiplicative compose_type
 """
 from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application
 from blocks.bricks.lookup import LookupTable
 from blocks.bricks.recurrent import LSTM
-from blocks.initialization import Uniform
+from blocks.initialization import Uniform, Constant
 
 import theano
 import theano.tensor as T
 
+from dictlearn.inits import GlorotUniform
 from dictlearn.util import masked_root_mean_square
 from dictlearn.ops import RetrievalOp
 
@@ -22,16 +24,10 @@ class LookupWithTranslation(Initializable):
 
 class DictEnchancedLookup(Initializable):
     """
-    Helper function for more powerful Lookup tables.
-    
-    The future of NLP!
+    Awesome dict based lookup
 
     Parameters
     ----------
-    translate_dim: int, default: -1
-        Working with raw embeddings is hard, if set to >0 will transform any embedding going into
-        model or out of lookup table to translate_dim
-
     num_input_words: int, default: -1
         If non zero will (a bit confusing name) restrict dynamically vocab. 
         WARNING: it assumes word ids are monotonical with frequency!
@@ -51,64 +47,56 @@ class DictEnchancedLookup(Initializable):
         If 'fully_connected_tanh', ...
     """
 
-    def __init__(self, emb_dim, vocab, retrieval, translate_dim=-1, disregard_word_embeddings=False,
+    def __init__(self, emb_dim, dim, vocab, retrieval, disregard_word_embeddings=False,
             num_input_words=-1, compose_type="sum", **kwargs):
-
-        # Probably we don't want these assers
-        assert "weights_init" in kwargs
-        assert "biases_init" in kwargs
-
         self._retrieval = retrieval
-        
+        self._vocab = vocab
+
         if num_input_words > 0:
             self._num_input_words = num_input_words
         else:
             self._num_input_words = vocab.size()
-            
+
         self._compose_type = compose_type
         self._emb_dim = emb_dim
         self._disregard_word_embeddings = disregard_word_embeddings
-        self._translate_dim = translate_dim
 
         if self._retrieval:
             self._retrieve = RetrievalOp(retrieval)
-
-        if self.translate_dim == -1:
-            dim = emb_dim
-        else:
-            dim = translate_dim
 
         if self._disregard_word_embeddings:
             raise NotImplementedError()
 
         children = []
 
-        self._base_lookup = LookupTable(self._num_input_words, emb_dim)
+        self._base_lookup = LookupTable(self._num_input_words, emb_dim,
+            weights_init=GlorotUniform(), biases_init=Constant(0))
         children.append(self._base_lookup)
 
-        if self.translate_dim > 0:
-            self._translate = Linear(emb_dim, translate_dim, name="lookup_translate")
-
-        self._def_lookup = LookupTable(self._num_input_words, dim, name='def_lookup')
-        self._def_fork = Linear(dim, 4 * emb_dim, name='def_fork')
+        self._def_lookup = LookupTable(self._num_input_words, dim, name='def_lookup',
+            weights_init=GlorotUniform(), biases_init=Constant(0))
+        # NOTE: It also has the translate layer inside
+        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork',
+            weights_init=GlorotUniform(), biases_init=Constant(0))
         # TODO(kudkudak): Better LSTM weight init
-        self._def_rnn = LSTM(dim, name='def_rnn', weights_init=Uniform(width=0.1))
+        self._def_rnn = LSTM(dim, name='def_rnn', weights_init=Uniform(width=0.1), biases_init=Constant(0))
         children.extend([self._def_lookup, self._def_fork, self._def_rnn])
 
         if compose_type == 'fully_connected_tanh':
-            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[2 * dim, dim])
+            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
+                , weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
         elif compose_type == 'fully_connected_relu':
             self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
-                dims=[2 * dim, dim])
+                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
         elif compose_type == 'fully_connected_linear':
             self._def_state_compose = MLP(activations=[None],
-                dims=[2 * dim, dim])
+                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
-        elif compose_type == 'linear_and_sum':
-            self._def_state_transform = Linear(dim, dim)
-            children.append(self._def_state_transform)
+        elif compose_type == 'fully_connected_linear':
+            self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
+            children.append(self._def_state_compose)
         elif compose_type == 'sum':
             pass
         elif not disregard_word_embeddings:
@@ -116,8 +104,10 @@ class DictEnchancedLookup(Initializable):
 
         super(DictEnchancedLookup, self).__init__(children=children, **kwargs)
 
-    def embeddings_var(self):
-        return self._base_lookup.parameters[0]
+    def set_embeddings(self, embeddings):
+        self._base_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
+        self._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
+
 
     @application
     def apply(self, application_call, words, words_mask):
@@ -165,9 +155,8 @@ class DictEnchancedLookup(Initializable):
             masked_root_mean_square(def_mean, words_mask), name='def_mean_rootmean2')
 
         # Shortlisting
-        word_ids = self._word_to_id(words)
-        input_word_ids = (T.lt(word_ids, self._num_input_words) * word_ids
-                          + T.ge(word_ids, self._num_input_words) * self._vocab.unk)
+        input_word_ids = (T.lt(words, self._num_input_words) * words
+                          + T.ge(words, self._num_input_words) * self._vocab.unk)
 
         # Run the main rnn with combined inputs
         final_embeddings = self._base_lookup.apply(input_word_ids)
@@ -179,8 +168,6 @@ class DictEnchancedLookup(Initializable):
             elif self._compose_type.startswith('fully_connected'):
                 concat = T.concatenate([final_embeddings, def_mean], axis=2)
                 final_embeddings = self._def_state_compose.apply(concat)
-            elif self._compose_type.startswith('linear_and_sum'):
-                final_embeddings += self._def_state_transform.apply(def_mean)
             else:
                 assert False
             application_call.add_auxiliary_variable(
