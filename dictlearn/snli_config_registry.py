@@ -11,7 +11,7 @@ snli_config_registry.set_root_config({
     "encoder": "sum",
     "dropout": 0.2,
     'batch_size': 512,
-    'lr': 0.1,
+    'lr': 0.02,
     'l2': 4e-6,
 
     # Misc

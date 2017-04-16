@@ -8,10 +8,10 @@ import theano.tensor as T
 from blocks.bricks import Initializable, Linear, MLP
 from blocks.bricks import Softmax
 from blocks.bricks.bn import BatchNormalization
-from blocks.bricks.recurrent import GatedRecurrent
+from blocks.bricks.recurrent import LSTM
 from blocks.bricks.base import application, lazy
 from blocks.bricks.lookup import LookupTable
-from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization
+from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
 from theano import tensor
 
 import numpy as np
@@ -67,15 +67,18 @@ class SNLIBaseline(Initializable):
         children = []
         self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
 
+
         if self._encoder == "rnn":
-            self._rnn_encoder = GatedRecurrent(input_dim=translate_dim, name='GRU_encoder', weights_init=GlorotUniform())
+            # Translation serves as fork to LSTM
+            self._translation = Linear(input_dim=emb_dim, output_dim=4*translate_dim,
+                weights_init=GlorotUniform(), biases_init=Constant(0))
+            self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.1))
+            children.append(self._rnn_encoder)
         elif self._encoder == "sum":
-            pass
+            self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim,
+                weights_init=GlorotUniform(), biases_init=Constant(0))
         else:
             raise NotImplementedError("Not implemented encoder")
-
-        self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim, weights_init=GlorotUniform(),
-            biases_init=Constant(0))
 
         self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn")
         self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn")
@@ -130,19 +133,17 @@ class SNLIBaseline(Initializable):
         s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
 
         assert s1_transl.ndim == 3
-
-        s1_emb_mask = s1_mask.dimshuffle((0, 1, "x"))
-        s2_emb_mask = s2_mask.dimshuffle((0, 1, "x"))
-
         assert s2_emb.ndim == s1_emb.ndim == 3
 
         # Construct entailment embedding
         if self._encoder == "sum":
+            s1_emb_mask = s1_mask.dimshuffle((0, 1, "x"))
+            s2_emb_mask = s2_mask.dimshuffle((0, 1, "x"))
             prem = (s1_emb_mask * s1_transl).sum(axis=1)
             hyp = (s2_emb_mask * s2_transl).sum(axis=1)
         else:
-            prem = self._rnn_encoder.apply(s1_transl, mask=s1_emb_mask)[0][-1]
-            hyp = self._rnn_encoder.apply(s2_transl, mask=s2_emb_mask)[0][-1]
+            prem = self._rnn_encoder.apply(s1_transl, mask=s1_mask)[0][-1]
+            hyp = self._rnn_encoder.apply(s2_transl, mask=s2_mask)[0][-1]
 
         prem = self._prem_bn.apply(prem)
         hyp = self._hyp_bn.apply(hyp)

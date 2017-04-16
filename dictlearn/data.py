@@ -222,7 +222,7 @@ class ExtractiveQAData(Data):
         if not batch_size:
             return stream
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
-        stream = Padding(stream, mask_sources=('contexts', 'questions'))
+        stream = Padding(stream, mask_sources=('contexts', 'questions'), mask_dtype='float32')
         return stream
 
 
