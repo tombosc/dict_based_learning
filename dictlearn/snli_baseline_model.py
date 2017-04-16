@@ -142,8 +142,8 @@ class SNLIBaseline(Initializable):
             prem = (s1_emb_mask * s1_transl).sum(axis=1)
             hyp = (s2_emb_mask * s2_transl).sum(axis=1)
         else:
-            prem = self._rnn_encoder.apply(s1_transl, mask=s1_mask)[0][-1]
-            hyp = self._rnn_encoder.apply(s2_transl, mask=s2_mask)[0][-1]
+            prem = self._rnn_encoder.apply(s1_transl.transpose(1, 0, 2), mask=s1_mask.transpose(1, 0))[0][-1]
+            hyp = self._rnn_encoder.apply(s2_transl.transpose(1, 0, 2), mask=s2_mask.transpose(1, 0))[0][-1]
 
         prem = self._prem_bn.apply(prem)
         hyp = self._hyp_bn.apply(hyp)
