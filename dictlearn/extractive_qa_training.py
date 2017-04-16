@@ -152,9 +152,11 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
                    after_training=not fast_start),
         DumpTensorflowSummaries(
             save_path,
+            after_epoch=True,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
+        Printing(after_epoch=True,
+                 every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
     # We use a completely random seed on purpose. With Fuel server
