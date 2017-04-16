@@ -119,6 +119,12 @@ class Data(object):
         elif self._layout == 'squad':
             part_map = {'train' : 'train.h5',
                         'dev' : 'dev.h5'}
+        elif self._layout == 'squad':
+            part_map = {'train' : 'train.h5',
+                        'dev' : 'dev.h5',
+                        'test': 'test.h5'}
+        else:
+            raise NotImplementedError()
         return os.path.join(self._path, part_map[part])
 
     def get_dataset(self, part):
@@ -207,4 +213,26 @@ class ExtractiveQAData(Data):
             return stream
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
         stream = Padding(stream, mask_sources=('contexts', 'questions'))
+        return stream
+
+
+class SNLIData(Data):
+    @property
+    def vocab(self):
+        if not self._vocab:
+            self._vocab = Vocabulary(
+                os.path.join(self._path, "vocab.txt"))
+        return self._vocab
+
+    def get_stream(self, part, batch_size=None, seed=None):
+        part_path = self.get_dataset(part)
+        d = H5PYDataset(h5py.File(part_path, "r"),
+            ('all',), sources=('sentence1_ids', 'sentence2_ids', 'label',))
+        it = ShuffledExampleScheme(d.num_examples, rng=seed)
+
+        stream = DataStream(d, iteration_scheme=it)
+        # TODO: Is constant what we want here?
+        stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
+        stream = Padding(stream, mask_sources=('sentence1_ids', 'sentence2_ids'))  # Increases amount of outputs by x2
+
         return stream
