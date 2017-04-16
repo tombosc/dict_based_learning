@@ -64,9 +64,6 @@ class DictEnchancedLookup(Initializable):
         if self._retrieval:
             self._retrieve = RetrievalOp(retrieval)
 
-        if self._disregard_word_embeddings:
-            raise NotImplementedError()
-
         children = []
 
         self._base_lookup = LookupTable(self._num_input_words, emb_dim,
@@ -82,25 +79,26 @@ class DictEnchancedLookup(Initializable):
         self._def_rnn = LSTM(dim, name='def_rnn', weights_init=Uniform(width=0.1), biases_init=Constant(0))
         children.extend([self._def_lookup, self._def_fork, self._def_rnn])
 
-        if compose_type == 'fully_connected_tanh':
-            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
-                , weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_relu':
-            self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
-                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_linear':
-            self._def_state_compose = MLP(activations=[None],
-                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_linear':
-            self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'sum':
-            pass
-        elif not disregard_word_embeddings:
-            raise Exception("Error: composition of embeddings and def not understood")
+        if not self._disregard_word_embeddings:
+            if compose_type == 'fully_connected_tanh':
+                self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
+                    , weights_init=GlorotUniform(), biases_init=Constant(0))
+                children.append(self._def_state_compose)
+            elif compose_type == 'fully_connected_relu':
+                self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
+                    dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
+                children.append(self._def_state_compose)
+            elif compose_type == 'fully_connected_linear':
+                self._def_state_compose = MLP(activations=[None],
+                    dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
+                children.append(self._def_state_compose)
+            elif compose_type == 'fully_connected_linear':
+                self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
+                children.append(self._def_state_compose)
+            elif compose_type == 'sum':
+                pass
+            elif not disregard_word_embeddings:
+                raise Exception("Error: composition of embeddings and def not understood")
 
         super(DictEnchancedLookup, self).__init__(children=children, **kwargs)
 
@@ -162,7 +160,8 @@ class DictEnchancedLookup(Initializable):
         final_embeddings = self._base_lookup.apply(input_word_ids)
         application_call.add_auxiliary_variable(
             masked_root_mean_square(final_embeddings, words_mask), name='rnn_input_rootmean2')
-        if self._retrieval:
+
+        if not self._disregard_word_embeddings:
             if self._compose_type == 'sum':
                 final_embeddings += def_mean
             elif self._compose_type.startswith('fully_connected'):
@@ -173,8 +172,7 @@ class DictEnchancedLookup(Initializable):
             application_call.add_auxiliary_variable(
                 masked_root_mean_square(final_embeddings, words_mask),
                 name='merged_input_rootmean2')
-
-        if self._disregard_word_embeddings:
+        else:
             final_embeddings = def_mean
 
         return final_embeddings

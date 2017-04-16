@@ -130,8 +130,8 @@ class SNLIBaseline(Initializable):
             # Shortlist words (sometimes we want smaller vocab, especially when dict is small)
             s1 = (tensor.lt(s1, self._num_input_words) * s1
                               + tensor.ge(s1, self._num_input_words) * self._vocab.unk)
-            s2 = (tensor.lt(s2, self._num_output_words) * s2
-                               + tensor.ge(s2, self._num_output_words) * self._vocab.unk)
+            s2 = (tensor.lt(s2, self._num_input_words) * s2
+                               + tensor.ge(s2, self._num_input_words) * self._vocab.unk)
 
             # Embeddings
             s1_emb = self._lookup.apply(s1)
