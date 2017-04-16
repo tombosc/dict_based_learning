@@ -149,8 +149,6 @@ class SNLIBaseline(Initializable):
             joint = dense.apply(joint)
             # TODO: Is this is the absolutely cleanest way to do it? I am afraid so!
             self._cg_transforms.append(['dropout', self._dropout, joint])
-            print("Apply " + str(bn))
             joint = bn.apply(joint)
 
-        pred = self._pred.apply(joint)
-        return pred
+        return self._pred.apply(joint)
