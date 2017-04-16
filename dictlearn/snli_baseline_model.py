@@ -55,7 +55,8 @@ class SNLIBaseline(Initializable):
     Simple model based on https://github.com/Smerity/keras_snl
     """
 
-    def __init__(self, translate_dim, emb_dim, vocab, dropout=0.2, encoder="sum",
+    def __init__(self, translate_dim, emb_dim, vocab, dropout=0.2,
+            encoder="sum",
             n_layers=3, **kwargs):
 
         self._vocab = vocab
@@ -66,7 +67,6 @@ class SNLIBaseline(Initializable):
 
         children = []
         self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
-
 
         if self._encoder == "rnn":
             # Translation serves as fork to LSTM

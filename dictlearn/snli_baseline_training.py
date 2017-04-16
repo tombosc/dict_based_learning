@@ -55,8 +55,6 @@ from collections import defaultdict
 
 logger = logging.getLogger()
 
-from keras.initializations import glorot_uniform
-
 class DumpCSVSummaries(SimpleExtension):
     def __init__(self, save_path, mode="w", **kwargs):
         self._save_path = save_path
@@ -79,6 +77,12 @@ class DumpCSVSummaries(SimpleExtension):
                 self._current_log[key].append(float_value)
             except:
                 pass
+
+        # Make sure all logs have same length (for csv serialization)
+        max_len = max([len(v) for v in self._current_log.values()])
+        for k in self._current_log:
+            if len(self._current_log[k]) != max_len:
+                self._current_log[k] += [self._current_log[k][-1] for _ in range(max_len - len(self._current_log[k]))]
 
         pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
 
