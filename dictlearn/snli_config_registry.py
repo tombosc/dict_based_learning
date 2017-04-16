@@ -13,6 +13,7 @@ snli_config_registry.set_root_config({
     'compose_type': '',
     'disregard_word_embeddings': False,
 
+    'num_input_words': 0, # Will take vocab size
     "encoder": "sum",
     "dropout": 0.2,
     'batch_size': 512,
@@ -33,4 +34,5 @@ c = snli_config_registry['root']
 c['dict_path'] = '/data/lisatmp4/bahdanau/data/lambada/dict.json'
 c['compose_type'] = 'fully_connected_linear' # Affine transformation
 c['disregard_word_embeddings'] = False
+# c['num_input_words'] = 10000
 snli_config_registry['small_dict'] = c
