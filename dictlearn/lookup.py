@@ -4,6 +4,8 @@ Methods of constructing word embeddings
 TODO(kudkudak): Add unit test for it
 TODO(kudkudak): Refactor (non-dict) lookup from snli_baseline_model to a class here (name for instance EnchancedLookup)
 TODO(kudkudak): Add multiplicative compose_type
+
+TODO(kudkudak): Dict fetching also as Fuel stream (would put it on other thread then)
 """
 from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application

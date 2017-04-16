@@ -53,7 +53,7 @@ class SNLIBaseline(Initializable):
                 self._rnn_fork = Linear(input_dim=translate_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
                 # TODO(kudkudak): Better LSTM weight init
-                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.1))
+                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.01))
                 children.append(self._rnn_fork)
                 children.append(self._rnn_encoder)
             elif self._encoder == "sum":
@@ -67,8 +67,9 @@ class SNLIBaseline(Initializable):
                 self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
                 # TODO(kudkudak): Better LSTM weight init
-                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.1))
+                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.01))
                 children.append(self._rnn_encoder)
+                children.append(self._translation)
 
             elif self._encoder == "sum":
                 self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim,
@@ -94,7 +95,6 @@ class SNLIBaseline(Initializable):
             children += [dense, bn]
             self._mlp.append([dense, bn])
             cur_dim = 2 * translate_dim
-
 
         self._pred = MLP([Softmax()], [cur_dim, 3], \
             weights_init=GlorotUniform(), \
@@ -146,6 +146,7 @@ class SNLIBaseline(Initializable):
             s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
             assert s1_transl.ndim == 3
         elif isinstance(self._lookup, DictEnchancedLookup):
+            print("DictEnchancedLookup")
             # This is hidden in DictEnchancedLookup then
             s1_transl = self._lookup.apply(s1, s1_mask)
             s2_transl = self._lookup.apply(s2, s1_mask)
