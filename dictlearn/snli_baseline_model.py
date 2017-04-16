@@ -55,9 +55,7 @@ class TimeDistributedDense(Linear):
 class SNLIBaseline(Initializable):
     """
 
-    Simple model based on https://github.com/Smerity/keras_snli
-
-    TODO(kudkudak): Better inits (why there is no sensible init in blocks :P ??)
+    Simple model based on https://github.com/Smerity/keras_snl
     """
 
     def __init__(self, translate_dim, emb_dim, vocab, dropout=0.2, encoder="sum",
@@ -110,7 +108,6 @@ class SNLIBaseline(Initializable):
     def embeddings_var(self):
         return self._lookup.parameters[0]
 
-    # TODO: How to nicely code dropout in blocks?
     def get_cg_transforms(self):
         # Note: dropout is not part of model specification in blocks convention
 
@@ -147,7 +144,6 @@ class SNLIBaseline(Initializable):
         for block in self._mlp:
             dense, bn = block
             joint = dense.apply(joint)
-            # TODO: Is this is the absolutely cleanest way to do it? I am afraid so!
             self._cg_transforms.append(['dropout', self._dropout, joint])
             joint = bn.apply(joint)
 
