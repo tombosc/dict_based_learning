@@ -38,6 +38,9 @@ from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
 
+from blocks.roles import WEIGHT
+from blocks.filter import VariableFilter
+
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import get_free_port
@@ -47,6 +50,7 @@ from dictlearn.snli_baseline_model import SNLIBaseline
 
 logger = logging.getLogger()
 
+from keras.initializations import glorot_uniform
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
     c = config
@@ -81,6 +85,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # Computation graph
     cg = ComputationGraph([cost])
 
+    # Weight decay
+    weights = VariableFilter(bricks=[dense for dense, bn in baseline._mlp], roles=[WEIGHT])(cg.variables)
+    final_cost = cost + c['l2'] * sum((w ** 2).sum() for w in weights)
+    final_cost.name = 'final_cost'
+
     for name, param, var in baseline.get_cg_transforms():
         print("Applying " + name + " to " + var.name)
         cg = apply_dropout(cg, [var], param)
@@ -93,11 +102,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     # Optimizer
     algorithm = GradientDescent(
-        cost=cost,
+        cost=final_cost,
         parameters=cg.parameters,
         step_rule=Scale(learning_rate=c['lr']))
     algorithm.add_updates(extra_updates)
-    m = Model(cost)
+    m = Model(final_cost)
 
     # Monitors
     error_rate = MisclassificationRate().apply(y.flatten(), pred)
@@ -109,8 +118,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                         for key in sorted(parameters.keys())],
                     width=120))
 
-    train_monitored_vars = [error_rate]
-    monitored_vars = [error_rate]
+    train_monitored_vars = [final_cost, cost, error_rate]
+    monitored_vars = [final_cost, cost, error_rate]
     if c['monitor_parameters']:
         for name, param in parameters.items():
             num_elements = numpy.product(param.get_value().shape)
