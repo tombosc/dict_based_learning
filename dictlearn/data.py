@@ -207,7 +207,7 @@ class ExtractiveQAData(Data):
         # and also to ensure the answer span ends at a token
         eos = self.vocab.EOS if raw_text else self.vocab.eos
         stream = SourcewiseMapping(stream, functools.partial(add_eos, eos),
-                                   which_sources=('contexts'))
+                                   which_sources=('contexts', 'questions'))
         stream = Mapping(stream, functools.partial(select_random_answer, rng),
                          mapping_accepts=dict)
         if not batch_size:
