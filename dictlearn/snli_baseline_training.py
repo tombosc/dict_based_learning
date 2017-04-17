@@ -1,5 +1,9 @@
 """
 Training loop for baseline SNLI model
+
+TODO: Dropout circuit
+TODO: Fix embeddings (shouldnt be trained according to keras_snli repo, this will also speed up code)
+TODO: Configure logger
 """
 
 import sys
@@ -109,7 +113,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
-        retrieval = Retrieval(vocab=data.vocab, dictionary=dict)
+        retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
+            exclude_top_k=c['exclude_top_k'])
     else:
         retrieval = None
 
@@ -182,6 +187,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                     [(key, parameters[key].get_value().shape)
                         for key in sorted(parameters.keys())],
                     width=120))
+    logger.info("Parameter sums" + "\n" +
+                pprint.pformat(
+                    [(key, np.abs(parameters[key].get_value()).sum())
+                        for key in sorted(parameters.keys())],
+                    width=120))
 
     train_monitored_vars = [final_cost, cost, error_rate]
     monitored_vars = [final_cost, cost, error_rate]
@@ -234,14 +244,16 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         with open(stream_path, 'w') as dst:
             cPickle.dump(training_stream, dst, 0)
         port = ServerDataStream.PORT = get_free_port()
-        ret = subprocess.Popen(["start_fuel_server.py", stream_path, str(port)])
+        ret = subprocess.Popen([os.path.join(os.path.dirname(__file__), "../bin/start_fuel_server.py"),
+            stream_path, str(port)])
+        print("Using port " + str(port))
         time.sleep(0.1)
         if ret.returncode is not None:
             raise Exception()
         atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
         training_stream = ServerDataStream(
             sources=training_stream.sources,
-            produces_examples=training_stream.produces_examples)
+            produces_examples=training_stream.produces_examples, port=port)
 
     main_loop = MainLoop(
         algorithm,

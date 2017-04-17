@@ -166,7 +166,7 @@ class Dictionary(object):
                 tokenized_def = [token.encode('utf-8')
                                  for token in toktok.tokenize(def_.text.lower())]
                 self._data[word].append(tokenized_def)
-            logger.debug("definitions for '{}' fetched".format(word))
+            logger.debug("definitions for '{}' fetched {} remaining".format(word, self._remaining_calls))
         self.save()
         self._last_saved = 0
 

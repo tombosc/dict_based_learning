@@ -1,6 +1,8 @@
 from dictlearn.config_registry import ConfigRegistry
 
 snli_config_registry = ConfigRegistry()
+
+# Each epoch has ~500k examples
 snli_config_registry.set_root_config({
     'data_path':  '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/',
     'layout': 'snli',
@@ -12,6 +14,8 @@ snli_config_registry.set_root_config({
     'embedding_path': '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy',
     'compose_type': '',
     'disregard_word_embeddings': False,
+    'exclude_top_k': -1,
+    'max_def_length': 1000,
 
     'num_input_words': 0, # Will take vocab size
     "encoder": "sum",
@@ -29,10 +33,9 @@ snli_config_registry.set_root_config({
     'n_batches': 100000
 })
 
-
 c = snli_config_registry['root']
-c['dict_path'] = '/data/lisatmp4/bahdanau/data/lambada/dict.json'
+c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict.json'
+c['exclude_top_k'] = 10000
 c['compose_type'] = 'fully_connected_linear' # Affine transformation
 c['disregard_word_embeddings'] = False
-# c['num_input_words'] = 10000
 snli_config_registry['small_dict'] = c

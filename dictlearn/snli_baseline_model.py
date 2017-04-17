@@ -5,6 +5,7 @@ Inspired by https://github.com/Smerity/keras_snli
 
 TODO: Refactor SNLI baseline so that it takes embedded words (this will factor out dict lookup kwargs nicely)
 TODO: Add bn before LSTM
+TODO: Recurrent dropout
 """
 import theano
 import theano.tensor as T
