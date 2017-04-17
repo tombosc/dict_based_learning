@@ -3,7 +3,6 @@ Training loop for baseline SNLI model
 
 TODO: Dropout circuit
 TODO: Fix embeddings (shouldnt be trained according to keras_snli repo, this will also speed up code)
-TODO: Configure logger
 """
 
 import sys
@@ -38,7 +37,7 @@ from blocks.algorithms import (
     GradientDescent, Adam)
 from blocks.graph import ComputationGraph, apply_batch_normalization, apply_dropout, get_batch_normalization_updates
 from blocks.model import Model
-from blocks.extensions import FinishAfter, Timing, Printing
+from blocks.extensions import FinishAfter, Timing, Printing, first
 from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
@@ -49,7 +48,7 @@ from blocks.filter import VariableFilter
 
 from fuel.streams import ServerDataStream
 
-from dictlearn.util import get_free_port
+from dictlearn.util import get_free_port, configure_logger
 from dictlearn.extensions import DumpTensorflowSummaries, SimpleExtension
 from dictlearn.data import SNLIData
 from dictlearn.snli_baseline_model import SNLIBaseline
@@ -58,7 +57,68 @@ from dictlearn.retrieval import Retrieval, Dictionary
 import pandas as pd
 from collections import defaultdict
 
-logger = logging.getLogger()
+class LoggerPrinting(SimpleExtension):
+    """
+    Prints log messages to the screen.
+
+    TODO(kudkudak): This could be also echieved by redirecting stdout to specially prepared logger,
+    but it doesn't work nicely with progressbar, and progress bar is cool :(
+
+    ( Progress bar sends new write to logger then so log file would have new line for each update
+    of progress bar )
+    """
+    def __init__(self, logger_name, **kwargs):
+        self._logger = logging.getLogger(logger_name)
+        self._logger_name = logger_name
+        kwargs.setdefault("before_first_epoch", True)
+        kwargs.setdefault("on_resumption", True)
+        kwargs.setdefault("after_training", True)
+        kwargs.setdefault("after_epoch", True)
+        kwargs.setdefault("on_interrupt", True)
+        super(LoggerPrinting, self).__init__(**kwargs)
+
+    def __getstate__(self):
+        # Ensure we won't pickle the actual progress bar.
+        # (It might contain unpicklable file handles)
+        state = dict(self.__dict__)
+        del state['_logger']
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._logger = logging.getLogger(logger_name)
+
+    def _print_attributes(self, attribute_tuples):
+        for attr, value in sorted(attribute_tuples.items(), key=first):
+            if not attr.startswith("_"):
+                self._logger.info("\t", "{}:".format(attr), value)
+
+    def do(self, which_callback, *args):
+        log = self.main_loop.log
+        print_status = True
+
+        self._logger.info()
+        self._logger.info("".join(79 * "-"))
+        if which_callback == "before_epoch" and log.status['epochs_done'] == 0:
+            self._logger.info("BEFORE FIRST EPOCH")
+        elif which_callback == "on_resumption":
+            self._logger.info("TRAINING HAS BEEN RESUMED")
+        elif which_callback == "after_training":
+            self._logger.info("TRAINING HAS BEEN FINISHED:")
+        elif which_callback == "after_epoch":
+            self._logger.info("AFTER ANOTHER EPOCH")
+        elif which_callback == "on_interrupt":
+            self._logger.info("TRAINING HAS BEEN INTERRUPTED")
+            print_status = False
+        self._logger.info("".join(79 * "-"))
+        if print_status:
+            self._logger.info("Training status:")
+            self._print_attributes(log.status)
+            self._logger.info("Log records from the iteration {}:".format(
+                log.status['iterations_done']))
+            self._print_attributes(log.current_row)
+        self._logger.info()
+
 
 class DumpCSVSummaries(SimpleExtension):
     def __init__(self, save_path, mode="w", **kwargs):
@@ -93,8 +153,8 @@ class DumpCSVSummaries(SimpleExtension):
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
     c = config
-
     new_training_job = False
+    logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
     if not os.path.exists(save_path):
         logger.info("Start a new job")
         new_training_job = True
@@ -137,11 +197,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     pred = baseline.apply(s1, s1_mask, s2, s2_mask)
     cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
 
-    # test_value_data = next(
-    #     data.get_stream('train', batch_size=4)
-    #         .get_epoch_iterator())
-    # import pdb; pdb.set_trace()
-
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
             data.get_stream('train', batch_size=4)
@@ -161,7 +216,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     final_cost.name = 'final_cost'
 
     for name, param, var in baseline.get_cg_transforms():
-        print("Applying " + name + " to " + var.name)
+        logger.info("Applying " + name + " to " + var.name)
         cg = apply_dropout(cg, [var], param)
 
     cg = apply_batch_normalization(cg)
@@ -187,9 +242,9 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                     [(key, parameters[key].get_value().shape)
                         for key in sorted(parameters.keys())],
                     width=120))
-    logger.info("Parameter sums" + "\n" +
+    logger.info("Parameter norms" + "\n" +
                 pprint.pformat(
-                    [(key, np.abs(parameters[key].get_value()).sum())
+                    [(key, np.linalg.norm(parameters[key].get_value().reshape(-1,)).mean())
                         for key in sorted(parameters.keys())],
                     width=120))
 
@@ -232,7 +287,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             save_path,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
+        LoggerPrinting(logger_name=logger.name, every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
 
