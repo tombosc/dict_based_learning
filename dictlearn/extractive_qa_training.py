@@ -11,6 +11,7 @@ import pprint
 import logging
 import cPickle
 import subprocess
+import json
 
 import numpy
 import theano
@@ -176,7 +177,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     main_loop.run()
 
 
-def evaluate_extractive_qa(config, save_path, part, num_examples, dest):
+def evaluate_extractive_qa(config, save_path, part, num_examples, dest_path):
     c = config
     data, qam = _initialize_data_and_model(c)
     costs = qam.apply_with_default_vars()
@@ -211,18 +212,22 @@ def evaluate_extractive_qa(config, save_path, part, num_examples, dest):
 
     d2q = []
     q2d = []
+    predictions = {}
 
-    stream = data.get_stream(part, batch_size=1, shuffle=part == 'train', raw_text=True)
+    stream = data.get_stream(part, batch_size=1, shuffle=part == 'train',
+                             raw_text=True, q_ids=True)
     for example in stream.get_epoch_iterator(as_dict=True):
         if done_examples == num_examples:
             break
         feed = dict(example)
+        del feed['q_ids']
         feed['contexts'] = numpy.array(data.vocab.encode(example['contexts'][0]))[None, :]
         feed['questions'] = numpy.array(data.vocab.encode(example['questions'][0]))[None, :]
         result = predict_func(**feed)
         correct_answer_span = slice(example['answer_begins'], example['answer_ends'])
         predicted_answer_span = slice(*result[:2])
         is_correct = correct_answer_span == predicted_answer_span
+        answer = detokenize(example['contexts'][0, predicted_answer_span])
 
         if c['coattention']:
             d2q.append(result[-2])
@@ -230,6 +235,7 @@ def evaluate_extractive_qa(config, save_path, part, num_examples, dest):
 
         done_examples += 1
         num_correct += is_correct
+        predictions[example['q_ids'][0]] = answer
 
         result = 'correct' if is_correct else 'wrong'
         print('#{}'.format(done_examples))
@@ -238,7 +244,7 @@ def evaluate_extractive_qa(config, save_path, part, num_examples, dest):
         print("ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
                                                    predicted_answer_span.stop,
                                                    result),
-              detokenize(example['contexts'][0, predicted_answer_span]))
+              answer)
         print()
 
         if done_examples % 100 == 0:
@@ -247,3 +253,5 @@ def evaluate_extractive_qa(config, save_path, part, num_examples, dest):
 
     with open(os.path.join(save_path, 'attention.pkl'), 'w') as dst:
         cPickle.dump({'d2q': d2q, 'q2d': q2d}, dst)
+    with open(dest_path, 'w') as dst:
+        json.dump(predictions, dst, indent=2)
