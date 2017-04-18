@@ -12,7 +12,7 @@ import theano.tensor as T
 from theano import tensor
 
 from blocks.bricks import Initializable, Linear, MLP
-from blocks.bricks import Softmax
+from blocks.bricks import Softmax, Rectifier
 from blocks.bricks.bn import BatchNormalization
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.base import application, lazy
@@ -81,20 +81,21 @@ class SNLIBaseline(Initializable):
         children.append(self._lookup)
 
 
-        self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn")
-        self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn")
+        self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn", conserve_memory=False)
+        self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn", conserve_memory=False)
         children += [self._hyp_bn, self._prem_bn]
 
         self._mlp = []
         current_dim = 2 * translate_dim  # Joint
         for i in range(n_layers):
+            rect = Rectifier()
             dense = Linear(input_dim=current_dim, output_dim=2 * translate_dim,
                 name="MLP_layer_" + str(i), \
                 weights_init=GlorotUniform(), \
                 biases_init=Constant(0))
-            bn = BatchNormalization(input_dim=2 * translate_dim, name="BN_" + str(i))
-            children += [dense, bn]
-            self._mlp.append([dense, bn])
+            bn = BatchNormalization(input_dim=2 * translate_dim, name="BN_" + str(i), conserve_memory=False)
+            children += [dense, rect, bn] #TODO: Strange place to put ReLU
+            self._mlp.append([dense, rect, bn])
             cur_dim = 2 * translate_dim
 
         self._pred = MLP([Softmax()], [cur_dim, 3], \
@@ -174,6 +175,8 @@ class SNLIBaseline(Initializable):
             s2_emb_mask = s2_mask.dimshuffle((0, 1, "x"))
             prem = (s1_emb_mask * s1_transl).sum(axis=1)
             hyp = (s2_emb_mask * s2_transl).sum(axis=1)
+            # prem = ( s1_transl).sum(axis=1)
+            # hyp = (s2_transl).sum(axis=1)
         else:
             prem = self._rnn_encoder.apply(s1_transl.transpose(1, 0, 2), mask=s1_mask.transpose(1, 0))[0][-1]
             hyp = self._rnn_encoder.apply(s2_transl.transpose(1, 0, 2), mask=s2_mask.transpose(1, 0))[0][-1]
@@ -187,8 +190,9 @@ class SNLIBaseline(Initializable):
 
         # MLP
         for block in self._mlp:
-            dense, bn = block
+            dense, relu, bn = block
             joint = dense.apply(joint)
+            joint = relu.apply(joint)
             self._cg_transforms.append(['dropout', self._dropout, joint])
             joint = bn.apply(joint)
 

@@ -77,7 +77,7 @@ class Vocabulary(object):
 
     def word_to_id(self, word, top_k=None):
         id_ = self._word_to_id.get(word)
-        if id_ and (not top_k or id_ < top_k):
+        if id_ is not None and not top_k or id_ < top_k:
             return id_
         return self.unk
 
