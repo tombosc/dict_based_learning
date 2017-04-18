@@ -74,6 +74,7 @@ class DebugLSTM(BaseRecurrent, Initializable):
             return 0
         return super(DebugLSTM, self).get_dim(name)
 
+
     def _allocate(self):
         self.W_state = shared_floatx_nans((self.dim, 4*self.dim),
                                           name='W_state')

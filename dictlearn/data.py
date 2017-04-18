@@ -99,7 +99,7 @@ class Data(object):
     def __init__(self, path, layout):
         self._path = path
         self._layout = layout
-        if not self._layout in ['standard', 'lambada', 'squad']:
+        if not self._layout in ['standard', 'lambada', 'squad', 'snli']:
             raise "layout {} is not supported".format(self._layout)
 
         self._vocab = None
@@ -121,6 +121,12 @@ class Data(object):
         elif self._layout == 'squad':
             part_map = {'train' : 'train.h5',
                         'dev' : 'dev.h5'}
+        elif self._layout == 'snli':
+            part_map = {'train' : 'train.h5',
+                        'dev' : 'dev.h5',
+                        'test': 'test.h5'}
+        else:
+            raise NotImplementedError('Not implemented layout ' + self._layout)
         return os.path.join(self._path, part_map[part])
 
     def get_dataset(self, part):
@@ -130,6 +136,9 @@ class Data(object):
                 self._dataset_cache[part] = H5PYDataset(part_path, ('train',))
             elif self._layout == 'squad':
                 self._dataset_cache[part] = SQuADDataset(part_path, ('all',))
+            elif self._layout == 'snli':
+                self._dataset_cache[part] = H5PYDataset(h5py.File(part_path, "r"), \
+                    ('all',), sources=('sentence1_ids', 'sentence2_ids', 'label',), load_in_memory=True)
             else:
                 self._dataset_cache[part] = TextDataset(part_path)
         return self._dataset_cache[part]
@@ -213,5 +222,26 @@ class ExtractiveQAData(Data):
         if not batch_size:
             return stream
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
-        stream = Padding(stream, mask_sources=('contexts', 'questions'))
+        stream = Padding(stream, mask_sources=('contexts', 'questions'), mask_dtype='float32')
+        return stream
+
+
+class SNLIData(Data):
+    @property
+    def vocab(self):
+        if not self._vocab:
+            self._vocab = Vocabulary(
+                os.path.join(self._path, "vocab.txt"))
+        return self._vocab
+
+    def get_stream(self, part, batch_size=None, seed=None):
+        d = self.get_dataset(part)
+        print("Dataset with {} examples".format(d.num_examples))
+        it = ShuffledExampleScheme(d.num_examples, rng=numpy.random.RandomState(seed))
+
+        stream = DataStream(d, iteration_scheme=it)
+        # TODO: Is constant what we want here?
+        stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
+        stream = Padding(stream, mask_sources=('sentence1_ids', 'sentence2_ids'))  # Increases amount of outputs by x2
+
         return stream

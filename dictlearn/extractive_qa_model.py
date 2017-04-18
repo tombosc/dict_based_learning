@@ -40,7 +40,6 @@ class ExtractiveQAModel(Initializable):
         self._coattention = coattention
         self._num_input_words = num_input_words
         self._retrieval = retrieval
-
         self._word_to_id = WordToIdOp(self._vocab)
 
         if self._retrieval:
