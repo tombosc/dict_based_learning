@@ -3,13 +3,16 @@ Training loop for baseline SNLI model
 
 TODO: Debug speed
 TODO: Debug low acc
+TODO: Unit test data preprocessing
 TODO: Add logging to txt
 TODO: Reload with fuel server?
 TODO: Second round of debugging reloading
 
 Timing:
 time_epoch=0.0712900161743
+time_epoch=94.0922088623
 Read data in fuel sucks?
+time_read_data_this_batch: 0.705662744045
 """
 
 import sys
@@ -330,7 +333,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             cPickle.dump(training_stream, dst, 0)
         port = ServerDataStream.PORT = get_free_port()
         ret = subprocess.Popen([os.path.join(os.path.dirname(__file__), "../bin/start_fuel_server.py"),
-            stream_path, str(port)])
+            stream_path, str(port), str(5000)])
         print("Using port " + str(port))
         time.sleep(0.1)
         if ret.returncode is not None:
@@ -338,7 +341,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
         training_stream = ServerDataStream(
             sources=training_stream.sources,
-            produces_examples=training_stream.produces_examples, port=port)
+            produces_examples=training_stream.produces_examples, port=port, hwm=5000)
 
     model = Model(cost)
     for p, m in pop_updates:

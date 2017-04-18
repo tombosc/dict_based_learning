@@ -138,7 +138,7 @@ class Data(object):
                 self._dataset_cache[part] = SQuADDataset(part_path, ('all',))
             elif self._layout == 'snli':
                 self._dataset_cache[part] = H5PYDataset(h5py.File(part_path, "r"), \
-                    ('all',), sources=('sentence1_ids', 'sentence2_ids', 'label',))
+                    ('all',), sources=('sentence1_ids', 'sentence2_ids', 'label',), load_in_memory=True)
             else:
                 self._dataset_cache[part] = TextDataset(part_path)
         return self._dataset_cache[part]

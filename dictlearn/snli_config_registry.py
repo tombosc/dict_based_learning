@@ -26,11 +26,11 @@ snli_config_registry.set_root_config({
 
     # Misc
     'monitor_parameters': 0,
-    'mon_freq_train': 100,
+    'mon_freq_train': 500,
     'save_freq_batches': 1000,
     'mon_freq_dev': 1000,
     'batch_size_dev': 512,
-    'n_batches': 100000
+    'n_batches': 100000 # ~100 epochs of SNLI
 })
 
 c = snli_config_registry['root']
