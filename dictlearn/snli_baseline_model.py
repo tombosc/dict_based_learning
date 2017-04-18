@@ -67,6 +67,7 @@ class SNLIBaseline(Initializable):
                 # Translation serves as a "fork" to LSTM
                 self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
+                # TODO(kudkudak): Activation?
                 # TODO(kudkudak): Better LSTM weight init
                 self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.01))
                 children.append(self._rnn_encoder)
@@ -75,7 +76,9 @@ class SNLIBaseline(Initializable):
             elif self._encoder == "sum":
                 self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._translation_act = Rectifier()
                 children.append(self._translation)
+                children.append(self._translation_act)
             else:
                 raise NotImplementedError("Not implemented encoder")
         children.append(self._lookup)
@@ -152,6 +155,8 @@ class SNLIBaseline(Initializable):
             s2_emb_flatten = s2_emb.reshape((s2_emb.shape[0] * s2_emb.shape[1], s2_emb.shape[2]))
             s1_transl = self._translation.apply(s1_emb_flatten)
             s2_transl = self._translation.apply(s2_emb_flatten)
+            s1_transl = self._translation_act.apply(s1_transl)
+            s2_transl = self._translation_act.apply(s2_transl)
             s1_transl = s1_transl.reshape((s1_emb.shape[0], s1_emb.shape[1], -1))
             s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
             assert s1_transl.ndim == 3

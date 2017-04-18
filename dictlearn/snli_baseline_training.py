@@ -262,7 +262,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         cost=final_cost,
         on_unused_sources='ignore',
         parameters=train_params,
-        step_rule=RMSProp(learning_rate=c['lr']))
+        step_rule=Adam(learning_rate=c['lr']))
     algorithm.add_updates(extra_updates)
     m = Model(final_cost)
 

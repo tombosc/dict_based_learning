@@ -26,7 +26,7 @@ snli_config_registry.set_root_config({
 
     # Misc
     'monitor_parameters': 0,
-    'mon_freq_train': 500,
+    'mon_freq_train': 1000,
     'save_freq_batches': 1000,
     'mon_freq_dev': 1000,
     'batch_size_dev': 512,
