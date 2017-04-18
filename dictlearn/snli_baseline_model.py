@@ -104,6 +104,14 @@ class SNLIBaseline(Initializable):
 
         super(SNLIBaseline, self).__init__(children=children, **kwargs)
 
+    def get_embeddings_lookup(self):
+        if isinstance(self._lookup, LookupTable):
+            return self._lookup
+        elif isinstance(self._lookup, DictEnchancedLookup):
+            return self._lookup._base_lookup
+        else:
+            raise NotImplementedError()
+
     def set_embeddings(self, embeddings):
         if isinstance(self._lookup, LookupTable):
             self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
@@ -174,7 +182,8 @@ class SNLIBaseline(Initializable):
         hyp = self._hyp_bn.apply(hyp)
 
         joint = T.concatenate([prem, hyp], axis=1)
-        self._cg_transforms = []
+        joint.name = "MLP_input"
+        self._cg_transforms = [['dropout', self._dropout, joint]]
 
         # MLP
         for block in self._mlp:

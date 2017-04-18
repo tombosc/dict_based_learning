@@ -136,6 +136,21 @@ def configure_logger(name = __name__,
 
     return logger
 
+def copy_streams_to_file(log_file, stdout=True, stderr=True):
+    logger = logging.getLogger("_copy_stdout_stderr_to_file")
+    logger.handlers = []
+    logger.setLevel(logging.DEBUG)
+    format = logging.Formatter("%(message)s")
+    fh = handlers.RotatingFileHandler(log_file, maxBytes=(1048576 * 5), backupCount=7)
+    fh.setFormatter(format)
+    logger.addHandler(fh)
+
+    if stderr:
+        sys.stderr = LoggerWriter(logger.warning)
+
+    if stdout:
+        sys.stdout = LoggerWriter(logger.info)
+
 
 class LoggerWriter:
     """
@@ -146,12 +161,15 @@ class LoggerWriter:
     sys.stdout = LoggerWriter(log.debug)
     sys.stderr = LoggerWriter(log.warning)
     """
-    def __init__(self, level):
+    def __init__(self, level, also_print=False):
         self.level = level
+        self.also_print = also_print
 
     def write(self, message):
         if message != '\n':
             self.level(message)
+        if self.also_print:
+            print(message)
 
     def flush(self):
         pass

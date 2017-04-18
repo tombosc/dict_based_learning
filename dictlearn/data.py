@@ -236,6 +236,7 @@ class SNLIData(Data):
 
     def get_stream(self, part, batch_size=None, seed=None):
         d = self.get_dataset(part)
+        print("Dataset with {} examples".format(d.num_examples))
         it = ShuffledExampleScheme(d.num_examples, rng=numpy.random.RandomState(seed))
 
         stream = DataStream(d, iteration_scheme=it)
