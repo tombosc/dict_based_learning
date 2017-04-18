@@ -1,18 +1,12 @@
 """
 Training loop for baseline SNLI model
 
-TODO: Debug speed
 TODO: Debug low acc
 TODO: Unit test data preprocessing
 TODO: Add logging to txt
 TODO: Reload with fuel server?
 TODO: Second round of debugging reloading
-
-Timing:
-time_epoch=0.0712900161743
-time_epoch=94.0922088623
-Read data in fuel sucks?
-time_read_data_this_batch: 0.705662744045
+TODO: Add assert that embeddings are frozen
 """
 
 import sys
@@ -26,7 +20,7 @@ from blocks.bricks.cost import MisclassificationRate
 from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.graph import apply_dropout, apply_batch_normalization
-from blocks.algorithms import Scale
+from blocks.algorithms import Scale, RMSProp
 from blocks.extensions import ProgressBar, Timestamp
 
 import os
@@ -69,6 +63,7 @@ from dictlearn.retrieval import Retrieval, Dictionary
 import pandas as pd
 from collections import defaultdict
 
+
 class ServerDataStream(AbstractDataStream):
     """A data stream that receives batches from a Fuel server.
 
@@ -97,8 +92,9 @@ class ServerDataStream(AbstractDataStream):
         one per axis. Defaults to `None`, i.e. no information is available.
 
     """
+
     def __init__(self, sources, produces_examples, host='localhost', port=5557,
-                 hwm=10, axis_labels=None):
+            hwm=10, axis_labels=None):
         super(ServerDataStream, self).__init__(axis_labels=axis_labels)
         self.sources = sources
         self.produces_examples = produces_examples
@@ -141,6 +137,7 @@ class ServerDataStream(AbstractDataStream):
             del state['socket']
         return state
 
+
 class DumpCSVSummaries(SimpleExtension):
     def __init__(self, save_path, mode="w", **kwargs):
         self._save_path = save_path
@@ -171,6 +168,7 @@ class DumpCSVSummaries(SimpleExtension):
                 self._current_log[k] += [self._current_log[k][-1] for _ in range(max_len - len(self._current_log[k]))]
 
         pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
+
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
     c = config
@@ -207,7 +205,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
         disregard_word_embeddings=c['disregard_word_embeddings']
-        )
+    )
     baseline.initialize()
     embeddings = np.load(c['embedding_path'])
     baseline.set_embeddings(embeddings.astype(theano.config.floatX))
@@ -235,8 +233,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # Computation graph
     cg = ComputationGraph([cost, error_rate])
 
-    # Weight decay
-    weights = VariableFilter(bricks=[dense for dense, bn in baseline._mlp], roles=[WEIGHT])(cg.variables)
+    # Weight decay (TODO: Make it less bug prone)
+    weights = VariableFilter(bricks=[dense for dense, relu, bn in baseline._mlp], roles=[WEIGHT])(cg.variables)
     final_cost = cost + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
     final_cost.name = 'final_cost'
 
@@ -246,6 +244,9 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
         for p, m in pop_updates]
 
+    # extra_updates = []
+    # pop_updates = []
+
     test_cg = cg
     for name, param, var in baseline.get_cg_transforms():
         logger.info("Applying " + name + " to " + var.name)
@@ -253,14 +254,15 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     # Freeze embeddings
     frozen_params = baseline.get_embeddings_lookup().parameters
-    train_params =[p for p in cg.parameters if p not in frozen_params]
+    train_params = [p for p in cg.parameters if p not in frozen_params]
     train_params_keys = [get_brick(p).get_hierarchical_name(p) for p in train_params]
 
     # Optimizer
     algorithm = GradientDescent(
         cost=final_cost,
+        on_unused_sources='ignore',
         parameters=train_params,
-        step_rule=Adam(learning_rate=c['lr']))
+        step_rule=RMSProp(learning_rate=c['lr']))
     algorithm.add_updates(extra_updates)
     m = Model(final_cost)
 
@@ -274,14 +276,15 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         sum([np.prod(parameters[key].get_value().shape) for key in sorted(train_params_keys)])))
     logger.info("Parameter norms" + "\n" +
                 pprint.pformat(
-                    [(key, np.linalg.norm(parameters[key].get_value().reshape(-1,)).mean())
+                    [(key, np.linalg.norm(parameters[key].get_value().reshape(-1, )).mean())
                         for key in sorted(train_params_keys)],
                     width=120))
 
     train_monitored_vars = [final_cost] + cg.outputs
     monitored_vars = test_cg.outputs
     if c['monitor_parameters']:
-        for name, param in parameters.items():
+        for name in train_params_keys:
+            param = parameters[name]
             num_elements = numpy.product(param.get_value().shape)
             norm = param.norm(2) / num_elements
             grad_norm = algorithm.gradients[param].norm(2) / num_elements
@@ -310,10 +313,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
             after_training=not fast_start),
-        DumpTensorflowSummaries(
-            save_path,
-            every_n_batches=c['mon_freq_train'],
-            after_training=True),
+        # DumpTensorflowSummaries(
+        #     save_path,
+        #     every_n_batches=c['mon_freq_train'],
+        #     after_training=True),
         # AutomaticKerberosCall(
         #     every_n_batches=c['mon_freq_train']),
         DumpCSVSummaries(
@@ -346,6 +349,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     model = Model(cost)
     for p, m in pop_updates:
         model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
+
+    assert np.all(baseline.get_embeddings_lookup().parameters[0].get_value(0)[123] == embeddings[123])
 
     main_loop = MainLoop(
         algorithm,
