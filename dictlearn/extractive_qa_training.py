@@ -25,12 +25,14 @@ from blocks.graph import ComputationGraph
 from blocks.model import Model
 from blocks.filter import VariableFilter
 from blocks.extensions import FinishAfter, Timing, Printing
+from blocks.extensions.training import TrackTheBest
 from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
 from blocks.serialization import load_parameters
 from blocks.monitoring.evaluators import DatasetEvaluator
+from blocks.extensions.predicates import OnLogRecord
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.theano_util import parameter_stats
@@ -68,7 +70,9 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         os.mkdir(save_path)
     else:
         logger.info("Continue an existing job")
-    tar_path = os.path.join(save_path, 'training_state.tar')
+    root_path = os.path.join(save_path, 'training_state')
+    extension = '.tar'
+    tar_path = root_path + extension
 
     c = config
     data, qam = _initialize_data_and_model(c)
@@ -133,18 +137,28 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
             every_n_batches=c['mon_freq_train']),
-        DataStreamMonitoring(
-            monitored_vars,
-            data.get_stream('dev', batch_size=c['batch_size_valid']),
-            prefix="dev").set_conditions(
-                before_training=not fast_start,
-                after_epoch=True,
-                every_n_batches=c['mon_freq_valid']),
+    ]
+    validation = DataStreamMonitoring(
+        monitored_vars,
+        data.get_stream('dev', batch_size=c['batch_size_valid']),
+        prefix="dev").set_conditions(
+            before_training=not fast_start,
+            after_epoch=True,
+            every_n_batches=c['mon_freq_valid'])
+    track_the_best = TrackTheBest(
+        validation.record_name(exact_match_ratio),
+        choose_best=max).set_conditions(
+            before_training=True,
+            after_epoch=True,
+            every_n_batches=c['mon_freq_valid'])
+    extensions.extend([validation,
+                       track_the_best])
         # We often use pretrained word embeddings and we don't want
         # to load and save them every time. To avoid that, we use
         # save_main_loop=False, we only save the trained parameters,
         # and we save the log and the iterations state separately
         # in the tar file.
+    extensions.extend([
         Checkpoint(tar_path,
                    parameters=trained_parameters,
                    save_main_loop=False,
@@ -152,7 +166,11 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
                    before_training=not fast_start,
                    every_n_epochs=c['save_freq_epochs'],
                    every_n_batches=c['save_freq_batches'],
-                   after_training=not fast_start),
+                   after_training=not fast_start)
+            .add_condition(
+                ['after_batch', 'after_epoch'],
+                 OnLogRecord(track_the_best.notification_name),
+                 (root_path + "_best" + extension,)),
         DumpTensorflowSummaries(
             save_path,
             after_epoch=True,
@@ -161,7 +179,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         Printing(after_epoch=True,
                  every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
-    ]
+    ])
     # We use a completely random seed on purpose. With Fuel server
     # it's currently not possible to restore the state of the training
     # stream. That's why it's probably better to just have it stateless.
