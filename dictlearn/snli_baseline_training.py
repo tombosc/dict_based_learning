@@ -7,6 +7,9 @@ TODO: Add logging to txt
 TODO: Reload with fuel server?
 TODO: Second round of debugging reloading
 TODO: Add assert that embeddings are frozen
+
+Diff:
+BN during training using sample stat
 """
 
 import sys
@@ -174,13 +177,14 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     c = config
     new_training_job = False
     logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
-    # copy_streams_to_file(os.path.join(save_path, "log_stream.txt"))
     if not os.path.exists(save_path):
         logger.info("Start a new job")
         new_training_job = True
         os.mkdir(save_path)
     else:
         logger.info("Continue an existing job")
+    with open(save_path, "cmd.txt", "w") as f:
+        f.write(" ".join(sys.argv))
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
@@ -207,8 +211,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         disregard_word_embeddings=c['disregard_word_embeddings']
     )
     baseline.initialize()
-    embeddings = np.load(c['embedding_path'])
-    baseline.set_embeddings(embeddings.astype(theano.config.floatX))
+
+    if c['embedding_path']:
+        embeddings = np.load(c['embedding_path'])
+        baseline.set_embeddings(embeddings.astype(theano.config.floatX))
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')
@@ -253,7 +259,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         cg = apply_dropout(cg, [var], param)
 
     # Freeze embeddings
-    frozen_params = baseline.get_embeddings_lookup().parameters
+    if not c['train_emb']:
+        frozen_params = [p for E in baseline.get_embeddings_lookups() for p in E.parameters]
+    else:
+        frozen_params = []
     train_params = [p for p in cg.parameters if p not in frozen_params]
     train_params_keys = [get_brick(p).get_hierarchical_name(p) for p in train_params]
 
@@ -308,6 +317,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             prefix="dev").set_conditions(
             before_training=not fast_start,
             every_n_batches=c['mon_freq_dev']),
+        # DataStreamMonitoring(
+        #     monitored_vars,
+        #     data.get_stream('test', batch_size=c['batch_size']),
+        #     after_training=True,
+        #     prefix="test"),
         Checkpoint(main_loop_path,
             parameters=cg.parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
@@ -350,11 +364,14 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     for p, m in pop_updates:
         model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
 
-    assert np.all(baseline.get_embeddings_lookup().parameters[0].get_value(0)[123] == embeddings[123])
+    if c['embedding_path']:
+        assert np.all(baseline.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
 
     main_loop = MainLoop(
         algorithm,
         training_stream,
         model=model,
         extensions=extensions)
+
+    assert os.path.exists(save_path)
     main_loop.run()

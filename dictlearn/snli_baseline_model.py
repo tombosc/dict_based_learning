@@ -108,11 +108,11 @@ class SNLIBaseline(Initializable):
 
         super(SNLIBaseline, self).__init__(children=children, **kwargs)
 
-    def get_embeddings_lookup(self):
+    def get_embeddings_lookups(self):
         if isinstance(self._lookup, LookupTable):
-            return self._lookup
+            return [self._lookup]
         elif isinstance(self._lookup, DictEnchancedLookup):
-            return self._lookup._base_lookup
+            return [self._lookup._base_lookup, self._lookup._def_lookup]
         else:
             raise NotImplementedError()
 

@@ -16,6 +16,7 @@ snli_config_registry.set_root_config({
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
     'max_def_length': 1000,
+    'train_emb': 0,
 
     'num_input_words': 0, # Will take vocab size
     "encoder": "sum",

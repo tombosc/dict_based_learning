@@ -47,6 +47,7 @@ class DictEnchancedLookup(Initializable):
         embeddings linearly
         If 'fully_connected_relu', ...
         If 'fully_connected_tanh', ...
+
     """
 
     def __init__(self, emb_dim, dim, vocab, retrieval, disregard_word_embeddings=False,
