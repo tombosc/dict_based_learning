@@ -2,7 +2,10 @@
 Training loop for baseline SNLI model
 
 TODO: Dropout circuit
-TODO: Fix embeddings (shouldnt be trained according to keras_snli repo, this will also speed up code)
+TODO: Freeze embeddings (shouldnt be trained according to keras_snli repo, this will also speed up code)
+TODO: Debug low acc
+TODO: Add logging to txt
+TODO: Reload with fuel server?
 """
 
 import sys
@@ -13,6 +16,7 @@ from theano import tensor
 sys.path.append("..")
 
 from blocks.bricks.cost import MisclassificationRate
+from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.graph import apply_dropout, apply_batch_normalization
 from blocks.algorithms import Scale
@@ -46,7 +50,8 @@ from blocks.main_loop import MainLoop
 from blocks.roles import WEIGHT
 from blocks.filter import VariableFilter
 
-from fuel.streams import ServerDataStream
+from fuel.streams import ServerDataStream, AbstractDataStream, zmq, recv_arrays
+from subprocess import Popen, PIPE
 
 from dictlearn.util import get_free_port, configure_logger
 from dictlearn.extensions import DumpTensorflowSummaries, SimpleExtension
@@ -56,6 +61,79 @@ from dictlearn.retrieval import Retrieval, Dictionary
 
 import pandas as pd
 from collections import defaultdict
+
+class ServerDataStream(AbstractDataStream):
+    """A data stream that receives batches from a Fuel server.
+
+    Parameters
+    ----------
+    sources : tuple of strings
+        The names of the data sources returned by this data stream.
+    produces_examples : bool
+        Whether this data stream produces examples (as opposed to batches
+        of examples).
+    host : str, optional
+        The host to connect to. Defaults to ``localhost``.
+    port : int, optional
+        The port to connect on. Defaults to 5557.
+    hwm : int, optional
+        The `ZeroMQ high-water mark (HWM)
+        <http://zguide.zeromq.org/page:all#High-Water-Marks>`_ on the
+        receiving socket. Increasing this increases the buffer, which can
+        be useful if your data preprocessing times are very random.
+        However, it will increase memory usage. There is no easy way to
+        tell how many batches will actually be queued with a particular
+        HWM. Defaults to 10. Be sure to set the corresponding HWM on the
+        server's end as well.
+    axis_labels : dict, optional
+        Maps source names to tuples of strings describing axis semantics,
+        one per axis. Defaults to `None`, i.e. no information is available.
+
+    """
+    def __init__(self, sources, produces_examples, host='localhost', port=5557,
+                 hwm=10, axis_labels=None):
+        super(ServerDataStream, self).__init__(axis_labels=axis_labels)
+        self.sources = sources
+        self.produces_examples = produces_examples
+        self.host = host
+        self.port = port
+        self.hwm = hwm
+        self.connect()
+
+    def connect(self):
+        context = zmq.Context()
+        self.socket = socket = context.socket(zmq.PULL)
+        socket.set_hwm(self.hwm)
+        socket.connect("tcp://{}:{}".format(self.host, self.port))
+        self.connected = True
+
+    def get_data(self, request=None):
+        if request is not None:
+            raise ValueError
+        if not self.connected:
+            self.connect()
+        data = recv_arrays(self.socket)
+        return tuple(data)
+
+    def get_epoch_iterator(self, **kwargs):
+        return super(ServerDataStream, self).get_epoch_iterator(**kwargs)
+
+    def close(self):
+        pass
+
+    def next_epoch(self):
+        pass
+
+    def reset(self):
+        pass
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['connected'] = False
+        if 'socket' in state:
+            del state['socket']
+        return state
+
 
 class LoggerPrinting(SimpleExtension):
     """
@@ -86,18 +164,17 @@ class LoggerPrinting(SimpleExtension):
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self._logger = logging.getLogger(logger_name)
+        self._logger = logging.getLogger(self._logger_name)
 
     def _print_attributes(self, attribute_tuples):
         for attr, value in sorted(attribute_tuples.items(), key=first):
             if not attr.startswith("_"):
-                self._logger.info("\t", "{}:".format(attr), value)
+                self._logger.info("\t {}={}:".format(attr, value))
 
     def do(self, which_callback, *args):
         log = self.main_loop.log
         print_status = True
 
-        self._logger.info()
         self._logger.info("".join(79 * "-"))
         if which_callback == "before_epoch" and log.status['epochs_done'] == 0:
             self._logger.info("BEFORE FIRST EPOCH")
@@ -117,7 +194,6 @@ class LoggerPrinting(SimpleExtension):
             self._logger.info("Log records from the iteration {}:".format(
                 log.status['iterations_done']))
             self._print_attributes(log.current_row)
-        self._logger.info()
 
 
 class DumpCSVSummaries(SimpleExtension):
@@ -207,23 +283,24 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         s2_mask.tag.test_value = test_value_data[3]
         y.tag.test_value = test_value_data[4]
 
-    # Computation graph
-    cg = ComputationGraph([cost])
-
     # Weight decay
     weights = VariableFilter(bricks=[dense for dense, bn in baseline._mlp], roles=[WEIGHT])(cg.variables)
     final_cost = cost + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
     final_cost.name = 'final_cost'
 
-    for name, param, var in baseline.get_cg_transforms():
-        logger.info("Applying " + name + " to " + var.name)
-        cg = apply_dropout(cg, [var], param)
+    # Computation graph
+    cg = ComputationGraph([final_cost, cost])
 
     cg = apply_batch_normalization(cg)
     # Add updates for population parameters
     pop_updates = get_batch_normalization_updates(cg)
     extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
         for p, m in pop_updates]
+
+    test_cg = cg
+    for name, param, var in baseline.get_cg_transforms():
+        logger.info("Applying " + name + " to " + var.name)
+        cg = apply_dropout(cg, [var], param)
 
     # Optimizer
     algorithm = GradientDescent(
@@ -242,6 +319,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                     [(key, parameters[key].get_value().shape)
                         for key in sorted(parameters.keys())],
                     width=120))
+    logger.info("# of parameters {}".format(
+        sum([np.prod(parameters[key].get_value().shape) for key in sorted(parameters.keys())])))
     logger.info("Parameter norms" + "\n" +
                 pprint.pformat(
                     [(key, np.linalg.norm(parameters[key].get_value().reshape(-1,)).mean())
@@ -253,9 +332,9 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     if c['monitor_parameters']:
         for name, param in parameters.items():
             num_elements = numpy.product(param.get_value().shape)
-            norm = param.norm(2) / num_elements ** 0.5
-            grad_norm = algorithm.gradients[param].norm(2) / num_elements ** 0.5
-            step_norm = algorithm.steps[param].norm(2) / num_elements ** 0.5
+            norm = param.norm(2) / num_elements
+            grad_norm = algorithm.gradients[param].norm(2) / num_elements
+            step_norm = algorithm.steps[param].norm(2) / num_elements
             stats = tensor.stack(norm, grad_norm, step_norm, step_norm / grad_norm)
             stats.name = name + '_stats'
             train_monitored_vars.append(stats)
@@ -276,6 +355,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             before_training=not fast_start,
             every_n_batches=c['mon_freq_dev']),
         Checkpoint(main_loop_path,
+            parameters=cg.parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
             after_training=not fast_start),
@@ -283,11 +363,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             save_path,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
+        # AutomaticKerberosCall(
+        #     every_n_batches=c['mon_freq_train']),
         DumpCSVSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
-        LoggerPrinting(logger_name=logger.name, every_n_batches=c['mon_freq_train']),
+        Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
 
@@ -310,9 +392,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             sources=training_stream.sources,
             produces_examples=training_stream.produces_examples, port=port)
 
+    model = Model(cost)
+    for p, m in pop_updates:
+        model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
+
     main_loop = MainLoop(
         algorithm,
         training_stream,
-        model=Model(cost),
+        model=model,
         extensions=extensions)
     main_loop.run()
