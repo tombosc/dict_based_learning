@@ -195,13 +195,12 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     main_loop.run()
 
 
-def evaluate_extractive_qa(config, save_path, part, num_examples, dest_path):
+def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     c = config
     data, qam = _initialize_data_and_model(c)
     costs = qam.apply_with_default_vars()
     cg = Model(costs)
 
-    tar_path = os.path.join(save_path, 'training_state.tar')
     with open(tar_path) as src:
         cg.set_parameter_values(load_parameters(src))
 
