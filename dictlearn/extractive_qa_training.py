@@ -204,11 +204,6 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     with open(tar_path) as src:
         cg.set_parameter_values(load_parameters(src))
 
-    #evaluator = DatasetEvaluator([costs.mean()])
-    #print(evaluator.evaluate(data.get_stream('dev', batch_size=c['batch_size_valid'])))
-    #import sys
-    #sys.exit(0)
-
     detok = MosesDetokenizer()
     def detokenize(str_):
         return " ".join(detok.detokenize(str_))
@@ -268,7 +263,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
             print_stats()
     print_stats()
 
-    with open(os.path.join(save_path, 'attention.pkl'), 'w') as dst:
-        cPickle.dump({'d2q': d2q, 'q2d': q2d}, dst)
+    # with open(os.path.join(save_path, 'attention.pkl'), 'w') as dst:
+    #     cPickle.dump({'d2q': d2q, 'q2d': q2d}, dst)
     with open(dest_path, 'w') as dst:
         json.dump(predictions, dst, indent=2)
