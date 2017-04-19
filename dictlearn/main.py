@@ -56,7 +56,7 @@ def main_evaluate(config_registry, evaluate_func):
     parser.add_argument("--dest", help="Destination for outputs")
     parser.add_argument("--num-examples", type=int, help="Number of examples to read")
     parser.add_argument("config", help="The configuration")
-    parser.add_argument("save_path", help="The path where the model was saved")
+    parser.add_argument("tar_path", help="The tar file with parameters")
     add_config_arguments(config_registry.get_root_config(), parser)
 
     args = parser.parse_args()
@@ -70,4 +70,4 @@ def main_evaluate(config_registry, evaluate_func):
 
     # For now this script just runs the language model training.
     # More stuff to come.
-    evaluate_func(config, args.save_path, args.part, args.num_examples, args.dest)
+    evaluate_func(config, args.tar_path, args.part, args.num_examples, args.dest)
