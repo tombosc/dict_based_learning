@@ -23,13 +23,15 @@ from dictlearn.ops import RetrievalOp
 import logging
 logger = logging.getLogger(__file__)
 
+
 # TODO: Implement
 class LookupWithTranslation(Initializable):
     pass
 
-class DictEnchancedLookup(Initializable):
+
+class ReadDefinitions(Initializable):
     """
-    Awesome dict based lookup
+    Converts definition into embeddings.
 
     Parameters
     ----------
@@ -37,45 +39,23 @@ class DictEnchancedLookup(Initializable):
         If non zero will (a bit confusing name) restrict dynamically vocab.
         WARNING: it assumes word ids are monotonical with frequency!
 
-    emb_dim: int
+    dim : int
+        Dimensionality of the def rnn.
+
+    emb_dim : int
         Dimensionality of word embeddings
 
-    disregard_word_embeddings : bool
-        If `True`, the word embeddings are not used, only the information
-        from the definitions is used.
-
-    compose_type : str
-        If 'sum', the definition and word embeddings are averaged
-        If 'fully_connected_linear', a learned perceptron compose the 2
-        embeddings linearly
-        If 'fully_connected_relu', ...
-        If 'fully_connected_tanh', ...
-
     """
-
-    def __init__(self, emb_dim, dim, vocab=None, retrieval=None, disregard_word_embeddings=False, multimod_drop=1.0,
-            num_input_words=-1, compose_type="sum", **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim,
+                 vocab=None, retrieval=None, **kwargs):
+        self._num_input_words = num_input_words
         self._retrieval = retrieval
         self._vocab = vocab
-
-        if num_input_words > 0:
-            self._num_input_words = num_input_words
-        else:
-            self._num_input_words = vocab.size()
-
-        self._compose_type = compose_type
-        self._emb_dim = emb_dim
-        self._multimod_drop = multimod_drop
-        self._disregard_word_embeddings = disregard_word_embeddings
 
         if self._retrieval:
             self._retrieve = RetrievalOp(retrieval)
 
         children = []
-
-        self._base_lookup = LookupTable(self._num_input_words, emb_dim,
-            weights_init=GlorotUniform(), biases_init=Constant(0))
-        children.append(self._base_lookup)
 
         self._def_lookup = LookupTable(self._num_input_words, dim, name='def_lookup',
             weights_init=GlorotUniform(), biases_init=Constant(0))
@@ -83,38 +63,11 @@ class DictEnchancedLookup(Initializable):
         self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork',
             weights_init=GlorotUniform(), biases_init=Constant(0))
         # TODO(kudkudak): Better LSTM weight init
-        self._def_rnn = LSTM(dim, name='def_rnn', weights_init=Uniform(width=0.1), biases_init=Constant(0))
+        self._def_rnn = LSTM(dim, name='def_rnn',
+                             weights_init=Uniform(width=0.1), biases_init=Constant(0))
         children.extend([self._def_lookup, self._def_fork, self._def_rnn])
 
-        if not self._disregard_word_embeddings:
-            if compose_type == 'fully_connected_tanh':
-                self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
-                    , weights_init=GlorotUniform(), biases_init=Constant(0))
-                children.append(self._def_state_compose)
-            elif compose_type == 'fully_connected_relu':
-                self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
-                    dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
-                children.append(self._def_state_compose)
-            elif compose_type == 'fully_connected_linear':
-                self._def_state_compose = MLP(activations=[None],
-                    dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
-                children.append(self._def_state_compose)
-            elif compose_type == 'fully_connected_linear':
-                self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
-                children.append(self._def_state_compose)
-            elif compose_type == 'sum':
-                pass
-            elif not disregard_word_embeddings:
-                raise Exception("Error: composition of embeddings and def not understood")
-
-        super(DictEnchancedLookup, self).__init__(children=children, **kwargs)
-
-    def set_embeddings(self, embeddings):
-        self._base_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-        self._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-
-    def get_cg_transforms(self):
-        return self._cg_transforms
+        super(ReadDefinitions, self).__init__(children=children, **kwargs)
 
     @application
     def apply(self, application_call, words, words_mask):
@@ -153,54 +106,27 @@ class DictEnchancedLookup(Initializable):
         def_spans = T.concatenate([cum_sum_defs[:-1, None], cum_sum_defs[1:, None]],
             axis=1)
         application_call.add_auxiliary_variable(def_spans, name='def_spans')
+        return def_embeddings, def_spans
+
+
+class MeanPoolCombiner(Initializable):
+
+    @application
+    def mean_pool_and_sum(self, application_call,
+                          def_embeddings, def_spans, def_map,
+                          word_embs, words_mask):
+        batch_shape = word_embs.shape
 
         # Mean-pooling of definitions
-        def_sum = T.zeros((words.shape[0] * words.shape[1], def_embeddings.shape[1]))
+        def_sum = T.zeros((batch_shape[0] * batch_shape[1], def_embeddings.shape[1]))
         def_sum = T.inc_subtensor(
-            def_sum[def_map[:, 0] * words.shape[1] + def_map[:, 1]],
+            def_sum[def_map[:, 0] * batch_shape[1] + def_map[:, 1]],
             def_embeddings)
         def_lens = (def_spans[:, 1] - def_spans[:, 0]).astype(theano.config.floatX)
         def_mean = def_sum / T.maximum(def_lens[:, None], 1)
-        def_mean = def_mean.reshape((words.shape[0], words.shape[1], -1))
+        def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
 
-        # Auxililary variable for debugging
-        application_call.add_auxiliary_variable(
-            defs.shape[0], name="num_definitions")
-        application_call.add_auxiliary_variable(
-            defs.shape[1], name="max_definition_length")
         application_call.add_auxiliary_variable(
             masked_root_mean_square(def_mean, words_mask), name='def_mean_rootmean2')
 
-        # Shortlisting
-        input_word_ids = (T.lt(words, self._num_input_words) * words
-                          + T.ge(words, self._num_input_words) * self._vocab.unk)
-
-        # Run the main rnn with combined inputs
-        base_embeddings = self._base_lookup.apply(input_word_ids)
-
-        self._cg_transforms = []
-        if self._multimod_drop != 0.0:
-            logger.info("Adding drop on dict and normal emb")
-            assert base_embeddings is not None
-            assert def_mean is not None
-            self._cg_transforms.append(['dropout', self._multimod_drop, base_embeddings])
-            self._cg_transforms.append(['dropout', self._multimod_drop, def_mean])
-
-        application_call.add_auxiliary_variable(
-            masked_root_mean_square(base_embeddings, words_mask), name='rnn_input_rootmean2')
-
-        if not self._disregard_word_embeddings:
-            if self._compose_type == 'sum':
-                final_embeddings = base_embeddings + def_mean
-            elif self._compose_type.startswith('fully_connected'):
-                concat = T.concatenate([base_embeddings, def_mean], axis=2)
-                final_embeddings = self._def_state_compose.apply(concat)
-            else:
-                assert False
-            application_call.add_auxiliary_variable(
-                masked_root_mean_square(final_embeddings, words_mask),
-                name='merged_input_rootmean2')
-        else:
-            final_embeddings = def_mean
-
-        return final_embeddings
+        return word_embs + def_mean

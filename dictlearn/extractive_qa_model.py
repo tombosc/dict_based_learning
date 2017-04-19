@@ -9,7 +9,7 @@ from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
-from dictlearn.lookup import DictEnchancedLookup
+from dictlearn.lookup import ReadDefinitions, MeanPoolCombiner
 
 
 class ExtractiveQAModel(Initializable):
@@ -43,12 +43,7 @@ class ExtractiveQAModel(Initializable):
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
         children = []
-        self._lookup = (DictEnchancedLookup(vocab=vocab,
-                                            num_input_words=self._num_input_words,
-                                            dim=dim,
-                                            emb_dim=emb_dim)
-                        if self._use_definitions
-                        else LookupTable(self._num_input_words, emb_dim))
+        self._lookup = LookupTable(self._num_input_words, emb_dim)
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
@@ -63,6 +58,13 @@ class ExtractiveQAModel(Initializable):
         self._end_readout = MLP([None], [2 * dim, 1], name='end_readout')
         self._softmax = NDimensionalSoftmax()
         children.extend([self._begin_readout, self._end_readout, self._softmax])
+
+        if self._use_definitions:
+            self._def_reader = ReadDefinitions(num_input_words=self._num_input_words,
+                                               dim=dim, emb_dim=emb_dim,
+                                               vocab=vocab)
+            self._combiner = MeanPoolCombiner()
+            children.extend([self._def_reader, self._combiner])
 
         super(ExtractiveQAModel, self).__init__(children=children, **kwargs)
 
@@ -111,10 +113,10 @@ class ExtractiveQAModel(Initializable):
             tensor.lt(questions, self._num_input_words) * questions
             + tensor.ge(questions, self._num_input_words) * self._vocab.unk)
         if self._use_definitions:
-            context_embs = self._lookup.apply_with_given_defs(
+            context_embs = self._def_reader.apply(
                 contexts, contexts_mask,
                 defs, def_mask, contexts_def_map)
-            question_embs = self._lookup.apply_with_given_defs(
+            question_embs = self._def_reader.apply(
                 questions, questions_mask,
                 defs, def_mask, questions_def_map)
         else:
