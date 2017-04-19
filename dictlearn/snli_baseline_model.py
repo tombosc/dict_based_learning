@@ -11,6 +11,9 @@ import theano
 import theano.tensor as T
 from theano import tensor
 
+import logging
+logger = logging.getLogger(__file__)
+
 from blocks.bricks import Initializable, Linear, MLP
 from blocks.bricks import Softmax, Rectifier
 from blocks.bricks.bn import BatchNormalization
@@ -29,7 +32,7 @@ class SNLIBaseline(Initializable):
 
     def __init__(self, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum", n_layers=3,
             # Dict lookup kwargs
-            retrieval=None, compose_type="sum", disregard_word_embeddings=False,
+            retrieval=None, compose_type="sum", disregard_word_embeddings=False, multimod_drop=1.0,
             # Others
             **kwargs):
 
@@ -39,6 +42,7 @@ class SNLIBaseline(Initializable):
         self._retrieval = retrieval
 
         if num_input_words > 0:
+            logger.info("Restricting vocab to " + str(num_input_words))
             self._num_input_words = num_input_words
         else:
             self._num_input_words = vocab.size()
@@ -47,7 +51,7 @@ class SNLIBaseline(Initializable):
 
         if retrieval:
             self._lookup = DictEnchancedLookup(emb_dim=emb_dim, retrieval=retrieval, vocab=vocab,
-                dim=translate_dim, disregard_word_embeddings=disregard_word_embeddings,
+                dim=translate_dim, disregard_word_embeddings=disregard_word_embeddings, multimod_drop=multimod_drop,
                 num_input_words=num_input_words, compose_type=compose_type)
             if self._encoder == "rnn":
                 # Translation serves as a "fork" to LSTM
@@ -67,6 +71,7 @@ class SNLIBaseline(Initializable):
                 # Translation serves as a "fork" to LSTM
                 self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
+                # TODO(kudkudak): Activation?
                 # TODO(kudkudak): Better LSTM weight init
                 self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.01))
                 children.append(self._rnn_encoder)
@@ -75,7 +80,9 @@ class SNLIBaseline(Initializable):
             elif self._encoder == "sum":
                 self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._translation_act = Rectifier()
                 children.append(self._translation)
+                children.append(self._translation_act)
             else:
                 raise NotImplementedError("Not implemented encoder")
         children.append(self._lookup)
@@ -105,11 +112,11 @@ class SNLIBaseline(Initializable):
 
         super(SNLIBaseline, self).__init__(children=children, **kwargs)
 
-    def get_embeddings_lookup(self):
+    def get_embeddings_lookups(self):
         if isinstance(self._lookup, LookupTable):
-            return self._lookup
+            return [self._lookup]
         elif isinstance(self._lookup, DictEnchancedLookup):
-            return self._lookup._base_lookup
+            return [self._lookup._base_lookup, self._lookup._def_lookup]
         else:
             raise NotImplementedError()
 
@@ -130,7 +137,15 @@ class SNLIBaseline(Initializable):
             raise NotImplementedError()
 
     def get_cg_transforms(self):
-        return self._cg_transforms
+        cg = self._cg_transforms
+        if isinstance(self._lookup, DictEnchancedLookup):
+            cg += self._lookup.get_cg_transforms()
+        elif isinstance(self._lookup, LookupTable):
+            pass
+        else:
+            raise NotImplementedError()
+        print(cg)
+        return cg
 
     @application
     def apply(self, application_call,
@@ -152,6 +167,8 @@ class SNLIBaseline(Initializable):
             s2_emb_flatten = s2_emb.reshape((s2_emb.shape[0] * s2_emb.shape[1], s2_emb.shape[2]))
             s1_transl = self._translation.apply(s1_emb_flatten)
             s2_transl = self._translation.apply(s2_emb_flatten)
+            s1_transl = self._translation_act.apply(s1_transl)
+            s2_transl = self._translation_act.apply(s2_transl)
             s1_transl = s1_transl.reshape((s1_emb.shape[0], s1_emb.shape[1], -1))
             s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
             assert s1_transl.ndim == 3

@@ -16,6 +16,8 @@ snli_config_registry.set_root_config({
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
     'max_def_length': 1000,
+    'train_emb': 0,
+    "multimod_drop": 1.0,
 
     'num_input_words': 0, # Will take vocab size
     "encoder": "sum",
@@ -26,7 +28,7 @@ snli_config_registry.set_root_config({
 
     # Misc
     'monitor_parameters': 0,
-    'mon_freq_train': 500,
+    'mon_freq_train': 1000,
     'save_freq_batches': 1000,
     'mon_freq_dev': 1000,
     'batch_size_dev': 512,

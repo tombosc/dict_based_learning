@@ -7,6 +7,9 @@ TODO: Add logging to txt
 TODO: Reload with fuel server?
 TODO: Second round of debugging reloading
 TODO: Add assert that embeddings are frozen
+
+Diff:
+BN during training using sample stat
 """
 
 import sys
@@ -174,13 +177,14 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     c = config
     new_training_job = False
     logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
-    # copy_streams_to_file(os.path.join(save_path, "log_stream.txt"))
     if not os.path.exists(save_path):
         logger.info("Start a new job")
         new_training_job = True
         os.mkdir(save_path)
     else:
         logger.info("Continue an existing job")
+    with open(os.path.join(save_path, "cmd.txt"), "w") as f:
+        f.write(" ".join(sys.argv))
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
@@ -204,11 +208,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         num_input_words=c['num_input_words'],
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
-        disregard_word_embeddings=c['disregard_word_embeddings']
+        disregard_word_embeddings=c['disregard_word_embeddings'], multimod_drop=c['multimod_drop']
     )
     baseline.initialize()
-    embeddings = np.load(c['embedding_path'])
-    baseline.set_embeddings(embeddings.astype(theano.config.floatX))
+
+    if c['embedding_path']:
+        embeddings = np.load(c['embedding_path'])
+        baseline.set_embeddings(embeddings.astype(theano.config.floatX))
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')
@@ -249,11 +255,14 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     test_cg = cg
     for name, param, var in baseline.get_cg_transforms():
-        logger.info("Applying " + name + " to " + var.name)
+        logger.info("Applying " + name + " to " + str(var))
         cg = apply_dropout(cg, [var], param)
 
     # Freeze embeddings
-    frozen_params = baseline.get_embeddings_lookup().parameters
+    if not c['train_emb']:
+        frozen_params = [p for E in baseline.get_embeddings_lookups() for p in E.parameters]
+    else:
+        frozen_params = []
     train_params = [p for p in cg.parameters if p not in frozen_params]
     train_params_keys = [get_brick(p).get_hierarchical_name(p) for p in train_params]
 
@@ -262,7 +271,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         cost=final_cost,
         on_unused_sources='ignore',
         parameters=train_params,
-        step_rule=RMSProp(learning_rate=c['lr']))
+        step_rule=Adam(learning_rate=c['lr']))
     algorithm.add_updates(extra_updates)
     m = Model(final_cost)
 
@@ -308,6 +317,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             prefix="dev").set_conditions(
             before_training=not fast_start,
             every_n_batches=c['mon_freq_dev']),
+        # DataStreamMonitoring(
+        #     monitored_vars,
+        #     data.get_stream('test', batch_size=c['batch_size']),
+        #     after_training=True,
+        #     prefix="test"),
         Checkpoint(main_loop_path,
             parameters=cg.parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
@@ -346,15 +360,27 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             sources=training_stream.sources,
             produces_examples=training_stream.produces_examples, port=port, hwm=5000)
 
+    if "VISDOM_SERVER" in os.environ:
+        print("Running visdom server")
+        ret = subprocess.Popen([os.path.join(os.path.dirname(__file__), "../visdom_plotter.py"),
+            "--visdom-server={}".format(os.environ['VISDOM_SERVER']), "--folder={}".format(save_path)])
+        time.sleep(0.1)
+        if ret.returncode is not None:
+            raise Exception()
+        atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
+
     model = Model(cost)
     for p, m in pop_updates:
         model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
 
-    assert np.all(baseline.get_embeddings_lookup().parameters[0].get_value(0)[123] == embeddings[123])
+    if c['embedding_path']:
+        assert np.all(baseline.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
 
     main_loop = MainLoop(
         algorithm,
         training_stream,
         model=model,
         extensions=extensions)
+
+    assert os.path.exists(save_path)
     main_loop.run()
