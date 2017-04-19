@@ -152,7 +152,7 @@ class Dictionary(object):
                 self._wait_until_quota_reset()
             try:
                 definitions = self._word_api.getDefinitions(word)
-            except:
+            except Exception:
                 logger.error("error during fetching '{}'".format(word))
                 logger.error(traceback.format_exc())
                 continue
