@@ -37,8 +37,14 @@ class PutTextTransfomer(Transformer):
 
     def __init__(self, data_stream, dataset, raw_text=False, **kwargs):
         super(PutTextTransfomer, self).__init__(data_stream, **kwargs)
-        self._text = dataset.text if raw_text else dataset.text_ids
         self.produces_examples = data_stream.produces_examples
+        self._dataset = dataset
+        self._raw_text = raw_text
+
+    @property
+    def _text(self):
+        """Not making this a member to avoid pickling it."""
+        return self._dataset.text if self._raw_text else self._dataset.text_ids
 
     def transform_example(self, example):
         c_pos = self.sources.index('contexts')
@@ -47,7 +53,6 @@ class PutTextTransfomer(Transformer):
         example[c_pos] = self._text[example[c_pos][0]:example[c_pos][1]]
         example[q_pos] = self._text[example[q_pos][0]:example[q_pos][1]]
         return tuple(example)
-
 
     def transform_batch(self, batch):
         return (self.transform_example(example) for example in batch)
