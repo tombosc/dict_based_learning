@@ -34,10 +34,13 @@ from blocks.serialization import load_parameters
 from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.extensions.predicates import OnLogRecord
 
+from fuel.streams import ServerDataStream
+
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.theano_util import parameter_stats
 from dictlearn.data import ExtractiveQAData
-from dictlearn.extensions import DumpTensorflowSummaries, LoadNoUnpickling
+from dictlearn.extensions import (
+    DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer)
 from dictlearn.extractive_qa_model import ExtractiveQAModel
 from dictlearn.retrieval import Retrieval, Dictionary
 
@@ -60,9 +63,6 @@ def _initialize_data_and_model(config):
 
 
 def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
-    if fuel_server:
-        raise NotImplementedError()
-
     new_training_job = False
     if not os.path.exists(save_path):
         logger.info("Start a new job")
@@ -130,9 +130,22 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     if c['monitor_parameters']:
         train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 
+    training_stream = data.get_stream(
+        'train', batch_size=c['batch_size'],
+        shuffle=True, max_length=c['max_length'])
+    original_training_stream = training_stream
+    if fuel_server:
+        # the port will be configured by the StartFuelServer extension
+        training_stream = ServerDataStream(
+            sources=training_stream.sources,
+            produces_examples=training_stream.produces_examples)
+
     extensions = [
         LoadNoUnpickling(tar_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
+        StartFuelServer(original_training_stream,
+                        os.path.join(save_path, 'stream.pkl'),
+                        before_training=fuel_server),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
@@ -180,12 +193,6 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
                  every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ])
-    # We use a completely random seed on purpose. With Fuel server
-    # it's currently not possible to restore the state of the training
-    # stream. That's why it's probably better to just have it stateless.
-    training_stream = data.get_stream(
-        'train', batch_size=c['batch_size'],
-        shuffle=True, max_length=c['max_length'])
 
     main_loop = MainLoop(
         algorithm,
