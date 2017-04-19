@@ -49,9 +49,14 @@ logger = logging.getLogger()
 
 def _initialize_data_and_model(config):
     c = config
-    data = ExtractiveQAData(c['data_path'], c['layout'])
+    data = ExtractiveQAData(path=c['data_path'], layout=c['layout'])
+    # TODO: fix me, I'm so ugly
+    if c['dict_path']:
+        data._retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
+                                    c['max_def_length'], c['exclude_top_k'])
     qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
                             data.vocab,
+                            use_definitions=bool(c['dict_path']),
                             weights_init=Uniform(width=0.1),
                             biases_init=Constant(0.))
     qam.initialize()

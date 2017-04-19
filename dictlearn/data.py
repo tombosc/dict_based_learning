@@ -185,7 +185,30 @@ def select_random_answer(rng, example):
     return example
 
 
+def retrieve_and_pad(retrieval, example):
+    contexts = example['contexts']
+    questions = example['questions']
+    text = list(contexts) + list(questions)
+    defs, def_mask, def_map = retrieval.retrieve_and_pad(text)
+    context_defs = def_map[:, 0] < len(contexts)
+    contexts_def_map = def_map[context_defs]
+    questions_def_map = (
+        def_map[numpy.logical_not(context_defs)]
+        - numpy.array([len(contexts), 0, 0]))
+    return {'defs': defs,
+            'def_mask': def_mask,
+            'contexts_def_map': contexts_def_map,
+            'questions_def_map': questions_def_map}
+
+def digitize(vocab, source_data):
+    return numpy.array([vocab.encode(words) for words in source_data])
+
+
 class ExtractiveQAData(Data):
+
+    def __init__(self, retrieval=None, *args, **kwargs):
+        super(ExtractiveQAData, self).__init__(*args, **kwargs)
+        self._retrieval = retrieval
 
     @property
     def vocab(self):
@@ -211,17 +234,28 @@ class ExtractiveQAData(Data):
         if not q_ids:
             stream = FilterSources(stream, [source for source in dataset.sources
                                             if source != 'q_ids'])
-        stream = PutTextTransfomer(stream, dataset, raw_text=raw_text)
+        stream = PutTextTransfomer(stream, dataset, raw_text=True)
         # <eos> is added for two purposes: to serve a sentinel for coattention,
         # and also to ensure the answer span ends at a token
-        eos = self.vocab.EOS if raw_text else self.vocab.eos
+        eos = self.vocab.EOS
         stream = SourcewiseMapping(stream, functools.partial(add_eos, eos),
                                    which_sources=('contexts', 'questions'))
         stream = Mapping(stream, functools.partial(select_random_answer, rng),
                          mapping_accepts=dict)
         if not batch_size:
+            if self._retrieval:
+                raise NotImplementedError()
             return stream
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
+        if self._retrieval:
+            stream = Mapping(
+                stream,
+                functools.partial(retrieve_and_pad, self._retrieval),
+                mapping_accepts=dict,
+                add_sources=('defs', 'def_mask', 'contexts_def_map', 'questions_def_map'))
+        if not raw_text:
+            stream = SourcewiseMapping(stream, functools.partial(digitize, self.vocab),
+                                       which_sources=('contexts', 'questions'))
         stream = Padding(stream, mask_sources=('contexts', 'questions'), mask_dtype='float32')
         return stream
 
