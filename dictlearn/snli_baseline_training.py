@@ -183,7 +183,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         os.mkdir(save_path)
     else:
         logger.info("Continue an existing job")
-    with open(save_path, "cmd.txt", "w") as f:
+    with open(os.path.join(save_path, "cmd.txt"), "w") as f:
         f.write(" ".join(sys.argv))
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
@@ -208,7 +208,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         num_input_words=c['num_input_words'],
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
-        disregard_word_embeddings=c['disregard_word_embeddings']
+        disregard_word_embeddings=c['disregard_word_embeddings'], multimod_drop=c['multimod_drop']
     )
     baseline.initialize()
 
@@ -255,7 +255,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     test_cg = cg
     for name, param, var in baseline.get_cg_transforms():
-        logger.info("Applying " + name + " to " + var.name)
+        logger.info("Applying " + name + " to " + str(var))
         cg = apply_dropout(cg, [var], param)
 
     # Freeze embeddings
@@ -359,6 +359,15 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         training_stream = ServerDataStream(
             sources=training_stream.sources,
             produces_examples=training_stream.produces_examples, port=port, hwm=5000)
+
+    if "VISDOM_SERVER" in os.environ:
+        print("Running visdom server")
+        ret = subprocess.Popen([os.path.join(os.path.dirname(__file__), "../visdom_plotter.py"),
+            "--visdom-server={}".format(os.environ['VISDOM_SERVER']), "--folder={}".format(save_path)])
+        time.sleep(0.1)
+        if ret.returncode is not None:
+            raise Exception()
+        atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
 
     model = Model(cost)
     for p, m in pop_updates:

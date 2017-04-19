@@ -20,6 +20,9 @@ from dictlearn.inits import GlorotUniform
 from dictlearn.util import masked_root_mean_square
 from dictlearn.ops import RetrievalOp
 
+import logging
+logger = logging.getLogger(__file__)
+
 # TODO: Implement
 class LookupWithTranslation(Initializable):
     pass
@@ -50,7 +53,7 @@ class DictEnchancedLookup(Initializable):
 
     """
 
-    def __init__(self, emb_dim, dim, vocab, retrieval, disregard_word_embeddings=False,
+    def __init__(self, emb_dim, dim, vocab, retrieval, disregard_word_embeddings=False, multimod_drop=1.0,
             num_input_words=-1, compose_type="sum", **kwargs):
         self._retrieval = retrieval
         self._vocab = vocab
@@ -62,6 +65,7 @@ class DictEnchancedLookup(Initializable):
 
         self._compose_type = compose_type
         self._emb_dim = emb_dim
+        self._multimod_drop = multimod_drop
         self._disregard_word_embeddings = disregard_word_embeddings
 
         if self._retrieval:
@@ -109,6 +113,8 @@ class DictEnchancedLookup(Initializable):
         self._base_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
         self._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
+    def get_cg_transforms(self):
+        return self._cg_transforms
 
     @application
     def apply(self, application_call, words, words_mask):
@@ -160,15 +166,24 @@ class DictEnchancedLookup(Initializable):
                           + T.ge(words, self._num_input_words) * self._vocab.unk)
 
         # Run the main rnn with combined inputs
-        final_embeddings = self._base_lookup.apply(input_word_ids)
+        base_embeddings = self._base_lookup.apply(input_word_ids)
+
+        self._cg_transforms = []
+        if self._multimod_drop != 0.0:
+            logger.info("Adding drop on dict and normal emb")
+            assert base_embeddings is not None
+            assert def_mean is not None
+            self._cg_transforms.append(['dropout', self._multimod_drop, base_embeddings])
+            self._cg_transforms.append(['dropout', self._multimod_drop, def_mean])
+
         application_call.add_auxiliary_variable(
-            masked_root_mean_square(final_embeddings, words_mask), name='rnn_input_rootmean2')
+            masked_root_mean_square(base_embeddings, words_mask), name='rnn_input_rootmean2')
 
         if not self._disregard_word_embeddings:
             if self._compose_type == 'sum':
-                final_embeddings += def_mean
+                final_embeddings = base_embeddings + def_mean
             elif self._compose_type.startswith('fully_connected'):
-                concat = T.concatenate([final_embeddings, def_mean], axis=2)
+                concat = T.concatenate([base_embeddings, def_mean], axis=2)
                 final_embeddings = self._def_state_compose.apply(concat)
             else:
                 assert False

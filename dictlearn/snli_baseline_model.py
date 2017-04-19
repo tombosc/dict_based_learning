@@ -11,6 +11,9 @@ import theano
 import theano.tensor as T
 from theano import tensor
 
+import logging
+logger = logging.getLogger(__file__)
+
 from blocks.bricks import Initializable, Linear, MLP
 from blocks.bricks import Softmax, Rectifier
 from blocks.bricks.bn import BatchNormalization
@@ -29,7 +32,7 @@ class SNLIBaseline(Initializable):
 
     def __init__(self, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum", n_layers=3,
             # Dict lookup kwargs
-            retrieval=None, compose_type="sum", disregard_word_embeddings=False,
+            retrieval=None, compose_type="sum", disregard_word_embeddings=False, multimod_drop=1.0,
             # Others
             **kwargs):
 
@@ -39,6 +42,7 @@ class SNLIBaseline(Initializable):
         self._retrieval = retrieval
 
         if num_input_words > 0:
+            logger.info("Restricting vocab to " + str(num_input_words))
             self._num_input_words = num_input_words
         else:
             self._num_input_words = vocab.size()
@@ -47,7 +51,7 @@ class SNLIBaseline(Initializable):
 
         if retrieval:
             self._lookup = DictEnchancedLookup(emb_dim=emb_dim, retrieval=retrieval, vocab=vocab,
-                dim=translate_dim, disregard_word_embeddings=disregard_word_embeddings,
+                dim=translate_dim, disregard_word_embeddings=disregard_word_embeddings, multimod_drop=multimod_drop,
                 num_input_words=num_input_words, compose_type=compose_type)
             if self._encoder == "rnn":
                 # Translation serves as a "fork" to LSTM
@@ -133,7 +137,15 @@ class SNLIBaseline(Initializable):
             raise NotImplementedError()
 
     def get_cg_transforms(self):
-        return self._cg_transforms
+        cg = self._cg_transforms
+        if isinstance(self._lookup, DictEnchancedLookup):
+            cg += self._lookup.get_cg_transforms()
+        elif isinstance(self._lookup, LookupTable):
+            pass
+        else:
+            raise NotImplementedError()
+        print(cg)
+        return cg
 
     @application
     def apply(self, application_call,
