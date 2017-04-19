@@ -248,6 +248,22 @@ class Retrieval(object):
 
         return definitions, def_map
 
+    def retrieve_and_pad(self, batch):
+        defs, def_map = self.retrieve(batch)
+        if not defs:
+            defs.append(self.sentinel_definition())
+        # `defs` have variable length and have to be padded
+        max_def_length = max(map(len, defs))
+        def_array = numpy.zeros((len(defs), max_def_length), dtype='int64')
+        def_mask = numpy.ones_like(def_array, dtype='float32')
+        for i, def_ in enumerate(defs):
+            def_array[i, :len(def_)] = def_
+            def_mask[i, len(def_):] = 0.
+        def_map = (numpy.array(def_map)
+                   if def_map
+                   else numpy.zeros((0, 3), dtype='int64'))
+        return def_array, def_mask, def_map
+
     def sentinel_definition(self):
         """An empty definition.
 

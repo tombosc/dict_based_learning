@@ -34,7 +34,7 @@ class DictEnchancedLookup(Initializable):
     Parameters
     ----------
     num_input_words: int, default: -1
-        If non zero will (a bit confusing name) restrict dynamically vocab. 
+        If non zero will (a bit confusing name) restrict dynamically vocab.
         WARNING: it assumes word ids are monotonical with frequency!
 
     emb_dim: int
@@ -53,7 +53,7 @@ class DictEnchancedLookup(Initializable):
 
     """
 
-    def __init__(self, emb_dim, dim, vocab, retrieval, disregard_word_embeddings=False, multimod_drop=1.0,
+    def __init__(self, emb_dim, dim, vocab=None, retrieval=None, disregard_word_embeddings=False, multimod_drop=1.0,
             num_input_words=-1, compose_type="sum", **kwargs):
         self._retrieval = retrieval
         self._vocab = vocab
@@ -122,7 +122,17 @@ class DictEnchancedLookup(Initializable):
         Returns vector per each word in sequence using the dictionary based lookup
         """
         defs, def_mask, def_map = self._retrieve(words)
+        return self.apply_with_given_defs(words, words_mask,
+                                          defs, def_mask, def_map)
 
+
+    @application
+    def apply_with_given_defs(self, application_call,
+                              words, words_mask,
+                              defs, def_mask, def_map):
+        """
+        Returns vector per each word in sequence using the dictionary based lookup
+        """
         # Short listing
         defs = (T.lt(defs, self._num_input_words) * defs
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)

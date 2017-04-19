@@ -11,6 +11,8 @@ qa_config_registry.set_root_config({
     'max_length' : 100,
     'batch_size' : 32,
     'batch_size_valid' : 32,
+    'max_def_length' : 1000,
+    'exclude_top_k' : 0,
 
     # model
     'dim' : 128,
@@ -55,3 +57,8 @@ qa_config_registry['squad2'] = c
 c = qa_config_registry['squad_glove']
 from1to2(c)
 qa_config_registry['squad_glove2'] = c
+
+c = qa_config_registry['squad2']
+c['max_def_length'] = 30
+c['exclude_top_k'] = 10000
+qa_config_registry['squad3'] = c

@@ -59,7 +59,7 @@ def test_squad_data():
     with open(train_path, 'wb') as dst:
         print(base64.b64decode(TEST_SQUAD_BASE64_HDF5_DATA), file=dst)
 
-    data = ExtractiveQAData(temp_dir, 'squad')
+    data = ExtractiveQAData(path=temp_dir, layout='squad')
     stream = data.get_stream('train', batch_size=3, shuffle=True, seed=3)
     assert set(stream.sources) == set(['contexts', 'contexts_mask',
                                        'questions', 'questions_mask',

@@ -9,6 +9,7 @@ from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
+from dictlearn.lookup import DictEnchancedLookup
 
 
 class ExtractiveQAModel(Initializable):
@@ -24,14 +25,12 @@ class ExtractiveQAModel(Initializable):
         Use the coattention mechanism.
     num_input_words : int
         The number of input words. If 0, `vocab.size()` is used.
-    vocab
         The vocabulary object.
-    retrieval
-        The dictionary retrieval algorithm. If `None`, the language model
-        does not use any dictionary.
+    use_definitions : bool
+        Triggers the use of definitions.
 
     """
-    def __init__(self, dim, emb_dim, coattention, num_input_words, vocab, retrieval=None, **kwargs):
+    def __init__(self, dim, emb_dim, coattention, num_input_words, vocab, use_definitions=False, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
@@ -39,16 +38,17 @@ class ExtractiveQAModel(Initializable):
             num_input_words = vocab.size()
         self._coattention = coattention
         self._num_input_words = num_input_words
-        self._retrieval = retrieval
-        self._word_to_id = WordToIdOp(self._vocab)
-
-        if self._retrieval:
-            self._retrieve = RetrievalOp(retrieval)
+        self._use_definitions = use_definitions
 
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
         children = []
-        self._lookup = LookupTable(self._num_input_words, emb_dim)
+        self._lookup = (DictEnchancedLookup(vocab=vocab,
+                                            num_input_words=self._num_input_words,
+                                            dim=dim,
+                                            emb_dim=emb_dim)
+                        if self._use_definitions
+                        else LookupTable(self._num_input_words, emb_dim))
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
@@ -77,6 +77,14 @@ class ExtractiveQAModel(Initializable):
             self.contexts, self.context_mask,
             self.questions, self.question_mask,
             self.answer_begins, self.answer_ends]
+        if self._use_definitions:
+            self.defs = tensor.lmatrix('defs')
+            self.def_mask = tensor.matrix('def_mask')
+            self.contexts_def_map = tensor.lmatrix('contexts_def_map')
+            self.questions_def_map = tensor.lmatrix('questions_def_map')
+            self.input_vars.extend([self.defs, self.def_mask,
+                                    self.contexts_def_map, self.questions_def_map])
+
 
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
@@ -87,7 +95,8 @@ class ExtractiveQAModel(Initializable):
     @application
     def apply(self, application_call,
               contexts, contexts_mask, questions, questions_mask,
-              answer_begins, answer_ends):
+              answer_begins, answer_ends,
+              defs=None, def_mask=None, contexts_def_map=None, questions_def_map=None):
         def flip01(x):
             return x.transpose((1, 0, 2))
         def flip12(x):
@@ -101,8 +110,16 @@ class ExtractiveQAModel(Initializable):
         questions = (
             tensor.lt(questions, self._num_input_words) * questions
             + tensor.ge(questions, self._num_input_words) * self._vocab.unk)
-        context_embs = self._lookup.apply(contexts)
-        question_embs = self._lookup.apply(questions)
+        if self._use_definitions:
+            context_embs = self._lookup.apply_with_given_defs(
+                contexts, contexts_mask,
+                defs, def_mask, contexts_def_map)
+            question_embs = self._lookup.apply_with_given_defs(
+                questions, questions_mask,
+                defs, def_mask, questions_def_map)
+        else:
+            context_embs = self._lookup.apply(contexts)
+            question_embs = self._lookup.apply(questions)
 
         context_enc = flip01(
             self._encoder_rnn.apply(

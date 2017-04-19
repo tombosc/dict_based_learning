@@ -40,18 +40,7 @@ class RetrievalOp(theano.Op):
             self, [input_], [defs_type(), def_mask_type(), def_map_type()])
 
     def perform(self, node, inputs, output_storage):
-        defs, def_map = self._retrieval.retrieve(inputs[0])
-        if not defs:
-            defs.append(self._retrieval.sentinel_definition())
-        # `defs` have variable length and have to be padded
-        max_def_length = max(map(len, defs))
-        def_array = numpy.zeros((len(defs), max_def_length), dtype='int64')
-        def_mask = numpy.ones_like(def_array, dtype='float32')
-        for i, def_ in enumerate(defs):
-            def_array[i, :len(def_)] = def_
-            def_mask[i, len(def_):] = 0.
-        output_storage[0][0] = def_array
+        defs, def_mask, def_map = self._retrieval.retrieve_and_pad(inputs[0])
+        output_storage[0][0] = defs
         output_storage[1][0] = def_mask
-        output_storage[2][0] = (numpy.array(def_map)
-                                if def_map
-                                else numpy.zeros((0, 3), dtype='int64'))
+        output_storage[2][0] = def_map
