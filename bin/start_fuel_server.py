@@ -15,7 +15,11 @@ def main():
     parser.add_argument("hwm", type=int, default=10, help="HWM")
     args = parser.parse_args()
     stream = cPickle.load(open(args.stream))
-    start_server(stream, args.port, hwm=args.hwm)
+    try:
+        start_server(stream, args.port, hwm=args.hwm)
+    except KeyboardInterrupt:
+        logger.info("Thank you for using Fuel server, bye-bye!")
+
 
 
 if __name__ == "__main__":

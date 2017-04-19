@@ -30,7 +30,8 @@ from fuel.streams import ServerDataStream
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.theano_util import parameter_stats
 from dictlearn.data import LanguageModellingData
-from dictlearn.extensions import DumpTensorflowSummaries
+from dictlearn.extensions import (
+    DumpTensorflowSummaries, StartFuelServer)
 from dictlearn.language_model import LanguageModel
 from dictlearn.retrieval import Retrieval, Dictionary
 
@@ -138,9 +139,26 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     if c['monitor_parameters']:
         train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 
+    # We use a completely random seed on purpose. With Fuel server
+    # it's currently not possible to restore the state of the training
+    # stream. That's why it's probably better to just have it stateless.
+    stream_seed = numpy.random.randint(0, 10000000) if fuel_server else None
+    training_stream = data.get_stream(
+        'train', batch_size=c['batch_size'], max_length=c['max_length'],
+        seed=stream_seed)
+    original_training_stream = training_stream
+    if fuel_server:
+        # the port will be configured by the StartFuelServer extension
+        training_stream = ServerDataStream(
+            sources=training_stream.sources,
+            produces_examples=training_stream.produces_examples)
+
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
+        StartFuelServer(original_training_stream,
+                        stream_path,
+                        before_training=fuel_server),
         Timing(every_n_batches=c['mon_freq_train']),
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
@@ -149,9 +167,10 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
             monitored_vars,
             data.get_stream('valid', batch_size=c['batch_size_valid']),
             prefix="valid").set_conditions(
-                before_training=not fast_start,
+                before_first_epoch=not fast_start,
                 every_n_batches=c['mon_freq_valid']),
         Checkpoint(main_loop_path,
+                   save_separately=['iteration_state'],
                    before_training=not fast_start,
                    every_n_batches=c['save_freq_batches'],
                    after_training=not fast_start),
@@ -162,24 +181,6 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
-    # We use a completely random seed on purpose. With Fuel server
-    # it's currently not possible to restore the state of the training
-    # stream. That's why it's probably better to just have it stateless.
-    training_stream = data.get_stream(
-        'train', batch_size=c['batch_size'], max_length=c['max_length'],
-        seed=numpy.random.randint(0, 10000000))
-    if fuel_server:
-        with open(stream_path, 'w') as dst:
-            cPickle.dump(training_stream, dst, 0)
-        port = ServerDataStream.PORT = get_free_port()
-        ret = subprocess.Popen(["start_fuel_server.py", stream_path, str(port)])
-        time.sleep(0.1)
-        if ret.returncode is not None:
-            raise Exception()
-        atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
-        training_stream = ServerDataStream(
-            sources=training_stream.sources,
-            produces_examples=training_stream.produces_examples)
 
     main_loop = MainLoop(
         algorithm,
