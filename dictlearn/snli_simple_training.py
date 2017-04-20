@@ -1,15 +1,8 @@
 """
 Training loop for simple SNLI model that can use dict enchanced embeddings
 
-TODO: Debug low acc
 TODO: Unit test data preprocessing
-TODO: Add logging to txt
-TODO: Reload with fuel server?
 TODO: Second round of debugging reloading
-TODO: Add assert that embeddings are frozen
-
-Diff:
-BN during training using sample stat
 """
 
 import sys
@@ -245,8 +238,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         #     save_path,
         #     every_n_batches=c['mon_freq_train'],
         #     after_training=True),
-        # AutomaticKerberosCall(
-        #     every_n_batches=c['mon_freq_train']),
         DumpCSVSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],

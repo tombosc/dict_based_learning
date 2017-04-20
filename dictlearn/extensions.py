@@ -71,6 +71,10 @@ class DumpCSVSummaries(SimpleExtension):
         for key, value in self.main_loop.log.current_row.items():
             try:
                 float_value = float(value)
+
+                if not key.startswith("val") and not key.startswith("train") and not key.startswith("test"):
+                    key = "train_" + key
+
                 self._current_log[key].append(float_value)
             except:
                 pass
