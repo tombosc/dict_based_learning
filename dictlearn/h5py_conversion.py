@@ -217,6 +217,7 @@ def extract_tokens_from_binary_parse(parse):
     return parse.replace('(', ' ').replace(')', ' ').replace('-LRB-', '(').replace('-RRB-', ')').split()
 
 def snli_to_h5py_dataset(snli_path, dst_path):
+    logging.info("Reading CSV file")
     d = pd.read_csv(snli_path, sep="\t")
 
     # Remove NaN
@@ -236,7 +237,7 @@ def snli_to_h5py_dataset(snli_path, dst_path):
     sentences = [extract_tokens_from_binary_parse(s) for s in d['sentence1_binary_parse']]
     sentences += [extract_tokens_from_binary_parse(s) for s in d['sentence2_binary_parse']]
     words = np.array([w for s in tqdm.tqdm(sentences, total=len(sentences)) for w in s])
-    print("Found {} words".format(len(words)))
+    logging.info("Found {} words".format(len(words)))
 
     # Pack (I hate writing this h5py code)
     dtype = h5py.special_dtype(vlen='S20')
@@ -272,6 +273,8 @@ def snli_to_h5py_dataset(snli_path, dst_path):
     sentence2_ds.dims.create_scale(ds_shape_labels, 'shape_labels')
     sentence2_ds.dims[0].attach_scale(ds_shape_labels)
     ### h5py nonsense ###
+
+    print(len(d))
 
     dst.attrs['split'] = H5PYDataset.create_split_array({
         'all': {

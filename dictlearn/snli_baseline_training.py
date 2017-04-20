@@ -25,7 +25,6 @@ from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.graph import apply_dropout, apply_batch_normalization
 from blocks.algorithms import Scale, RMSProp
 from blocks.extensions import ProgressBar, Timestamp
-
 import os
 import time
 import atexit
@@ -58,7 +57,7 @@ from fuel.streams import ServerDataStream, AbstractDataStream, zmq, recv_arrays
 from subprocess import Popen, PIPE
 
 from dictlearn.util import get_free_port, configure_logger, copy_streams_to_file
-from dictlearn.extensions import DumpTensorflowSummaries, SimpleExtension
+from dictlearn.extensions import DumpTensorflowSummaries, SimpleExtension, StartFuelServer
 from dictlearn.data import SNLIData
 from dictlearn.snli_baseline_model import SNLIBaseline
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -218,6 +217,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')
+    s1_words, s2_words = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')
     s1_mask, s2_mask = T.fmatrix('sentence1_ids_mask'), T.fmatrix('sentence2_ids_mask')
     y = T.ivector('label')
     pred = baseline.apply(s1, s1_mask, s2, s2_mask)
@@ -302,6 +302,18 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             stats.name = name + '_stats'
             train_monitored_vars.append(stats)
 
+    regular_training_stream = data.get_stream(
+        'train', batch_size=c['batch_size'],
+        seed=numpy.random.randint(0, 10000000))
+
+    if fuel_server:
+        # the port will be configured by the StartFuelServer extension
+        training_stream = ServerDataStream(
+            sources=regular_training_stream.sources,
+            produces_examples=regular_training_stream.produces_examples)
+    else:
+        training_stream = regular_training_stream
+
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
@@ -313,10 +325,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             every_n_batches=c['mon_freq_train']),
         DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('dev', batch_size=c['batch_size']),
-            prefix="dev").set_conditions(
+            data.get_stream('valid', batch_size=c['batch_size']),
+            prefix="valid").set_conditions(
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_dev']),
+            every_n_batches=c['mon_freq_valid']),
         # DataStreamMonitoring(
         #     monitored_vars,
         #     data.get_stream('test', batch_size=c['batch_size']),
@@ -333,6 +345,9 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         #     after_training=True),
         # AutomaticKerberosCall(
         #     every_n_batches=c['mon_freq_train']),
+        StartFuelServer(regular_training_stream,
+            stream_path,
+            before_training=fuel_server),
         DumpCSVSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],
@@ -340,25 +355,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
-
-    training_stream = data.get_stream(
-        'train', batch_size=c['batch_size'],
-        seed=numpy.random.randint(0, 10000000))
-
-    if fuel_server:
-        with open(stream_path, 'w') as dst:
-            cPickle.dump(training_stream, dst, 0)
-        port = ServerDataStream.PORT = get_free_port()
-        ret = subprocess.Popen([os.path.join(os.path.dirname(__file__), "../bin/start_fuel_server.py"),
-            stream_path, str(port), str(5000)])
-        print("Using port " + str(port))
-        time.sleep(0.1)
-        if ret.returncode is not None:
-            raise Exception()
-        atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
-        training_stream = ServerDataStream(
-            sources=training_stream.sources,
-            produces_examples=training_stream.produces_examples, port=port, hwm=5000)
 
     if "VISDOM_SERVER" in os.environ:
         print("Running visdom server")
