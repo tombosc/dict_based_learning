@@ -198,6 +198,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         dict = Dictionary(c['dict_path'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
             exclude_top_k=c['exclude_top_k'])
+        data.set_retrieval(retrieval)
     else:
         retrieval = None
 
@@ -318,7 +319,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     if fuel_server:
         # the port will be configured by the StartFuelServer extension
         training_stream = ServerDataStream(
-            sources=regular_training_stream.sources,
+            sources=regular_training_stream.sources, hwm=5000,
             produces_examples=regular_training_stream.produces_examples)
     else:
         training_stream = regular_training_stream
@@ -326,6 +327,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
+        StartFuelServer(training_stream,
+            stream_path,
+            hwm=5000,
+            before_training=fuel_server),
         Timing(every_n_batches=c['mon_freq_train']),
         ProgressBar(),
         Timestamp(),
@@ -354,9 +359,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         #     after_training=True),
         # AutomaticKerberosCall(
         #     every_n_batches=c['mon_freq_train']),
-        StartFuelServer(regular_training_stream,
-            stream_path,
-            before_training=fuel_server),
         DumpCSVSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],

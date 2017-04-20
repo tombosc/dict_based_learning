@@ -201,10 +201,8 @@ def retrieve_and_pad_squad(retrieval, example):
 
 def retrieve_and_pad_snli(retrieval, example):
     # TODO(kudkudak): We could joint retrieve retrieve_and_pad_squad and retrieve_and_pad_snli
-    # this will be done along lookup refactor. Won't do it now because mapping_accepts dict is not
-    # available in Blocks, yet.
+    # this will be done along lookup refactor
     s1, s2, label = example
-    # TODO(kudkudak): Ensures ordering is right. Not sure how to pass dict to mapping
     assert label.ndim == 1
     text = list(s1) + list(s2)
     defs, def_mask, def_map = retrieval.retrieve_and_pad(text)
@@ -214,9 +212,6 @@ def retrieve_and_pad_snli(retrieval, example):
     s2_def_map = (
         def_map[numpy.logical_not(context_defs)]
         - numpy.array([len(s1), 0, 0]))
-
-    # This is because there is bug in Fuel :( Cannot concatenate tuple and list
-    # so we need to return everything here
     return [defs, def_mask, s1_def_map, s2_def_map]
 
 def digitize(vocab, source_data):
@@ -316,8 +311,11 @@ class FixedMapping(Transformer):
 
 
 class SNLIData(Data):
-    def __init__(self, retrieval=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(SNLIData, self).__init__(*args, **kwargs)
+        self._retrieval = None
+
+    def set_retrieval(self, retrieval):
         self._retrieval = retrieval
 
     @property

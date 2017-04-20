@@ -70,8 +70,9 @@ class LoadNoUnpickling(Load):
 
 class StartFuelServer(SimpleExtension):
 
-    def __init__(self, stream, stream_path, *args, **kwargs):
+    def __init__(self, stream, stream_path, hwm=100, *args, **kwargs):
         self._stream = stream
+        self._hwm = hwm
         self._stream_path = stream_path
         super(StartFuelServer, self).__init__(*args, **kwargs)
 
@@ -82,7 +83,7 @@ class StartFuelServer(SimpleExtension):
         self.main_loop.data_stream.port = port
         logger.debug("Starting the Fuel server...")
         ret = subprocess.Popen(
-            ["start_fuel_server.py", self._stream_path, str(port), '100'])
+            ["start_fuel_server.py", self._stream_path, str(port), str(self._hwm)])
         time.sleep(0.1)
         if ret.returncode is not None:
             raise Exception()
