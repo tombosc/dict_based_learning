@@ -9,6 +9,7 @@ snli_config_registry.set_root_config({
 
     # Lookup params
     'translate_dim': 300,
+    'mlp_dim': 600,
     'emb_dim': 300,
     'dict_path': '',
     # Remove by default embeddings. Our goal ATM is to beat random init
@@ -40,6 +41,7 @@ c = snli_config_registry['root']
 # TODO: Make sure it really works
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['exclude_top_k'] = 5000
+c['translate_dim'] = 100
 c['multimod_drop'] = 0.5
 c['train_emb'] = 1
 c['embedding_path'] = ''

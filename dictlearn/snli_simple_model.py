@@ -30,7 +30,7 @@ class SNLISimple(Initializable):
     Simple model based on https://github.com/Smerity/keras_snl
     """
 
-    def __init__(self, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum", n_layers=3,
+    def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum", n_layers=3,
             # Dict lookup kwargs
             retrieval=None, compose_type="sum", disregard_word_embeddings=False, multimod_drop=1.0,
             # Others
@@ -96,16 +96,17 @@ class SNLISimple(Initializable):
         current_dim = 2 * translate_dim  # Joint
         for i in range(n_layers):
             rect = Rectifier()
-            dense = Linear(input_dim=current_dim, output_dim=2 * translate_dim,
+            dense = Linear(input_dim=current_dim, output_dim=mlp_dim,
                 name="MLP_layer_" + str(i), \
                 weights_init=GlorotUniform(), \
                 biases_init=Constant(0))
-            bn = BatchNormalization(input_dim=2 * translate_dim, name="BN_" + str(i), conserve_memory=False)
+            current_dim = mlp_dim
+            bn = BatchNormalization(input_dim=current_dim, name="BN_" + str(i), conserve_memory=False)
             children += [dense, rect, bn] #TODO: Strange place to put ReLU
             self._mlp.append([dense, rect, bn])
-            cur_dim = 2 * translate_dim
 
-        self._pred = MLP([Softmax()], [cur_dim, 3], \
+
+        self._pred = MLP([Softmax()], [current_dim, 3], \
             weights_init=GlorotUniform(), \
             biases_init=Constant(0))
         children.append(self._pred)
