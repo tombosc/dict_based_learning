@@ -17,7 +17,7 @@ snli_config_registry.set_root_config({
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
     'max_def_length': 1000,
-    'train_emb': 0,
+    'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
     "multimod_drop": 1.0,
 
     'num_input_words': 0, # Will take vocab size
@@ -36,8 +36,14 @@ snli_config_registry.set_root_config({
 })
 
 c = snli_config_registry['root']
-c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict.json'
-c['exclude_top_k'] = 10000
+# Looking up words from test/dev as well
+# TODO: Make sure it really works
+c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
+c['exclude_top_k'] = 5000
+c['multimod_drop'] = 0.5
+c['train_emb'] = 1
+c['embedding_path'] = ''
+c['num_input_words'] = 5000
 c['compose_type'] = 'fully_connected_linear' # Affine transformation
 c['disregard_word_embeddings'] = False
 snli_config_registry['small_dict'] = c

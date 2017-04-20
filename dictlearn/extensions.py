@@ -118,7 +118,7 @@ class StartFuelServer(SimpleExtension):
     def do(self, *args, **kwars):
         with open(self._stream_path, 'w') as dst:
             cPickle.dump(self._stream, dst, 0)
-        port = 5557 #get_free_port()
+        port = get_free_port()
         self.main_loop.data_stream.port = port
         logger.debug("Starting the Fuel server on port " + str(port))
         ret = subprocess.Popen(
