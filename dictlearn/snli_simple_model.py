@@ -25,7 +25,7 @@ from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitializa
 from dictlearn.inits import GlorotUniform
 from dictlearn.lookup import DictEnchancedLookup
 
-class SNLIBaseline(Initializable):
+class SNLISimple(Initializable):
     """
     Simple model based on https://github.com/Smerity/keras_snl
     """
@@ -110,7 +110,7 @@ class SNLIBaseline(Initializable):
             biases_init=Constant(0))
         children.append(self._pred)
 
-        super(SNLIBaseline, self).__init__(children=children, **kwargs)
+        super(SNLISimple, self).__init__(children=children, **kwargs)
 
     def get_embeddings_lookups(self):
         if isinstance(self._lookup, LookupTable):
@@ -149,9 +149,12 @@ class SNLIBaseline(Initializable):
 
     @application
     def apply(self, application_call,
-            s1, s1_mask, s2, s2_mask):
+            s1, s1_mask, s2, s2_mask, def_mask=None, defs=None, s1_def_map=None, s2_def_map=None):
 
         if isinstance(self._lookup, LookupTable):
+
+            assert defs is None
+
             # Shortlist words (sometimes we want smaller vocab, especially when dict is small)
             s1 = (tensor.lt(s1, self._num_input_words) * s1
                               + tensor.ge(s1, self._num_input_words) * self._vocab.unk)
@@ -173,10 +176,17 @@ class SNLIBaseline(Initializable):
             s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
             assert s1_transl.ndim == 3
         elif isinstance(self._lookup, DictEnchancedLookup):
+
+            assert defs is not None
+
             print("DictEnchancedLookup")
             # This is hidden in DictEnchancedLookup then
-            s1_transl = self._lookup.apply(s1, s1_mask)
-            s2_transl = self._lookup.apply(s2, s1_mask)
+            s1_transl = self._lookup.apply_with_given_defs(
+                s1, s1_mask,
+                defs, def_mask, s1_def_map)
+            s2_transl = self._lookup.apply_with_given_defs(
+                s2, s2_mask,
+                defs, def_mask, s2_def_map)
 
             if self._encoder == "rnn":
                 s1_transl = self._rnn_fork.apply(s1_transl)

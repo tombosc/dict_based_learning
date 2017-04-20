@@ -1,5 +1,5 @@
 """
-Training loop for baseline SNLI model
+Training loop for simple SNLI model that can use dict enchanced embeddings
 
 TODO: Debug low acc
 TODO: Unit test data preprocessing
@@ -59,7 +59,7 @@ from subprocess import Popen, PIPE
 from dictlearn.util import get_free_port, configure_logger, copy_streams_to_file
 from dictlearn.extensions import DumpTensorflowSummaries, SimpleExtension, StartFuelServer
 from dictlearn.data import SNLIData
-from dictlearn.snli_baseline_model import SNLIBaseline
+from dictlearn.snli_simple_model import SNLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
 
 import pandas as pd
@@ -202,25 +202,34 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         retrieval = None
 
     # Initialize
-    baseline = SNLIBaseline(
+    simple = SNLISimple(
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
         num_input_words=c['num_input_words'],
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
         disregard_word_embeddings=c['disregard_word_embeddings'], multimod_drop=c['multimod_drop']
     )
-    baseline.initialize()
+    simple.initialize()
 
     if c['embedding_path']:
         embeddings = np.load(c['embedding_path'])
-        baseline.set_embeddings(embeddings.astype(theano.config.floatX))
+        simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
     # Compute cost
-    s1, s2 = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')
-    s1_words, s2_words = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')
-    s1_mask, s2_mask = T.fmatrix('sentence1_ids_mask'), T.fmatrix('sentence2_ids_mask')
+    s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
+
+    if c['dict_path']:
+        s1_def_map, s2_def_map = T.lmatrix('sentence1_def_map'), T.lmatrix('sentence2_def_map')
+        def_mask = T.fmatrix("def_mask")
+        defs = T.lmatrix("defs")
+    else:
+        s1_def_map, s2_def_map = None, None
+        def_mask = None
+        defs = None
+
+    s1_mask, s2_mask = T.fmatrix('sentence1_mask'), T.fmatrix('sentence2_mask')
     y = T.ivector('label')
-    pred = baseline.apply(s1, s1_mask, s2, s2_mask)
+    pred = simple.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map, s2_def_map=s2_def_map)
     cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
 
     if theano.config.compute_test_value != 'off':
@@ -240,7 +249,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     cg = ComputationGraph([cost, error_rate])
 
     # Weight decay (TODO: Make it less bug prone)
-    weights = VariableFilter(bricks=[dense for dense, relu, bn in baseline._mlp], roles=[WEIGHT])(cg.variables)
+    weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg.variables)
     final_cost = cost + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
     final_cost.name = 'final_cost'
 
@@ -254,13 +263,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # pop_updates = []
 
     test_cg = cg
-    for name, param, var in baseline.get_cg_transforms():
+    for name, param, var in simple.get_cg_transforms():
         logger.info("Applying " + name + " to " + str(var))
         cg = apply_dropout(cg, [var], param)
 
     # Freeze embeddings
     if not c['train_emb']:
-        frozen_params = [p for E in baseline.get_embeddings_lookups() for p in E.parameters]
+        frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]
     else:
         frozen_params = []
     train_params = [p for p in cg.parameters if p not in frozen_params]
@@ -370,7 +379,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
 
     if c['embedding_path']:
-        assert np.all(baseline.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
+        assert np.all(simple.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
 
     main_loop = MainLoop(
         algorithm,
