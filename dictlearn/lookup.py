@@ -1,11 +1,7 @@
 """
 Methods of constructing word embeddings
 
-TODO(kudkudak): Add unit test for it
-TODO(kudkudak): Refactor (non-dict) lookup from snli_baseline_model to a class here (name for instance EnchancedLookup)
 TODO(kudkudak): Add multiplicative compose_type
-
-TODO(kudkudak): Dict fetching also as Fuel stream (would put it on other thread then)
 """
 from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application
@@ -23,10 +19,6 @@ from dictlearn.ops import RetrievalOp
 import logging
 logger = logging.getLogger(__file__)
 
-
-# TODO: Implement
-class LookupWithTranslation(Initializable):
-    pass
 
 
 class ReadDefinitions(Initializable):
@@ -90,7 +82,47 @@ class ReadDefinitions(Initializable):
         return def_embeddings
 
 
+
 class MeanPoolCombiner(Initializable):
+    """
+    Parameters
+    ----------
+    dim: int
+
+    emb_dim: int
+
+    compose_type : str
+        If 'sum', the definition and word embeddings are averaged
+        If 'fully_connected_linear', a learned perceptron compose the 2
+        embeddings linearly
+        If 'fully_connected_relu', ...
+        If 'fully_connected_tanh', ...
+    """
+
+    def __init__(self, emb_dim, dim, vocab=None, compose_type="sum", **kwargs):
+        children = []
+
+        if compose_type == 'fully_connected_tanh':
+            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
+                , weights_init=GlorotUniform(), biases_init=Constant(0))
+            children.append(self._def_state_compose)
+        elif compose_type == 'fully_connected_relu':
+            self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
+                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
+            children.append(self._def_state_compose)
+        elif compose_type == 'fully_connected_linear':
+            self._def_state_compose = MLP(activations=[None],
+                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
+            children.append(self._def_state_compose)
+        elif compose_type == 'fully_connected_linear':
+            self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
+            children.append(self._def_state_compose)
+        elif compose_type == 'sum':
+            pass
+        else:
+            raise NotImplementedError()
+
+        super(MeanPoolCombiner, self).__init__(children=children, **kwargs)
 
     @application
     def apply(self, application_call,
@@ -103,7 +135,7 @@ class MeanPoolCombiner(Initializable):
         def_lens = T.zeros_like(def_sum[:, 0])
         flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1]
         def_sum = T.inc_subtensor(def_sum[flat_indices],
-                                  def_embeddings[def_map[:, 2]])
+            def_embeddings[def_map[:, 2]])
         def_lens = T.inc_subtensor(def_lens[flat_indices], 1)
         def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
@@ -111,4 +143,16 @@ class MeanPoolCombiner(Initializable):
         application_call.add_auxiliary_variable(
             masked_root_mean_square(def_mean, words_mask), name='def_mean_rootmean2')
 
-        return word_embs + def_mean
+        if self._compose_type == 'sum':
+            final_embeddings = word_embs + def_mean
+        elif self._compose_type.startswith('fully_connected'):
+            concat = T.concatenate([word_embs, def_mean], axis=2)
+            final_embeddings = self._def_state_compose.apply(concat)
+        else:
+            raise NotImplementedError()
+
+        application_call.add_auxiliary_variable(
+            masked_root_mean_square(final_embeddings, words_mask),
+            name='merged_input_rootmean2')
+
+        return final_embeddings
