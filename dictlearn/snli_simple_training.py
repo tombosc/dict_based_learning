@@ -76,7 +76,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
-            exclude_top_k=c['exclude_top_k'])
+            exclude_top_k=c['exclude_top_k'], try_lowercase=c['try_lowercase'])
         data.set_retrieval(retrieval)
     else:
         retrieval = None
@@ -87,7 +87,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
-        disregard_word_embeddings=c['disregard_word_embeddings'], combiner_dropout=c['combiner_dropout'],
+        only_def=c['only_def'], combiner_dropout=c['combiner_dropout'],
         combiner_dropout_type=c['combiner_dropout_type']
     )
     simple.initialize()

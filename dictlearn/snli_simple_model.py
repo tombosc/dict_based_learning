@@ -33,7 +33,7 @@ class SNLISimple(Initializable):
 
     def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum", n_layers=3,
             # Dict lookup kwargs
-            retrieval=None, compose_type="sum", disregard_word_embeddings=False, combiner_dropout=1.0,
+            retrieval=None, compose_type="sum", only_def=False, combiner_dropout=1.0,
             combiner_dropout_type="regular",
             # Others
             **kwargs):
@@ -42,6 +42,7 @@ class SNLISimple(Initializable):
         self._encoder = encoder
         self._dropout = dropout
         self._retrieval = retrieval
+        self._only_def = only_def
 
         if num_input_words > 0:
             logger.info("Restricting vocab to " + str(num_input_words))
@@ -50,7 +51,10 @@ class SNLISimple(Initializable):
             self._num_input_words = vocab.size()
 
         children = []
-        self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
+
+        if not only_def:
+            self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
+            children.append(self._lookup)
 
         if retrieval:
             self._def_reader = ReadDefinitions(num_input_words=self._num_input_words,
@@ -92,7 +96,7 @@ class SNLISimple(Initializable):
                 children.append(self._translation_act)
             else:
                 raise NotImplementedError("Not implemented encoder")
-        children.append(self._lookup)
+
 
 
         self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn", conserve_memory=False)
@@ -122,18 +126,29 @@ class SNLISimple(Initializable):
     def get_embeddings_lookups(self):
         if not self._retrieval:
             return [self._lookup]
-        else:
+        elif self._retrieval and not self._only_def:
             return [self._lookup, self._def_reader._def_lookup]
+        elif self._retrieval and self._only_def:
+            return [self._def_reader._def_lookup]
+        else:
+            raise NotImplementedError()
 
     def set_embeddings(self, embeddings):
         if not self._retrieval:
             self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-        else:
+        elif self._retrieval and not self._only_def:
             self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
             self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
+        else:
+            raise NotImplementedError()
 
     def embeddings_var(self):
-        return [self._lookup.parameters[0], self._def_reader._def_lookup.parameters[0]]
+        if not self._retrieval:
+            return [self._lookup.parameters[0]]
+        elif self._retrieval and not self._only_def:
+            return [self._lookup.parameters[0], self._def_reader._def_lookup.parameters[0]]
+        else:
+            raise NotImplementedError()
 
     def get_cg_transforms(self):
         cg = self._cg_transforms

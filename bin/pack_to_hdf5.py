@@ -19,12 +19,17 @@ def main():
     parser.add_argument("--type", choices=("text", "squad", "snli"), default='text',
                         help="What kind of data should be converted")
     parser.add_argument("data", help="The data to convert")
+    parser.add_argument("--lowercase", default=False)
     parser.add_argument("h5", help="Destination")
     args = parser.parse_args()
 
     if args.type == 'text':
+        if args.lowercase:
+            raise NotImplementedError() # Just to be safe
         text_to_h5py_dataset(args.data, args.h5)
     elif args.type == 'squad':
+        if args.lowercase:
+            raise NotImplementedError() # Just to be safe
         port = get_free_port()
         try:
             corenlp = start_corenlp(port)
@@ -33,7 +38,7 @@ def main():
             if corenlp and corenlp.returncode is None:
                 corenlp.kill()
     elif args.type == 'snli':
-        snli_to_h5py_dataset(args.data, args.h5)
+        snli_to_h5py_dataset(args.data, args.h5, lowercase=args.lowercase)
     else:
         raise NotImplementedError(args.type)
 

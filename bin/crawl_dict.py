@@ -22,6 +22,8 @@ def main():
                         help="Identity mapping dictionary")
     parser.add_argument("--spelling", action="store_true",
                         help="Spelling dictionary")
+    parser.add_argument("--crawl-also-lowercase", default=False,
+        help="If true will crawl both regular version and lower-cased")
     parser.add_argument("vocab", help="Vocabulary path")
     parser.add_argument("dict", help="Destination path for the dictionary")
     args = parser.parse_args()
@@ -29,7 +31,7 @@ def main():
     vocab = Vocabulary(args.vocab)
     dict_ = Dictionary(args.dict)
     if args.api_key:
-        dict_.crawl_wordnik(vocab, args.api_key)
+        dict_.crawl_wordnik(vocab, args.api_key, crawl_also_lowercase=args.crawl_also_lowercase)
     elif args.add_lemma_defs:
         dict_.add_from_lemma_definitions(vocab)
     elif args.just_lemmas:

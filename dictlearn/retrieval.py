@@ -114,7 +114,7 @@ class Dictionary(object):
             json.dump(self._data, dst, indent=2)
         self.save()
 
-    def crawl_wordnik(self, vocab, api_key, call_quota=15000):
+    def crawl_wordnik(self, vocab, api_key, call_quota=15000, crawl_also_lowercase=False):
         """Download and preprocess definitions from Wordnik.
 
         vocab
@@ -134,11 +134,22 @@ class Dictionary(object):
         self._account_api = AccountApi.AccountApi(client)
         toktok = nltk.ToktokTokenizer()
 
+        words = list(vocab.words)
+
+        if crawl_also_lowercase:
+            logger.info("Adding lowercase words to crawl")
+            lowercased = []
+            for w in words:
+                if w.lower() not in vocab._word_to_id:
+                    lowercased.append(w.lower())
+            logger.info("Crawling additional {} words".format(len(lowercased)))
+            words.extend(lowercased)
+
         # Here, for now, we don't do any stemming or lemmatization.
         # Stemming is useless because the dictionary is not indexed with
         # lemmas, not stems. Lemmatizers, on the other hand, can not be
         # fully trusted when it comes to unknown words.
-        for word in vocab.words:
+        for word in words:
             if word in self._data:
                 logger.debug("a known word {}, skip".format(word))
                 continue
@@ -163,6 +174,10 @@ class Dictionary(object):
                 definitions = []
             self._data[word] = []
             for def_ in definitions:
+                # TODO(kudkudak): Not super sure if lowering here is correct if we don't lower in
+                # normal text
+                # Note: should be fine when def has separate lookup and if initialzed from raw embeddinggs
+                # uses some fallback strategy
                 tokenized_def = [token.encode('utf-8')
                                  for token in toktok.tokenize(def_.text.lower())]
                 self._data[word].append(tokenized_def)
@@ -180,7 +195,7 @@ class Dictionary(object):
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None):
+                 max_def_length=1000, exclude_top_k=None, try_lowercase=False):
         """Retrieves the definitions.
 
         vocab
@@ -192,12 +207,12 @@ class Retrieval(object):
         exclude_top_k
             Do not provide defitions for the first top k
             words of the vocabulary (typically the most frequent ones).
-
         """
         self._vocab = vocab
         self._dictionary = dictionary
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
+        self._try_lowercase = try_lowercase
 
         # Preprocess all the definitions to see token ids instead of chars
 
@@ -228,6 +243,12 @@ class Retrieval(object):
                     and word_id != self._vocab.unk
                     and word_id < self._exclude_top_k):
                     continue
+
+                # Try fallback
+                if word not in word_def_indices and self._try_lowercase:
+                    if word.lower() in word_def_indices:
+                        word = word.lower()
+
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)

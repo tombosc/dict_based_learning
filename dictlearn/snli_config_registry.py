@@ -6,6 +6,7 @@ snli_config_registry = ConfigRegistry()
 snli_config_registry.set_root_config({
     'data_path':  '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/',
     'layout': 'snli',
+    'try_lowercase': True,
 
     # Lookup params
     'translate_dim': 300,
@@ -15,7 +16,7 @@ snli_config_registry.set_root_config({
     # Remove by default embeddings. Our goal ATM is to beat random init
     'embedding_path': '', #/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy',
     'compose_type': '',
-    'disregard_word_embeddings': False,
+    'only_def': False,
     'exclude_top_k': -1,
     'max_def_length': 1000,
     'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
@@ -49,5 +50,5 @@ c['train_emb'] = 1
 c['embedding_path'] = ''
 c['num_input_words'] = 5000
 c['compose_type'] = 'fully_connected_linear' # Affine transformation
-c['disregard_word_embeddings'] = False
+c['only_def'] = False
 snli_config_registry['small_dict'] = c
