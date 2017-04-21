@@ -7,6 +7,7 @@ import logging
 import cPickle
 import tensorflow
 import pandas as pd
+import scipy
 import numpy as np
 
 from collections import defaultdict
@@ -72,7 +73,42 @@ def construct_embedder(theano_fnc, vocab):
 
     return _embedder
 
-class SimilarityWordEmbeddingEval(MonitoringExtension):
+
+def evaluate_similarity(w, X, y):
+    """
+    Calculate Spearman correlation between cosine similarity of the model
+    and human rated similarity of word pairs
+
+    Parameters
+    ----------
+    w : Embedding or dict
+      Embedding or dict instance.
+
+    X: array, shape: (n_samples, 2)
+      Word pairs
+
+    y: vector, shape: (n_samples,)
+      Human ratings
+
+    Returns
+    -------
+    cor: float
+      Spearman correlation
+    """
+
+    from web.embedding import Embedding
+
+    if isinstance(w, dict):
+        w = Embedding.from_dict(w)
+
+    mean_vector = np.mean(w.vectors, axis=0, keepdims=True)
+    A = np.vstack(w.get(word, mean_vector) for word in X[:, 0])
+    B = np.vstack(w.get(word, mean_vector) for word in X[:, 1])
+    scores = np.array([v1.dot(v2.T) for v1, v2 in zip(A, B)])
+    return scipy.stats.spearmanr(scores, y).correlation
+
+
+class SimilarityWordEmbeddingEval(SimpleExtension):
     """
     Parameters
     ----------
@@ -104,37 +140,44 @@ class SimilarityWordEmbeddingEval(MonitoringExtension):
                 data.y[0]))
 
         logger.info("Checking embedder for " + prefix)
-        embedder(["love"]) # Test embedder
+        logger.info(embedder(["love"])) # Test embedder
 
         self._tasks = tasks
 
         super(SimilarityWordEmbeddingEval, self).__init__(**kwargs)
 
     def __getstate__(self):
-        dict_ = self.__dict__
+        dict_ = dict(self.__dict__)
         if '_embedder' in dict_:
             del dict_['_embedder']
         if '_tasks' in dict_:
-            del dict_['tasks']
+            del dict_['_tasks']
         return dict_
 
-    def do(self, *args, **kwargs):
-        from web.similarity import evaluate_similarity
+    def add_records(self, log, record_tuples):
+        """Helper function to add monitoring records to the log."""
+        for name, value in record_tuples:
+            if not name:
+                raise ValueError("monitor variable without name")
+            log.current_row[name] = value
 
+    def do(self, *args, **kwargs):
         # Embedd
         all_words = []
         for task in self._tasks:
             for row in self._tasks[task].X:
-                all_words.append(row)
+                for w in row:
+                    all_words.append(w)
         logger.info("Embedding vectors")
         all_words_vectors = self._embedder(all_words)
-        W = dict(zip(all_words, all_words_vectors))
+        W = dict(zip(np.array(all_words).reshape((-1,)), all_words_vectors))
 
         # Calculate results using helper function
         record_items = []
         for name, data in iteritems(self._tasks):
             eval = evaluate_similarity(W, data.X, data.y)
             record_items.append((self._prefix + "_" + name, eval))
+
         self.add_records(self.main_loop.log, record_items)
 
 

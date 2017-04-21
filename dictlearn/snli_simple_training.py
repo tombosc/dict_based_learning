@@ -3,6 +3,8 @@ Training loop for simple SNLI model that can use dict enchanced embeddings
 
 TODO: Unit test data preprocessing
 TODO: Second round of debugging reloading
+TODO: Why dict embeddings are all 0 in the beginning?
+TODO: Add tracking norms
 """
 
 import sys
@@ -183,6 +185,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     train_monitored_vars = [final_cost] + cg.outputs
     monitored_vars = test_cg.outputs
+
+    train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg)[0])
+    train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg)[0])
+
+    monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(test_cg)[0])
+    monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(test_cg)[0])
+
     if c['monitor_parameters']:
         for name in train_params_keys:
             param = parameters[name]
@@ -235,17 +244,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             parameters=cg.parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
-            after_training=not fast_start),
+            after_training=not fast_start)
         # DumpTensorflowSummaries(
         #     save_path,
         #     every_n_batches=c['mon_freq_train'],
         #     after_training=True),
-        DumpCSVSummaries(
-            save_path,
-            every_n_batches=c['mon_freq_train'],
-            after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
-        FinishAfter(after_n_batches=c['n_batches'])
     ]
 
     # Similarity trackers for embeddings
@@ -260,12 +263,27 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             # A bit sloppy about downcast
 
             if "dict" in name:
-                embedder = construct_dict_embedder(theano.function([s1, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
+                embedder = construct_dict_embedder(
+                    theano.function([s1, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
                     vocab=data.vocab, retrieval=retrieval)
-                extensions.append(SimilarityWordEmbeddingEval(embedder=embedder, prefix=name))
+                extensions.append(
+                    SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
+                        before_training=not fast_start))
             else:
-                embedder = construct_embedder(theano.function([s1], s1_emb, allow_input_downcast=True), vocab=data.vocab)
-                extensions.append(SimilarityWordEmbeddingEval(embedder=embedder, prefix=name))
+                embedder = construct_embedder(theano.function([s1], s1_emb, allow_input_downcast=True),
+                    vocab=data.vocab)
+                extensions.append(
+                    SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
+                        before_training=not fast_start))
+
+    extensions.extend([DumpCSVSummaries(
+        save_path,
+        every_n_batches=c['mon_freq_train'],
+        after_training=True),
+        Printing(every_n_batches=c['mon_freq_train']),
+        FinishAfter(after_n_batches=c['n_batches'])])
+
+    logger.info(extensions)
 
     if "VISDOM_SERVER" in os.environ:
         print("Running visdom server")
