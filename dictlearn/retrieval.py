@@ -143,7 +143,7 @@ class Dictionary(object):
                 if w.lower() not in vocab._word_to_id:
                     lowercased.append(w.lower())
             logger.info("Crawling additional {} words".format(len(lowercased)))
-            words.extend(lowercased)
+            words.extend(sorted(lowercased))
 
         # Here, for now, we don't do any stemming or lemmatization.
         # Stemming is useless because the dictionary is not indexed with

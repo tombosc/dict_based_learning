@@ -149,7 +149,7 @@ class MeanPoolCombiner(Initializable):
     @application
     def apply(self, application_call,
               word_embs, words_mask,
-              def_embeddings, def_map):
+              def_embeddings, def_map, call_name=""):
         batch_shape = word_embs.shape
 
         # Mean-pooling of definitions
@@ -163,7 +163,7 @@ class MeanPoolCombiner(Initializable):
         def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
 
         application_call.add_auxiliary_variable(
-            masked_root_mean_square(def_mean, words_mask), name='def_mean_rootmean2')
+            masked_root_mean_square(def_mean, words_mask), name=call_name + '_def_mean_rootmean2')
 
         self._cg_transforms = []
         if self._dropout != 0.0 and self._dropout_type == "regular":
@@ -199,7 +199,15 @@ class MeanPoolCombiner(Initializable):
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(final_embeddings, words_mask),
-            name='merged_input_rootmean2')
+            name=call_name + '_merged_input_rootmean2')
+
+        application_call.add_auxiliary_variable(
+            def_mean,
+            name=call_name + '_dict_word_embeddings')
+
+        application_call.add_auxiliary_variable(
+            word_embs,
+            name=call_name + '_word_embeddings')
 
         return final_embeddings
 

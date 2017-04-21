@@ -45,7 +45,8 @@ from blocks.filter import VariableFilter
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import configure_logger
-from dictlearn.extensions import StartFuelServer, DumpCSVSummaries
+from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWordEmbeddingEval, construct_embedder, \
+    construct_dict_embedder
 from dictlearn.data import SNLIData
 from dictlearn.snli_simple_model import SNLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -246,6 +247,25 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
+
+    # Similarity trackers for embeddings
+    for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
+        variables = VariableFilter(name=name)(cg)
+        if len(variables):
+            print(variables)
+            # TODO: Why is it 2?
+            # assert len(variables) == 1, "Shouldn't have more auxiliary variables of the same name"
+            s1_emb = variables[0]
+            logger.info("Adding similarity tracking for " + name)
+            # A bit sloppy about downcast
+
+            if "dict" in name:
+                embedder = construct_dict_embedder(theano.function([s1, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
+                    vocab=data.vocab, retrieval=retrieval)
+                extensions.append(SimilarityWordEmbeddingEval(embedder=embedder, prefix=name))
+            else:
+                embedder = construct_embedder(theano.function([s1], s1_emb, allow_input_downcast=True), vocab=data.vocab)
+                extensions.append(SimilarityWordEmbeddingEval(embedder=embedder, prefix=name))
 
     if "VISDOM_SERVER" in os.environ:
         print("Running visdom server")

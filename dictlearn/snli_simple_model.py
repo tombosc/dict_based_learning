@@ -176,11 +176,15 @@ class SNLISimple(Initializable):
             def_embs = self._def_reader.apply(defs, def_mask)
             s1_transl = self._combiner.apply(
                 s1_emb, s1_mask,
-                def_embs, s1_def_map)
+                def_embs, s1_def_map, call_name="s1")
+
             s2_transl = self._combiner.apply(
                 s2_emb, s2_mask,
-                def_embs, s2_def_map)
+                def_embs, s2_def_map, call_name="s2")
         else:
+            application_call.add_auxiliary_variable(
+                s1_emb,
+                name='s1_word_embeddings')
             # Translate. Crucial for recovering useful information from embeddings
             s1_emb_flatten = s1_emb.reshape((s1_emb.shape[0] * s1_emb.shape[1], s1_emb.shape[2]))
             s2_emb_flatten = s2_emb.reshape((s2_emb.shape[0] * s2_emb.shape[1], s2_emb.shape[2]))
@@ -190,6 +194,9 @@ class SNLISimple(Initializable):
             s2_transl = self._translation_act.apply(s2_transl)
             s1_transl = s1_transl.reshape((s1_emb.shape[0], s1_emb.shape[1], -1))
             s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
+            application_call.add_auxiliary_variable(
+                s1_transl,
+                name='s1_translated_word_embeddings')
             assert s1_transl.ndim == 3
 
         if self._encoder == "rnn":
