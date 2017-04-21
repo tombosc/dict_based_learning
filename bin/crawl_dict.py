@@ -16,6 +16,8 @@ def main():
                         help="Wordnik API key to use")
     parser.add_argument("--just-lemmas", action="store_true",
                         help="Just use the lemmas as the definition")
+    parser.add_argument("--just-lowercase", action="store_true",
+                        help="Just lowercase as the definition")
     parser.add_argument("--add-lemma-defs", action="store_true",
                         help="Add definitions from lemmas")
     parser.add_argument("--identity", action="store_true",
@@ -36,6 +38,8 @@ def main():
         dict_.add_from_lemma_definitions(vocab)
     elif args.just_lemmas:
         dict_.crawl_lemmas(vocab)
+    elif args.just_lowercase:
+        dict_.crawl_lowercase(vocab)
     elif args.identity:
         dict_.setup_identity_mapping(vocab)
     elif args.spelling:
