@@ -35,20 +35,21 @@ snli_config_registry.set_root_config({
     'mon_freq_train': 1000,
     'save_freq_batches': 1000,
     'mon_freq_valid': 1000,
-    'n_batches': 100000 # ~100 epochs of SNLI
+    'n_batches': 200000 # ~100 epochs of SNLI
 })
 
 c = snli_config_registry['root']
+
 # Looking up words from test/dev as well
-# TODO: Make sure it really works
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['exclude_top_k'] = 5000
 c['translate_dim'] = 100
 c['combiner_dropout'] = 0.5
-c['combiner_dropout_type'] = "multimodal"
+c['combiner_dropout_type'] = "multimodal" # Forces to use dict
 c['train_emb'] = 1
 c['embedding_path'] = ''
+c['lr'] = 0.0006
 c['num_input_words'] = 5000
-c['compose_type'] = 'fully_connected_linear' # Affine transformation
+c['compose_type'] = 'sum' # Forces to use dict
 c['only_def'] = False
-snli_config_registry['small_dict'] = c
+snli_config_registry['lstm_small_dict'] = c

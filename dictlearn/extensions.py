@@ -164,12 +164,14 @@ class SimilarityWordEmbeddingEval(SimpleExtension):
     def do(self, *args, **kwargs):
         # Embedd
         all_words = []
+        all_words_vectors = []
+
+        # TODO: Do it at once?
         for task in self._tasks:
             for row in self._tasks[task].X:
                 for w in row:
                     all_words.append(w)
-        logger.info("Embedding vectors")
-        all_words_vectors = self._embedder(all_words)
+                    all_words_vectors.append(self._embedder([w]))
         W = dict(zip(np.array(all_words).reshape((-1,)), all_words_vectors))
 
         # Calculate results using helper function

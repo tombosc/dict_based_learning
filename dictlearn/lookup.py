@@ -4,7 +4,7 @@ Methods of constructing word embeddings
 TODO(kudkudak): Add multiplicative compose_type
 """
 from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
-from blocks.bricks.base import application
+from blocks.bricks.base import application, _variable_name
 from blocks.bricks.lookup import LookupTable
 from blocks.bricks.recurrent import LSTM
 from blocks.initialization import Uniform, Constant
@@ -196,11 +196,11 @@ class MeanPoolCombiner(Initializable):
             name=call_name + '_merged_input_rootmean2')
 
         application_call.add_auxiliary_variable(
-            def_mean,
+            T.ones_like(def_mean) * def_mean,
             name=call_name + '_dict_word_embeddings')
 
         application_call.add_auxiliary_variable(
-            word_embs,
+            T.ones_like(word_embs) * word_embs,
             name=call_name + '_word_embeddings')
 
         return final_embeddings
