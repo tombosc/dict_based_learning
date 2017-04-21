@@ -86,7 +86,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         test_value_data = next(
             data.get_stream('train', shuffle=True, batch_size=4, max_length=5)
             .get_epoch_iterator(as_dict=True))
-        for var in qam.input_vars:
+        for var in qam.input_vars.values():
             var.tag.test_value = test_value_data[var.name]
 
     costs = qam.apply_with_default_vars()

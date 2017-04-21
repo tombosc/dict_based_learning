@@ -20,7 +20,6 @@ import logging
 logger = logging.getLogger(__file__)
 
 
-
 class ReadDefinitions(Initializable):
     """
     Converts definition into embeddings.
@@ -38,14 +37,9 @@ class ReadDefinitions(Initializable):
         Dimensionality of word embeddings
 
     """
-    def __init__(self, num_input_words, emb_dim, dim,
-                 vocab=None, retrieval=None, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab, **kwargs):
         self._num_input_words = num_input_words
-        self._retrieval = retrieval
         self._vocab = vocab
-
-        if self._retrieval:
-            self._retrieve = RetrievalOp(retrieval)
 
         self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
         self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
@@ -69,11 +63,8 @@ class ReadDefinitions(Initializable):
         def_embeddings = self._def_rnn.apply(
             T.transpose(self._def_fork.apply(embedded_def_words), (1, 0, 2)),
             mask=def_mask.T)[0][-1]
-        # Reorder and copy embeddings so that the embeddings of all the definitions
-        # that correspond to a position in the text form a continuous span of a T
 
         return def_embeddings
-
 
 
 class MeanPoolCombiner(Initializable):
@@ -196,11 +187,11 @@ class MeanPoolCombiner(Initializable):
             name=call_name + '_merged_input_rootmean2')
 
         application_call.add_auxiliary_variable(
-            T.ones_like(def_mean) * def_mean,
+            def_mean.copy(),
             name=call_name + '_dict_word_embeddings')
 
         application_call.add_auxiliary_variable(
-            T.ones_like(word_embs) * word_embs,
+            word_embs.copy(),
             name=call_name + '_word_embeddings')
 
         return final_embeddings

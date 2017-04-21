@@ -32,7 +32,7 @@ qa_config_registry.set_root_config({
 })
 
 c = qa_config_registry['root']
-c['data_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch'
+c['data_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch_nolowercase'
 c['layout'] = 'squad'
 c['mon_freq_train'] = 100
 c['grad_clip_threshold'] = 50.

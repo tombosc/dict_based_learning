@@ -111,8 +111,12 @@ class Dictionary(object):
                 logger.error("lemmatizer crashed on {}".format(word))
             if definitions:
                 self._data[word] = definitions
-        with open(self._path, 'w') as dst:
-            json.dump(self._data, dst, indent=2)
+        self.save()
+
+    def crawl_lowercase(self, vocab):
+        """Add Wordnet lemmas as definitions."""
+        for word in vocab.words:
+            self._data[word] = [[word.lower()]]
         self.save()
 
     def crawl_wordnik(self, vocab, api_key, call_quota=15000, crawl_also_lowercase=False):

@@ -62,10 +62,11 @@ class ExtractiveQAModel(Initializable):
         children.extend([self._begin_readout, self._end_readout, self._softmax])
 
         if self._use_definitions:
-            self._def_reader = ReadDefinitions(num_input_words=self._num_input_words,
-                                               dim=dim, emb_dim=emb_dim,
-                                               vocab=vocab)
-            self._combiner = MeanPoolCombiner()
+            self._def_reader = ReadDefinitions(
+                num_input_words=self._num_input_words,
+                dim=dim, emb_dim=emb_dim,
+                vocab=vocab)
+            self._combiner = MeanPoolCombiner(dim=dim, emb_dim=emb_dim)
             children.extend([self._def_reader, self._combiner])
 
         super(ExtractiveQAModel, self).__init__(children=children, **kwargs)
