@@ -115,8 +115,7 @@ class MeanPoolCombiner(Initializable):
         self._dropout_type = dropout_type
         self._compose_type = compose_type
 
-        # TODO: Implement multimodal dropout
-        if dropout_type not in {"regular"}:
+        if dropout_type not in {"regular", "multimodal"}:
             raise NotImplementedError()
 
         children = []
@@ -168,13 +167,11 @@ class MeanPoolCombiner(Initializable):
 
         self._cg_transforms = []
         if self._dropout != 0.0 and self._dropout_type == "regular":
-            assert self._multimod_drop == 0.0
             logger.info("Adding drop on dict and normal emb")
             self._cg_transforms.append(['dropout', self._dropout, word_embs])
             self._cg_transforms.append(['dropout', self._dropout, def_mean])
         elif self._dropout != 0.0 and self._dropout_type == "multimodal":
             logger.info("Adding multimod drop on dict and normal emb")
-            assert self._dropout == 0.0
             # We dropout mask
             mask_defs = T.ones((batch_shape[0],))
             mask_we = T.ones((batch_shape[0],))
@@ -184,7 +181,7 @@ class MeanPoolCombiner(Initializable):
             self._cg_transforms.append(['dropout', self._dropout, mask_we])
 
             # this reduces variance. If both 0 will select both. Classy
-            where_both_zero = (mask_defs + mask_we) == 0
+            where_both_zero = T.eq((mask_defs + mask_we), 0)
 
             mask_defs = (where_both_zero + mask_defs).dimshuffle(0, "x", "x")
             mask_we = (where_both_zero + mask_we).dimshuffle(0, "x", "x")
