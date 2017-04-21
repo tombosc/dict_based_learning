@@ -30,8 +30,9 @@ class Dictionary(object):
     the words are stored as strings.
 
     """
-    def __init__(self, path=None):
+    def __init__(self, path=None, try_lowercase=False):
         self._data = {}
+        self._try_lowercase = try_lowercase
         self._path = path
         self._tmp_path = os.path.join(os.path.dirname(path),
                                          self._path + '.tmp')
@@ -189,13 +190,16 @@ class Dictionary(object):
         return len(self._data)
 
     def get_definitions(self, key):
-        return self._data.get(key, [])
+        if key not in self._data and self._try_lowercase:
+            return self._data.get(key.lower(), [])
+        else:
+            return self._data.get(key, [])
 
 
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None, try_lowercase=False):
+                 max_def_length=1000, exclude_top_k=None):
         """Retrieves the definitions.
 
         vocab
@@ -212,7 +216,6 @@ class Retrieval(object):
         self._dictionary = dictionary
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
-        self._try_lowercase = try_lowercase
 
         # Preprocess all the definitions to see token ids instead of chars
 
@@ -243,11 +246,6 @@ class Retrieval(object):
                     and word_id != self._vocab.unk
                     and word_id < self._exclude_top_k):
                     continue
-
-                # Try fallback
-                if word not in word_def_indices and self._try_lowercase:
-                    if word.lower() in word_def_indices:
-                        word = word.lower()
 
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
