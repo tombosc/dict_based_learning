@@ -2,6 +2,8 @@
 import theano
 from theano import tensor
 
+from collections import OrderedDict
+
 from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
 from blocks.bricks.base import application
 from blocks.bricks.recurrent import LSTM
@@ -75,7 +77,7 @@ class ExtractiveQAModel(Initializable):
         self.question_mask = tensor.matrix('questions_mask')
         self.answer_begins = tensor.lvector('answer_begins')
         self.answer_ends = tensor.lvector('answer_ends')
-        self.input_vars = [
+        input_vars = [
             self.contexts, self.context_mask,
             self.questions, self.question_mask,
             self.answer_begins, self.answer_ends]
@@ -84,9 +86,9 @@ class ExtractiveQAModel(Initializable):
             self.def_mask = tensor.matrix('def_mask')
             self.contexts_def_map = tensor.lmatrix('contexts_def_map')
             self.questions_def_map = tensor.lmatrix('questions_def_map')
-            self.input_vars.extend([self.defs, self.def_mask,
-                                    self.contexts_def_map, self.questions_def_map])
-
+            input_vars.extend([self.defs, self.def_mask,
+                               self.contexts_def_map, self.questions_def_map])
+        self.input_vars = OrderedDict([(var.name, var) for var in input_vars])
 
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
@@ -199,4 +201,4 @@ class ExtractiveQAModel(Initializable):
         return begin_costs + end_costs
 
     def apply_with_default_vars(self):
-        return self.apply(*self.input_vars)
+        return self.apply(*self.input_vars.values())

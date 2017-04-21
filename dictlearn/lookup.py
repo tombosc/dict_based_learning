@@ -47,16 +47,11 @@ class ReadDefinitions(Initializable):
         if self._retrieval:
             self._retrieve = RetrievalOp(retrieval)
 
-        children = []
-
-        # TODO(kudkudak): Remove fixed init
-        self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup',
-            weights_init=GlorotUniform(), biases_init=Constant(0))
-        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork',
-            weights_init=GlorotUniform(), biases_init=Constant(0))
-        self._def_rnn = LSTM(dim, name='def_rnn',
-                             weights_init=Uniform(width=0.1), biases_init=Constant(0))
-        children.extend([self._def_lookup, self._def_fork, self._def_rnn])
+        self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
+        # NOTE: It also has the translate layer inside
+        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
+        self._def_rnn = LSTM(dim, name='def_rnn')
+        children = [self._def_lookup, self._def_fork, self._def_rnn]
 
         super(ReadDefinitions, self).__init__(children=children, **kwargs)
 
