@@ -57,11 +57,11 @@ class SNLISimple(Initializable):
             children.append(self._lookup)
 
         if retrieval:
-            self._def_reader = ReadDefinitions(num_input_words=self._num_input_words,
-                dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
+            self._def_reader = ReadDefinitions(num_input_words=self._num_input_words, weights_init=Uniform(width=0.1),
+                biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
+
             # TODO: Implement multimodal drop! For now using regular dropout
-            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
-                dropout=combiner_dropout, dropout_type=combiner_dropout_type, compose_type=compose_type)
+            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim, dropout=combiner_dropout, dropout_type=combiner_dropout_type, compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
             if self._encoder == "rnn":

@@ -18,7 +18,7 @@ snli_config_registry.set_root_config({
     'compose_type': '',
     'only_def': False,
     'exclude_top_k': -1,
-    'max_def_length': 1000,
+    'max_def_length': 50,
     'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
     "combiner_dropout": 0.0,
     "combiner_dropout_type": "regular",

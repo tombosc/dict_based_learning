@@ -80,6 +80,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
             exclude_top_k=c['exclude_top_k'])
+        retrieval_all = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'])
         data.set_retrieval(retrieval)
     else:
         retrieval = None
@@ -265,7 +266,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             if "dict" in name:
                 embedder = construct_dict_embedder(
                     theano.function([s1, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
-                    vocab=data.vocab, retrieval=retrieval)
+                    vocab=data.vocab, retrieval=retrieval_all)
                 extensions.append(
                     SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
                         before_training=not fast_start))
