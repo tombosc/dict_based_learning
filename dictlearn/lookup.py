@@ -53,7 +53,7 @@ class ReadDefinitions(Initializable):
         # self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup',
         #     weights_init=GlorotUniform(), biases_init=Constant(0))
         self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup',
-            weights_init=Uniform(width=0.1), biases_init=Constant(0))
+            weights_init=GlorotUniform(), biases_init=Constant(0))
         self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork',
             weights_init=GlorotUniform(), biases_init=Constant(0))
         self._def_rnn = LSTM(dim, name='def_rnn',
