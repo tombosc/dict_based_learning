@@ -19,7 +19,8 @@ snli_config_registry.set_root_config({
     'exclude_top_k': -1,
     'max_def_length': 1000,
     'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
-    "multimod_drop": 1.0,
+    "combiner_dropout": 0.0,
+    "combiner_dropout_type": "regular",
 
     'num_input_words': 0, # Will take vocab size
     "encoder": "sum",
@@ -42,7 +43,8 @@ c = snli_config_registry['root']
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['exclude_top_k'] = 5000
 c['translate_dim'] = 100
-c['multimod_drop'] = 0.5
+c['combiner_dropout'] = 0.5
+c['combiner_dropout_type'] = "regular"
 c['train_emb'] = 1
 c['embedding_path'] = ''
 c['num_input_words'] = 5000

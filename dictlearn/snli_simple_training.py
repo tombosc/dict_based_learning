@@ -87,7 +87,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
-        disregard_word_embeddings=c['disregard_word_embeddings'], multimod_drop=c['multimod_drop']
+        disregard_word_embeddings=c['disregard_word_embeddings'], combiner_dropout=c['combiner_dropout'],
+        combiner_dropout_type=c['combiner_dropout_type']
     )
     simple.initialize()
 

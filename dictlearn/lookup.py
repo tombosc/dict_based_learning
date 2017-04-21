@@ -49,12 +49,11 @@ class ReadDefinitions(Initializable):
 
         children = []
 
-        self._def_lookup = LookupTable(self._num_input_words, dim, name='def_lookup',
+        # TODO(kudkudak): Remove fixed init
+        self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup',
             weights_init=GlorotUniform(), biases_init=Constant(0))
-        # NOTE: It also has the translate layer inside
         self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork',
             weights_init=GlorotUniform(), biases_init=Constant(0))
-        # TODO(kudkudak): Better LSTM weight init
         self._def_rnn = LSTM(dim, name='def_rnn',
                              weights_init=Uniform(width=0.1), biases_init=Constant(0))
         children.extend([self._def_lookup, self._def_fork, self._def_rnn])
@@ -89,6 +88,18 @@ class MeanPoolCombiner(Initializable):
     ----------
     dim: int
 
+    dropout_type: str, default: "regular"
+        "regular": applies regular dropout to both word and def emb
+
+        "multimodal": If set applies "multimodal" dropout, i.e. drops at once whole word and *independentyl*
+        whole def emb.
+
+        Note: It does it independently for simplicity (otherwise inference would require some extra
+        training). Maybe we could start with the dependent dropout and then phase into
+        independent one. Could work, but adds complexity.
+
+    dropout: float, defaut: 0.0
+
     emb_dim: int
 
     compose_type : str
@@ -99,7 +110,15 @@ class MeanPoolCombiner(Initializable):
         If 'fully_connected_tanh', ...
     """
 
-    def __init__(self, emb_dim, dim, vocab=None, compose_type="sum", **kwargs):
+    def __init__(self, emb_dim, dim, dropout=0.0, dropout_type="regular", compose_type="sum", **kwargs):
+        self._dropout = dropout
+        self._dropout_type = dropout_type
+        self._compose_type = compose_type
+
+        # TODO: Implement multimodal dropout
+        if dropout_type not in {"regular"}:
+            raise NotImplementedError()
+
         children = []
 
         if compose_type == 'fully_connected_tanh':
@@ -118,11 +137,15 @@ class MeanPoolCombiner(Initializable):
             self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
         elif compose_type == 'sum':
-            pass
+            if not emb_dim == dim:
+                raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
         else:
             raise NotImplementedError()
 
         super(MeanPoolCombiner, self).__init__(children=children, **kwargs)
+
+    def get_cg_transforms(self):
+        return self._cg_transforms
 
     @application
     def apply(self, application_call,
@@ -143,6 +166,32 @@ class MeanPoolCombiner(Initializable):
         application_call.add_auxiliary_variable(
             masked_root_mean_square(def_mean, words_mask), name='def_mean_rootmean2')
 
+        self._cg_transforms = []
+        if self._dropout != 0.0 and self._dropout_type == "regular":
+            assert self._multimod_drop == 0.0
+            logger.info("Adding drop on dict and normal emb")
+            self._cg_transforms.append(['dropout', self._dropout, word_embs])
+            self._cg_transforms.append(['dropout', self._dropout, def_mean])
+        elif self._dropout != 0.0 and self._dropout_type == "multimodal":
+            logger.info("Adding multimod drop on dict and normal emb")
+            assert self._dropout == 0.0
+            # We dropout mask
+            mask_defs = T.ones((batch_shape[0],))
+            mask_we = T.ones((batch_shape[0],))
+
+            # Mask dropout
+            self._cg_transforms.append(['dropout', self._dropout, mask_defs])
+            self._cg_transforms.append(['dropout', self._dropout, mask_we])
+
+            # this reduces variance. If both 0 will select both. Classy
+            where_both_zero = (mask_defs + mask_we) == 0
+
+            mask_defs = (where_both_zero + mask_defs).dimshuffle(0, "x", "x")
+            mask_we = (where_both_zero + mask_we).dimshuffle(0, "x", "x")
+
+            def_mean = mask_defs * def_mean
+            word_embs = mask_we * word_embs
+
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
         elif self._compose_type.startswith('fully_connected'):
@@ -156,3 +205,4 @@ class MeanPoolCombiner(Initializable):
             name='merged_input_rootmean2')
 
         return final_embeddings
+
