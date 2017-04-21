@@ -174,6 +174,7 @@ class SNLISimple(Initializable):
             assert defs is not None
 
             def_embs = self._def_reader.apply(defs, def_mask)
+
             s1_transl = self._combiner.apply(
                 s1_emb, s1_mask,
                 def_embs, s1_def_map, call_name="s1")

@@ -41,7 +41,7 @@ def construct_dict_embedder(theano_fnc, vocab, retrieval):
         word_ids = vocab.encode(word_list)
         word_ids = np.array(word_ids)
         word_ids = word_ids.reshape((-1, 1)) # Just to adhere to theano.Function, whatever
-        def_array, def_mask, def_map = retrieval.retrieve_and_pad(np.array(word_list).reshape(-1, 1))
+        def_array, def_mask, def_map = retrieval.retrieve_and_pad(np.array(word_list).reshape(-1,))
         word_vectors = theano_fnc(word_ids, def_array, def_mask, def_map)
         word_vectors = word_vectors.reshape((len(word_list), -1))
         return word_vectors
