@@ -7,6 +7,7 @@ from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application, _variable_name
 from blocks.bricks.lookup import LookupTable
 from blocks.bricks.recurrent import LSTM
+from blocks.bricks.bn import BatchNormalization
 from blocks.initialization import Uniform, Constant
 
 import theano
@@ -161,7 +162,9 @@ class MeanPoolCombiner(Initializable):
         If 'fully_connected_tanh', ...
     """
 
-    def __init__(self, emb_dim, dim, dropout=0.0, dropout_type="regular", compose_type="sum", **kwargs):
+    # TODO: What is the cleanest way of resolving BN duplication?
+    def __init__(self, emb_dim, dim, dropout=0.0, dropout_type="regular", compose_type="sum",
+            bn=False, n_calls=1, **kwargs):
         self._dropout = dropout
         self._dropout_type = dropout_type
         self._compose_type = compose_type
@@ -170,6 +173,19 @@ class MeanPoolCombiner(Initializable):
             raise NotImplementedError()
 
         children = []
+
+        self._bn_layers = []
+        self._bn = bn
+        if self._bn:
+            for i in range(n_calls):
+                _word_emb_bn = BatchNormalization(emb_dim, name="word_emb_bn" + str(i),
+                    conserve_memory=True)
+                _def_emb_bn = BatchNormalization(dim, name="def_emb_bn" + str(i),
+                    conserve_memory=True)
+                children.append(_def_emb_bn)
+                children.append(_word_emb_bn)
+                self._bn_layers.append((_def_emb_bn, _word_emb_bn))
+
 
         if compose_type == 'fully_connected_tanh':
             self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
@@ -240,6 +256,21 @@ class MeanPoolCombiner(Initializable):
             def_mean = mask_defs * def_mean
             word_embs = mask_we * word_embs
 
+        application_call.add_auxiliary_variable(
+            def_mean.copy(),
+            name=call_name + '_dict_word_embeddings')
+
+        application_call.add_auxiliary_variable(
+            word_embs.copy(),
+            name=call_name + '_word_embeddings')
+
+        if self._bn:
+            _def_emb_bn, _word_emb_bn = self._bn_layers.pop()
+            def_mean_after_bn = _def_emb_bn.apply(def_mean.reshape((def_mean.shape[0] * def_mean.shape[1], -1)))
+            word_embs_after_bn = _word_emb_bn.apply(word_embs.reshape((word_embs.shape[0] * word_embs.shape[1], -1)))
+            def_mean = def_mean_after_bn.reshape(def_mean.shape)
+            word_embs = word_embs_after_bn.reshape(word_embs.shape)
+
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
         elif self._compose_type.startswith('fully_connected'):
@@ -252,13 +283,6 @@ class MeanPoolCombiner(Initializable):
             masked_root_mean_square(final_embeddings, words_mask),
             name=call_name + '_merged_input_rootmean2')
 
-        application_call.add_auxiliary_variable(
-            def_mean.copy(),
-            name=call_name + '_dict_word_embeddings')
-
-        application_call.add_auxiliary_variable(
-            word_embs.copy(),
-            name=call_name + '_word_embeddings')
 
         return final_embeddings
 

@@ -96,7 +96,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
         reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
-        combiner_dropout_type=c['combiner_dropout_type']
+        combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn']
     )
     simple.initialize()
 

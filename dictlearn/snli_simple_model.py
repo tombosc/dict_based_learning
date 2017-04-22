@@ -34,7 +34,8 @@ class SNLISimple(Initializable):
     def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum",
             n_layers=3,
             # Dict lookup kwargs
-            retrieval=None, reader_type="rnn", compose_type="sum", disregard_word_embeddings=False, combiner_dropout=1.0,
+            retrieval=None, reader_type="rnn", compose_type="sum",
+            disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
             combiner_dropout_type="regular", share_def_lookup=False,
             # Others
             **kwargs):
@@ -76,8 +77,9 @@ class SNLISimple(Initializable):
                     biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
 
             # TODO: Implement multimodal drop! For now using regular dropout
-            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
-                dropout=combiner_dropout, dropout_type=combiner_dropout_type, compose_type=compose_type)
+            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim, bn=combiner_bn,
+                n_calls=2,  dropout=combiner_dropout, dropout_type=combiner_dropout_type,
+                compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
             if self._encoder == "rnn":

@@ -24,6 +24,7 @@ snli_config_registry.set_root_config({
     "combiner_dropout_type": "regular",
     'reader_type': 'rnn',
     'share_def_lookup': False,
+    'combiner_bn': False,
 
     'num_input_words': 0, # Will take vocab size
     "encoder": "sum",
@@ -45,6 +46,7 @@ c = snli_config_registry['root']
 ### RNN + Small dict ###
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['exclude_top_k'] = 2500
+c['batch_size'] = 100
 c['share_def_lookup'] = False
 c['reader_type'] = 'rnn'
 c['translate_dim'] = 100
@@ -63,6 +65,7 @@ snli_config_registry['rnn_small_dict'] = c
 # Looking up words from test/dev as well
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['exclude_top_k'] = 2500
+c['batch_size'] = 100
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
 c['translate_dim'] = 100
