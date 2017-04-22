@@ -37,14 +37,22 @@ class ReadDefinitions(Initializable):
         Dimensionality of word embeddings
 
     """
-    def __init__(self, num_input_words, emb_dim, dim, vocab, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, **kwargs):
         self._num_input_words = num_input_words
         self._vocab = vocab
 
-        self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
+        children = []
+
+        if lookup is None:
+            self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
+            children.append(self._def_lookup)
+        else:
+            self._def_lookup = lookup
+            # TODO(kudkudk): Should I add to children if I just pass it?
+
         self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
         self._def_rnn = LSTM(dim, name='def_rnn')
-        children = [self._def_lookup, self._def_fork, self._def_rnn]
+        children.extend([self._def_fork, self._def_rnn])
 
         super(ReadDefinitions, self).__init__(children=children, **kwargs)
 
@@ -63,6 +71,64 @@ class ReadDefinitions(Initializable):
         def_embeddings = self._def_rnn.apply(
             T.transpose(self._def_fork.apply(embedded_def_words), (1, 0, 2)),
             mask=def_mask.T)[0][-1]
+
+        return def_embeddings
+
+
+class MeanPoolReadDefinitions(Initializable):
+    """
+    Converts definition into embeddings using simple sum + translation
+
+    Parameters
+    ----------
+    num_input_words: int, default: -1
+        If non zero will (a bit confusing name) restrict dynamically vocab.
+        WARNING: it assumes word ids are monotonical with frequency!
+
+    dim : int
+        Dimensionality of the def rnn.
+
+    emb_dim : int
+        Dimensionality of word embeddings
+
+    """
+    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, **kwargs):
+        self._num_input_words = num_input_words
+        self._vocab = vocab
+
+        children = []
+
+        if lookup is None:
+            self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
+            children.append(self._def_lookup)
+        else:
+            self._def_lookup = lookup
+            # TODO(kudkudak): Should I add to children if I just pass it?
+
+        self._def_translate = Linear(emb_dim, dim, name='def_translate')
+        children.append(self._def_translate)
+
+        super(MeanPoolReadDefinitions, self).__init__(children=children, **kwargs)
+
+
+    @application
+    def apply(self, application_call,
+              defs, def_mask):
+        """
+        Returns vector per each word in sequence using the dictionary based lookup
+        """
+        # Short listing
+        defs = (T.lt(defs, self._num_input_words) * defs
+                + T.ge(defs, self._num_input_words) * self._vocab.unk)
+        defs_emb = self._def_lookup.apply(defs)
+
+        # Translate. Crucial for recovering useful information from embeddings
+        def_emb_flatten = defs_emb.reshape((defs_emb.shape[0] * defs_emb.shape[1], defs_emb.shape[2]))
+        def_transl = self._def_translate.apply(def_emb_flatten)
+        def_transl = def_transl.reshape((defs_emb.shape[0], defs_emb.shape[1], -1))
+
+        def_emb_mask = def_mask.dimshuffle((0, 1, "x"))
+        def_embeddings = (def_emb_mask * def_transl).mean(axis=1)
 
         return def_embeddings
 

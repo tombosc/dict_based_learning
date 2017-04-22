@@ -24,17 +24,18 @@ from blocks.bricks.lookup import LookupTable
 from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
 
 from dictlearn.inits import GlorotUniform
-from dictlearn.lookup import MeanPoolCombiner, ReadDefinitions
+from dictlearn.lookup import MeanPoolCombiner, ReadDefinitions, MeanPoolReadDefinitions
 
 class SNLISimple(Initializable):
     """
     Simple model based on https://github.com/Smerity/keras_snl
     """
 
-    def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum", n_layers=3,
+    def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum",
+            n_layers=3,
             # Dict lookup kwargs
-            retrieval=None, compose_type="sum", only_def=False, combiner_dropout=1.0,
-            combiner_dropout_type="regular",
+            retrieval=None, reader_type="rnn", compose_type="sum", disregard_word_embeddings=False, combiner_dropout=1.0,
+            combiner_dropout_type="regular", share_def_lookup=False,
             # Others
             **kwargs):
 
@@ -42,7 +43,10 @@ class SNLISimple(Initializable):
         self._encoder = encoder
         self._dropout = dropout
         self._retrieval = retrieval
-        self._only_def = only_def
+        self._only_def = disregard_word_embeddings
+
+        if reader_type not in {"rnn", "mean"}:
+            raise NotImplementedError("Not implemented " + reader_type)
 
         if num_input_words > 0:
             logger.info("Restricting vocab to " + str(num_input_words))
@@ -52,16 +56,28 @@ class SNLISimple(Initializable):
 
         children = []
 
-        if not only_def:
+        if not disregard_word_embeddings:
             self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
             children.append(self._lookup)
 
         if retrieval:
-            self._def_reader = ReadDefinitions(num_input_words=self._num_input_words, weights_init=Uniform(width=0.1),
-                biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
+
+            if share_def_lookup:
+                def_lookup = self._lookup
+            else:
+                def_lookup = None
+
+            if reader_type== "rnn":
+                self._def_reader = ReadDefinitions(num_input_words=self._num_input_words, weights_init=Uniform(width=0.1),
+                    biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
+            elif reader_type == "mean":
+                self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_words,
+                    weights_init=Uniform(width=0.1), lookup=def_lookup,
+                    biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
 
             # TODO: Implement multimodal drop! For now using regular dropout
-            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim, dropout=combiner_dropout, dropout_type=combiner_dropout_type, compose_type=compose_type)
+            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
+                dropout=combiner_dropout, dropout_type=combiner_dropout_type, compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
             if self._encoder == "rnn":
@@ -211,6 +227,8 @@ class SNLISimple(Initializable):
         if self._encoder == "sum":
             s1_emb_mask = s1_mask.dimshuffle((0, 1, "x"))
             s2_emb_mask = s2_mask.dimshuffle((0, 1, "x"))
+
+            # TODO: This should be mean, might make learning harder otherwise
             prem = (s1_emb_mask * s1_transl).sum(axis=1)
             hyp = (s2_emb_mask * s2_transl).sum(axis=1)
             # prem = ( s1_transl).sum(axis=1)
