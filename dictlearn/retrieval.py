@@ -203,7 +203,7 @@ class Dictionary(object):
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None):
+                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000):
         """Retrieves the definitions.
 
         vocab
@@ -215,11 +215,14 @@ class Retrieval(object):
         exclude_top_k
             Do not provide defitions for the first top k
             words of the vocabulary (typically the most frequent ones).
+        max_def_per_word
+            Pick at most max_n_def definitions for each word
         """
         self._vocab = vocab
         self._dictionary = dictionary
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
+        self._max_def_per_word = max_def_per_word
 
         # Preprocess all the definitions to see token ids instead of chars
 
@@ -257,6 +260,10 @@ class Retrieval(object):
                     if not word_defs:
                         # No defition for this word
                         continue
+
+                    if self._max_def_per_word < len(word_defs):
+                        word_defs = numpy.random.choice(word_defs, self._max_def_per_word, replace=False)
+
                     for i, def_ in enumerate(word_defs):
                         if len(def_) > self._max_def_length:
                             continue

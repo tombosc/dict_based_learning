@@ -80,7 +80,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     if c['dict_path']:
         dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
-            exclude_top_k=c['exclude_top_k'])
+            exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
         retrieval_all = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'])
         data.set_retrieval(retrieval)
     else:

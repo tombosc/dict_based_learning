@@ -10,6 +10,7 @@ snli_config_registry.set_root_config({
 
     # Lookup params
     'translate_dim': 300,
+    'max_def_per_word': 100000,
     'mlp_dim': 600,
     'emb_dim': 300,
     'dict_path': '',
