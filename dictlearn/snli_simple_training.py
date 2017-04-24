@@ -3,6 +3,9 @@ Training loop for simple SNLI model that can use dict enchanced embeddings
 
 TODO: Unit test data preprocessing
 TODO: Second round of debugging reloading
+TODO: Why dict embeddings are all 0 in the beginning?
+TODO: Add tracking norms
+TODO: Peculiar jigsaw shape in http://ec2-52-33-77-210.us-west-2.compute.amazonaws.com/
 """
 
 import sys
@@ -45,7 +48,8 @@ from blocks.filter import VariableFilter
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import configure_logger
-from dictlearn.extensions import StartFuelServer, DumpCSVSummaries
+from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWordEmbeddingEval, construct_embedder, \
+    construct_dict_embedder
 from dictlearn.data import SNLIData
 from dictlearn.snli_simple_model import SNLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -74,20 +78,25 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     # Dict
     if c['dict_path']:
-        dict = Dictionary(c['dict_path'])
+        dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
-            exclude_top_k=c['exclude_top_k'])
+            exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
+        retrieval_all = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'])
         data.set_retrieval(retrieval)
     else:
         retrieval = None
 
     # Initialize
     simple = SNLISimple(
+        # Common arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
         num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
+
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
-        disregard_word_embeddings=c['disregard_word_embeddings'], multimod_drop=c['multimod_drop']
+        reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
+        combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
+        combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn']
     )
     simple.initialize()
 
@@ -181,6 +190,15 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     train_monitored_vars = [final_cost] + cg.outputs
     monitored_vars = test_cg.outputs
+
+    try:
+        train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg)[0])
+        train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg)[0])
+        monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(test_cg)[0])
+        monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(test_cg)[0])
+    except:
+        pass
+
     if c['monitor_parameters']:
         for name in train_params_keys:
             param = parameters[name]
@@ -233,18 +251,46 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             parameters=cg.parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
-            after_training=not fast_start),
+            after_training=not fast_start)
         # DumpTensorflowSummaries(
         #     save_path,
         #     every_n_batches=c['mon_freq_train'],
         #     after_training=True),
-        DumpCSVSummaries(
-            save_path,
-            every_n_batches=c['mon_freq_train'],
-            after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
-        FinishAfter(after_n_batches=c['n_batches'])
     ]
+
+    # Similarity trackers for embeddings
+    for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
+        variables = VariableFilter(name=name)(cg)
+        if len(variables):
+            print(variables)
+            # TODO: Why is it 2?
+            # assert len(variables) == 1, "Shouldn't have more auxiliary variables of the same name"
+            s1_emb = variables[0]
+            logger.info("Adding similarity tracking for " + name)
+            # A bit sloppy about downcast
+
+            if "dict" in name:
+                embedder = construct_dict_embedder(
+                    theano.function([s1, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
+                    vocab=data.vocab, retrieval=retrieval_all)
+                extensions.append(
+                    SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
+                        before_training=not fast_start))
+            else:
+                embedder = construct_embedder(theano.function([s1], s1_emb, allow_input_downcast=True),
+                    vocab=data.vocab)
+                extensions.append(
+                    SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
+                        before_training=not fast_start))
+
+    extensions.extend([DumpCSVSummaries(
+        save_path,
+        every_n_batches=c['mon_freq_train'],
+        after_training=True),
+        Printing(every_n_batches=c['mon_freq_train']),
+        FinishAfter(after_n_batches=c['n_batches'])])
+
+    logger.info(extensions)
 
     if "VISDOM_SERVER" in os.environ:
         print("Running visdom server")

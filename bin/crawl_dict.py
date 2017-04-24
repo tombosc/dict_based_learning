@@ -16,12 +16,16 @@ def main():
                         help="Wordnik API key to use")
     parser.add_argument("--just-lemmas", action="store_true",
                         help="Just use the lemmas as the definition")
+    parser.add_argument("--just-lowercase", action="store_true",
+                        help="Just lowercase as the definition")
     parser.add_argument("--add-lemma-defs", action="store_true",
                         help="Add definitions from lemmas")
     parser.add_argument("--identity", action="store_true",
                         help="Identity mapping dictionary")
     parser.add_argument("--spelling", action="store_true",
                         help="Spelling dictionary")
+    parser.add_argument("--crawl-also-lowercase", default=False,
+        help="If true will crawl both regular version and lower-cased")
     parser.add_argument("vocab", help="Vocabulary path")
     parser.add_argument("dict", help="Destination path for the dictionary")
     args = parser.parse_args()
@@ -29,11 +33,13 @@ def main():
     vocab = Vocabulary(args.vocab)
     dict_ = Dictionary(args.dict)
     if args.api_key:
-        dict_.crawl_wordnik(vocab, args.api_key)
+        dict_.crawl_wordnik(vocab, args.api_key, crawl_also_lowercase=args.crawl_also_lowercase)
     elif args.add_lemma_defs:
         dict_.add_from_lemma_definitions(vocab)
     elif args.just_lemmas:
         dict_.crawl_lemmas(vocab)
+    elif args.just_lowercase:
+        dict_.crawl_lowercase(vocab)
     elif args.identity:
         dict_.setup_identity_mapping(vocab)
     elif args.spelling:

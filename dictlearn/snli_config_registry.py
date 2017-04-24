@@ -6,9 +6,11 @@ snli_config_registry = ConfigRegistry()
 snli_config_registry.set_root_config({
     'data_path':  '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/',
     'layout': 'snli',
+    'try_lowercase': True,
 
     # Lookup params
     'translate_dim': 300,
+    'max_def_per_word': 100000,
     'mlp_dim': 600,
     'emb_dim': 300,
     'dict_path': '',
@@ -17,9 +19,13 @@ snli_config_registry.set_root_config({
     'compose_type': '',
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
-    'max_def_length': 1000,
+    'max_def_length': 50,
     'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
-    "multimod_drop": 1.0,
+    "combiner_dropout": 0.0,
+    "combiner_dropout_type": "regular",
+    'reader_type': 'rnn',
+    'share_def_lookup': False,
+    'combiner_bn': False,
 
     'num_input_words': 0, # Will take vocab size
     "encoder": "sum",
@@ -33,19 +39,44 @@ snli_config_registry.set_root_config({
     'mon_freq_train': 1000,
     'save_freq_batches': 1000,
     'mon_freq_valid': 1000,
-    'n_batches': 100000 # ~100 epochs of SNLI
+    'n_batches': 200000 # ~100 epochs of SNLI
 })
 
 c = snli_config_registry['root']
-# Looking up words from test/dev as well
-# TODO: Make sure it really works
+
+### RNN + Small dict ###
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
-c['exclude_top_k'] = 5000
+c['exclude_top_k'] = 2500
+c['batch_size'] = 100
+c['share_def_lookup'] = False
+c['reader_type'] = 'rnn'
 c['translate_dim'] = 100
-c['multimod_drop'] = 0.5
+c['emb_dim'] = 100
+c['combiner_dropout'] = 0.5
+c['combiner_dropout_type'] = "multimodal" # Forces to use dict
 c['train_emb'] = 1
 c['embedding_path'] = ''
+c['lr'] = 0.0006
 c['num_input_words'] = 5000
-c['compose_type'] = 'fully_connected_linear' # Affine transformation
+c['compose_type'] = 'sum' # Forces to use dict
 c['disregard_word_embeddings'] = False
-snli_config_registry['small_dict'] = c
+snli_config_registry['rnn_small_dict'] = c
+
+### Small dict ###
+# Looking up words from test/dev as well
+c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
+c['exclude_top_k'] = 2500
+c['batch_size'] = 100
+c['share_def_lookup'] = False
+c['reader_type'] = 'mean'
+c['translate_dim'] = 100
+c['emb_dim'] = 100
+c['combiner_dropout'] = 0.5
+c['combiner_dropout_type'] = "multimodal" # Forces to use dict
+c['train_emb'] = 1
+c['embedding_path'] = ''
+c['lr'] = 0.0006
+c['num_input_words'] = 5000
+c['compose_type'] = 'sum' # Forces to use dict
+c['disregard_word_embeddings'] = False
+snli_config_registry['sum_small_dict'] = c

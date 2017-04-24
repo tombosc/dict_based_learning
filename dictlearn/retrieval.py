@@ -30,8 +30,9 @@ class Dictionary(object):
     the words are stored as strings.
 
     """
-    def __init__(self, path=None):
+    def __init__(self, path=None, try_lowercase=False):
         self._data = {}
+        self._try_lowercase = try_lowercase
         self._path = path
         self._tmp_path = os.path.join(os.path.dirname(path),
                                          self._path + '.tmp')
@@ -110,11 +111,15 @@ class Dictionary(object):
                 logger.error("lemmatizer crashed on {}".format(word))
             if definitions:
                 self._data[word] = definitions
-        with open(self._path, 'w') as dst:
-            json.dump(self._data, dst, indent=2)
         self.save()
 
-    def crawl_wordnik(self, vocab, api_key, call_quota=15000):
+    def crawl_lowercase(self, vocab):
+        """Add Wordnet lemmas as definitions."""
+        for word in vocab.words:
+            self._data[word] = [[word.lower()]]
+        self.save()
+
+    def crawl_wordnik(self, vocab, api_key, call_quota=15000, crawl_also_lowercase=False):
         """Download and preprocess definitions from Wordnik.
 
         vocab
@@ -134,11 +139,22 @@ class Dictionary(object):
         self._account_api = AccountApi.AccountApi(client)
         toktok = nltk.ToktokTokenizer()
 
+        words = list(vocab.words)
+
+        if crawl_also_lowercase:
+            logger.info("Adding lowercase words to crawl")
+            lowercased = []
+            for w in words:
+                if w.lower() not in vocab._word_to_id:
+                    lowercased.append(w.lower())
+            logger.info("Crawling additional {} words".format(len(lowercased)))
+            words.extend(sorted(lowercased))
+
         # Here, for now, we don't do any stemming or lemmatization.
         # Stemming is useless because the dictionary is not indexed with
         # lemmas, not stems. Lemmatizers, on the other hand, can not be
         # fully trusted when it comes to unknown words.
-        for word in vocab.words:
+        for word in words:
             if word in self._data:
                 logger.debug("a known word {}, skip".format(word))
                 continue
@@ -163,6 +179,10 @@ class Dictionary(object):
                 definitions = []
             self._data[word] = []
             for def_ in definitions:
+                # TODO(kudkudak): Not super sure if lowering here is correct if we don't lower in
+                # normal text
+                # Note: should be fine when def has separate lookup and if initialzed from raw embeddinggs
+                # uses some fallback strategy
                 tokenized_def = [token.encode('utf-8')
                                  for token in toktok.tokenize(def_.text.lower())]
                 self._data[word].append(tokenized_def)
@@ -174,13 +194,16 @@ class Dictionary(object):
         return len(self._data)
 
     def get_definitions(self, key):
-        return self._data.get(key, [])
+        if key not in self._data and self._try_lowercase:
+            return self._data.get(key.lower(), [])
+        else:
+            return self._data.get(key, [])
 
 
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None):
+                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000):
         """Retrieves the definitions.
 
         vocab
@@ -192,12 +215,14 @@ class Retrieval(object):
         exclude_top_k
             Do not provide defitions for the first top k
             words of the vocabulary (typically the most frequent ones).
-
+        max_def_per_word
+            Pick at most max_n_def definitions for each word
         """
         self._vocab = vocab
         self._dictionary = dictionary
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
+        self._max_def_per_word = max_def_per_word
 
         # Preprocess all the definitions to see token ids instead of chars
 
@@ -228,12 +253,17 @@ class Retrieval(object):
                     and word_id != self._vocab.unk
                     and word_id < self._exclude_top_k):
                     continue
+
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
                     if not word_defs:
                         # No defition for this word
                         continue
+
+                    if self._max_def_per_word < len(word_defs):
+                        word_defs = numpy.random.choice(word_defs, self._max_def_per_word, replace=False)
+
                     for i, def_ in enumerate(word_defs):
                         if len(def_) > self._max_def_length:
                             continue

@@ -11,6 +11,7 @@ Currently the following layouts are supported:
     HDF5 file "train.h5". The training data is read randomly
     by taking random spans.
 
+TODO: Unit test SNLI data
 """
 
 import os
