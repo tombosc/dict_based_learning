@@ -36,6 +36,7 @@ class Vocabulary(object):
         """
         if isinstance(path_or_data, dict):
             words_and_freqs = list(path_or_data.items())
+            words_and_freqs = Vocabulary.add_special_tokens(words_and_freqs)
         elif isinstance(path_or_data, str):
             words_and_freqs = []
             with open(path_or_data) as f:
@@ -126,15 +127,19 @@ class Vocabulary(object):
         logger.info("Words are sorted")
         if top_k:
             words_and_freqs  = words_and_freqs[:top_k]
-        words_and_freqs = (
+        words_and_freqs = Vocabulary.add_special_tokens(words_and_freqs)
+
+        return Vocabulary(words_and_freqs)
+
+    @staticmethod
+    def add_special_tokens(words_and_freqs):
+        return (
             [(Vocabulary.BOS, 0),
              (Vocabulary.EOS, 0),
              (Vocabulary.BOD, 0),
              (Vocabulary.EOD, 0),
              (Vocabulary.UNK, 0)]
             + words_and_freqs)
-
-        return Vocabulary(words_and_freqs)
 
     def save(self, filename):
         with open(filename, 'w') as f:

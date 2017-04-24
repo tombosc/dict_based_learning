@@ -29,7 +29,7 @@ from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.theano_util import parameter_stats
-from dictlearn.data import LanguageModellingData
+from dictlearn.data import LanguageModellingData, OneBillionWordData
 from dictlearn.extensions import (
     DumpTensorflowSummaries, StartFuelServer)
 from dictlearn.language_model import LanguageModel
@@ -50,7 +50,10 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
-    data = LanguageModellingData(c['data_path'], c['layout'])
+    if c['layout'] == 'onebillion':
+          data = OneBillionWordData(c['vocab_path'])
+    else:
+        data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
     if c['dict_path']:
         retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
