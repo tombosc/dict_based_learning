@@ -25,7 +25,7 @@ from fuel.transformers import (
     FilterSources, Transformer)
 from fuel.schemes import IterationScheme, ConstantScheme, ShuffledExampleScheme
 from fuel.streams import DataStream
-from fuel.datasets import H5PYDataset
+from fuel.datasets import H5PYDataset, OneBillionWord
 
 from dictlearn.vocab import Vocabulary
 from dictlearn.datasets import TextDataset, SQuADDataset, PutTextTransfomer
@@ -99,7 +99,7 @@ class Data(object):
     def __init__(self, path, layout):
         self._path = path
         self._layout = layout
-        if not self._layout in ['standard', 'lambada', 'squad', 'snli']:
+        if not self._layout in ['standard', 'lambada', 'squad', 'snli', 'onebillion']:
             raise "layout {} is not supported".format(self._layout)
 
         self._vocab = None
@@ -148,7 +148,6 @@ class Data(object):
 
 
 class LanguageModellingData(Data):
-
     @property
     def vocab(self):
         if not self._vocab:
@@ -157,7 +156,13 @@ class LanguageModellingData(Data):
         return self._vocab
 
     def get_stream(self, part, batch_size=None, max_length=None, seed=None):
-        dataset = self.get_dataset(part)
+        if self._layout == 'onebillion':
+            dataset = OneBillionWord(which_set=part,
+                                     which_partitions=range(1,100),
+                                     dictionary=self.vocab)
+        else:
+            dataset = self.get_dataset(part)
+
         if self._layout == 'lambada' and part == 'train':
             stream = DataStream(
                 dataset,
@@ -169,6 +174,7 @@ class LanguageModellingData(Data):
 
         stream = SourcewiseMapping(stream, functools.partial(add_bos, Vocabulary.BOS))
         stream = SourcewiseMapping(stream, vectorize)
+        # TODO(tombosc): here forgot add_eos?
         if not batch_size:
             return stream
         stream = Batch(

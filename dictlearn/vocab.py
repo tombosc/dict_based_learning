@@ -34,7 +34,9 @@ class Vocabulary(object):
             Note, this does not include the special tokens.
 
         """
-        if isinstance(path_or_data, str):
+        if isinstance(path_or_data, dict):
+            words_and_freqs = list(path_or_data.items())
+        elif isinstance(path_or_data, str):
             words_and_freqs = []
             with open(path_or_data) as f:
                 for line in f:
