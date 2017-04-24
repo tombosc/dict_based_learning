@@ -46,6 +46,7 @@ def main():
     data = gen.create_corpus(args.n_sentences, args.min_sentence_len,
                              args.max_sentence_len, args.pc_train, 
                              args.pc_valid)
+
     train_data, valid_data, test_data = data
 
     concat_sentences = lambda sentences: [' '.join(s) for s in sentences]
@@ -58,7 +59,7 @@ def main():
         vocab = Vocabulary.build(path, sort_by='lexicographical')
         vocab.save(os.path.join(args.path, "vocab.txt"))
 
-    dict_json = json.dumps(gen.dictionary, indent=4, sort_keys=True)
+    dict_json = json.dumps(gen.dictionary)
     write_data(os.path.join(args.path, "dict.json"), dict_json)
 
     write_data(os.path.join(args.path, "train.txt"), '\n'.join(train_data))
