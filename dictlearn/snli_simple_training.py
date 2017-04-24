@@ -1,15 +1,11 @@
 """
-Training loop for baseline SNLI model
+Training loop for simple SNLI model that can use dict enchanced embeddings
 
-TODO: Debug low acc
 TODO: Unit test data preprocessing
-TODO: Add logging to txt
-TODO: Reload with fuel server?
 TODO: Second round of debugging reloading
-TODO: Add assert that embeddings are frozen
-
-Diff:
-BN during training using sample stat
+TODO: Why dict embeddings are all 0 in the beginning?
+TODO: Add tracking norms
+TODO: Peculiar jigsaw shape in http://ec2-52-33-77-210.us-west-2.compute.amazonaws.com/
 """
 
 import sys
@@ -22,17 +18,12 @@ sys.path.append("..")
 from blocks.bricks.cost import MisclassificationRate
 from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
-from blocks.graph import apply_dropout, apply_batch_normalization
-from blocks.algorithms import Scale, RMSProp
 from blocks.extensions import ProgressBar, Timestamp
-
 import os
 import time
 import atexit
 import signal
 import pprint
-import logging
-import cPickle
 import subprocess
 
 import json
@@ -45,7 +36,7 @@ from blocks.algorithms import (
     GradientDescent, Adam)
 from blocks.graph import ComputationGraph, apply_batch_normalization, apply_dropout, get_batch_normalization_updates
 from blocks.model import Model
-from blocks.extensions import FinishAfter, Timing, Printing, first
+from blocks.extensions import FinishAfter, Timing, Printing
 from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
@@ -54,123 +45,14 @@ from blocks.main_loop import MainLoop
 from blocks.roles import WEIGHT
 from blocks.filter import VariableFilter
 
-from fuel.streams import ServerDataStream, AbstractDataStream, zmq, recv_arrays
-from subprocess import Popen, PIPE
+from fuel.streams import ServerDataStream
 
-from dictlearn.util import get_free_port, configure_logger, copy_streams_to_file
-from dictlearn.extensions import DumpTensorflowSummaries, SimpleExtension
+from dictlearn.util import configure_logger
+from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWordEmbeddingEval, construct_embedder, \
+    construct_dict_embedder
 from dictlearn.data import SNLIData
-from dictlearn.snli_baseline_model import SNLIBaseline
+from dictlearn.snli_simple_model import SNLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
-
-import pandas as pd
-from collections import defaultdict
-
-
-class ServerDataStream(AbstractDataStream):
-    """A data stream that receives batches from a Fuel server.
-
-    Parameters
-    ----------
-    sources : tuple of strings
-        The names of the data sources returned by this data stream.
-    produces_examples : bool
-        Whether this data stream produces examples (as opposed to batches
-        of examples).
-    host : str, optional
-        The host to connect to. Defaults to ``localhost``.
-    port : int, optional
-        The port to connect on. Defaults to 5557.
-    hwm : int, optional
-        The `ZeroMQ high-water mark (HWM)
-        <http://zguide.zeromq.org/page:all#High-Water-Marks>`_ on the
-        receiving socket. Increasing this increases the buffer, which can
-        be useful if your data preprocessing times are very random.
-        However, it will increase memory usage. There is no easy way to
-        tell how many batches will actually be queued with a particular
-        HWM. Defaults to 10. Be sure to set the corresponding HWM on the
-        server's end as well.
-    axis_labels : dict, optional
-        Maps source names to tuples of strings describing axis semantics,
-        one per axis. Defaults to `None`, i.e. no information is available.
-
-    """
-
-    def __init__(self, sources, produces_examples, host='localhost', port=5557,
-            hwm=10, axis_labels=None):
-        super(ServerDataStream, self).__init__(axis_labels=axis_labels)
-        self.sources = sources
-        self.produces_examples = produces_examples
-        self.host = host
-        self.port = port
-        self.hwm = hwm
-        self.connect()
-
-    def connect(self):
-        context = zmq.Context()
-        self.socket = socket = context.socket(zmq.PULL)
-        socket.set_hwm(self.hwm)
-        socket.connect("tcp://{}:{}".format(self.host, self.port))
-        self.connected = True
-
-    def get_data(self, request=None):
-        if request is not None:
-            raise ValueError
-        if not self.connected:
-            self.connect()
-        data = recv_arrays(self.socket)
-        return tuple(data)
-
-    def get_epoch_iterator(self, **kwargs):
-        return super(ServerDataStream, self).get_epoch_iterator(**kwargs)
-
-    def close(self):
-        pass
-
-    def next_epoch(self):
-        pass
-
-    def reset(self):
-        pass
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state['connected'] = False
-        if 'socket' in state:
-            del state['socket']
-        return state
-
-
-class DumpCSVSummaries(SimpleExtension):
-    def __init__(self, save_path, mode="w", **kwargs):
-        self._save_path = save_path
-        self._mode = mode
-
-        if self._mode == "w":
-            # Clean up file
-            with open(os.path.join(self._save_path, "logs.csv"), "w") as f:
-                pass
-            self._current_log = defaultdict(list)
-        else:
-            self._current_log = pd.read_csv(os.path.join(self._save_path, "logs.csv")).to_dict()
-
-        super(DumpCSVSummaries, self).__init__(**kwargs)
-
-    def do(self, *args, **kwargs):
-        for key, value in self.main_loop.log.current_row.items():
-            try:
-                float_value = float(value)
-                self._current_log[key].append(float_value)
-            except:
-                pass
-
-        # Make sure all logs have same length (for csv serialization)
-        max_len = max([len(v) for v in self._current_log.values()])
-        for k in self._current_log:
-            if len(self._current_log[k]) != max_len:
-                self._current_log[k] += [self._current_log[k][-1] for _ in range(max_len - len(self._current_log[k]))]
-
-        pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
 
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
@@ -196,31 +78,48 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     # Dict
     if c['dict_path']:
-        dict = Dictionary(c['dict_path'])
+        dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
-            exclude_top_k=c['exclude_top_k'])
+            exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
+        retrieval_all = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'])
+        data.set_retrieval(retrieval)
     else:
         retrieval = None
 
     # Initialize
-    baseline = SNLIBaseline(
+    simple = SNLISimple(
+        # Common arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
-        num_input_words=c['num_input_words'],
+        num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
+
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
-        disregard_word_embeddings=c['disregard_word_embeddings'], multimod_drop=c['multimod_drop']
+        reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
+        combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
+        combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn']
     )
-    baseline.initialize()
+    simple.initialize()
 
     if c['embedding_path']:
         embeddings = np.load(c['embedding_path'])
-        baseline.set_embeddings(embeddings.astype(theano.config.floatX))
+        simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
     # Compute cost
-    s1, s2 = T.lmatrix('sentence1_ids'), T.lmatrix('sentence2_ids')
-    s1_mask, s2_mask = T.fmatrix('sentence1_ids_mask'), T.fmatrix('sentence2_ids_mask')
+    s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
+
+    if c['dict_path']:
+        s1_def_map, s2_def_map = T.lmatrix('sentence1_def_map'), T.lmatrix('sentence2_def_map')
+        def_mask = T.fmatrix("def_mask")
+        defs = T.lmatrix("defs")
+    else:
+        s1_def_map, s2_def_map = None, None
+        def_mask = None
+        defs = None
+
+    s1_mask, s2_mask = T.fmatrix('sentence1_mask'), T.fmatrix('sentence2_mask')
     y = T.ivector('label')
-    pred = baseline.apply(s1, s1_mask, s2, s2_mask)
+    pred = simple.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+        s2_def_map=s2_def_map)
     cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
 
     if theano.config.compute_test_value != 'off':
@@ -240,7 +139,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     cg = ComputationGraph([cost, error_rate])
 
     # Weight decay (TODO: Make it less bug prone)
-    weights = VariableFilter(bricks=[dense for dense, relu, bn in baseline._mlp], roles=[WEIGHT])(cg.variables)
+    weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg.variables)
     final_cost = cost + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
     final_cost.name = 'final_cost'
 
@@ -254,13 +153,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # pop_updates = []
 
     test_cg = cg
-    for name, param, var in baseline.get_cg_transforms():
+    for name, param, var in simple.get_cg_transforms():
         logger.info("Applying " + name + " to " + str(var))
         cg = apply_dropout(cg, [var], param)
 
     # Freeze embeddings
     if not c['train_emb']:
-        frozen_params = [p for E in baseline.get_embeddings_lookups() for p in E.parameters]
+        frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]
     else:
         frozen_params = []
     train_params = [p for p in cg.parameters if p not in frozen_params]
@@ -291,6 +190,15 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     train_monitored_vars = [final_cost] + cg.outputs
     monitored_vars = test_cg.outputs
+
+    try:
+        train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg)[0])
+        train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg)[0])
+        monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(test_cg)[0])
+        monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(test_cg)[0])
+    except:
+        pass
+
     if c['monitor_parameters']:
         for name in train_params_keys:
             param = parameters[name]
@@ -302,9 +210,26 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             stats.name = name + '_stats'
             train_monitored_vars.append(stats)
 
+    regular_training_stream = data.get_stream(
+        'train', batch_size=c['batch_size'],
+        seed=numpy.random.randint(0, 10000000))
+
+    if fuel_server:
+        # the port will be configured by the StartFuelServer extension
+        training_stream = ServerDataStream(
+            sources=regular_training_stream.sources, hwm=100,
+            produces_examples=regular_training_stream.produces_examples)
+    else:
+        training_stream = regular_training_stream
+
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
+        StartFuelServer(regular_training_stream,
+            stream_path,
+            hwm=100,
+            script_path=os.path.join(os.path.dirname(__file__), "../bin/start_fuel_server.py"),
+            before_training=fuel_server),
         Timing(every_n_batches=c['mon_freq_train']),
         ProgressBar(),
         Timestamp(),
@@ -313,10 +238,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             every_n_batches=c['mon_freq_train']),
         DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('dev', batch_size=c['batch_size']),
-            prefix="dev").set_conditions(
+            data.get_stream('valid', batch_size=c['batch_size']),
+            prefix="valid").set_conditions(
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_dev']),
+            every_n_batches=c['mon_freq_valid']),
         # DataStreamMonitoring(
         #     monitored_vars,
         #     data.get_stream('test', batch_size=c['batch_size']),
@@ -326,39 +251,46 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             parameters=cg.parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
-            after_training=not fast_start),
+            after_training=not fast_start)
         # DumpTensorflowSummaries(
         #     save_path,
         #     every_n_batches=c['mon_freq_train'],
         #     after_training=True),
-        # AutomaticKerberosCall(
-        #     every_n_batches=c['mon_freq_train']),
-        DumpCSVSummaries(
-            save_path,
-            every_n_batches=c['mon_freq_train'],
-            after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
-        FinishAfter(after_n_batches=c['n_batches'])
     ]
 
-    training_stream = data.get_stream(
-        'train', batch_size=c['batch_size'],
-        seed=numpy.random.randint(0, 10000000))
+    # Similarity trackers for embeddings
+    for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
+        variables = VariableFilter(name=name)(cg)
+        if len(variables):
+            print(variables)
+            # TODO: Why is it 2?
+            # assert len(variables) == 1, "Shouldn't have more auxiliary variables of the same name"
+            s1_emb = variables[0]
+            logger.info("Adding similarity tracking for " + name)
+            # A bit sloppy about downcast
 
-    if fuel_server:
-        with open(stream_path, 'w') as dst:
-            cPickle.dump(training_stream, dst, 0)
-        port = ServerDataStream.PORT = get_free_port()
-        ret = subprocess.Popen([os.path.join(os.path.dirname(__file__), "../bin/start_fuel_server.py"),
-            stream_path, str(port), str(5000)])
-        print("Using port " + str(port))
-        time.sleep(0.1)
-        if ret.returncode is not None:
-            raise Exception()
-        atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
-        training_stream = ServerDataStream(
-            sources=training_stream.sources,
-            produces_examples=training_stream.produces_examples, port=port, hwm=5000)
+            if "dict" in name:
+                embedder = construct_dict_embedder(
+                    theano.function([s1, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
+                    vocab=data.vocab, retrieval=retrieval_all)
+                extensions.append(
+                    SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
+                        before_training=not fast_start))
+            else:
+                embedder = construct_embedder(theano.function([s1], s1_emb, allow_input_downcast=True),
+                    vocab=data.vocab)
+                extensions.append(
+                    SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
+                        before_training=not fast_start))
+
+    extensions.extend([DumpCSVSummaries(
+        save_path,
+        every_n_batches=c['mon_freq_train'],
+        after_training=True),
+        Printing(every_n_batches=c['mon_freq_train']),
+        FinishAfter(after_n_batches=c['n_batches'])])
+
+    logger.info(extensions)
 
     if "VISDOM_SERVER" in os.environ:
         print("Running visdom server")
@@ -374,7 +306,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
 
     if c['embedding_path']:
-        assert np.all(baseline.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
+        assert np.all(simple.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
 
     main_loop = MainLoop(
         algorithm,

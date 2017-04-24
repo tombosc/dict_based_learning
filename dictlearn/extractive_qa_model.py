@@ -2,6 +2,8 @@
 import theano
 from theano import tensor
 
+from collections import OrderedDict
+
 from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
 from blocks.bricks.base import application
 from blocks.bricks.recurrent import LSTM
@@ -9,7 +11,7 @@ from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
-from dictlearn.lookup import DictEnchancedLookup
+from dictlearn.lookup import ReadDefinitions, MeanPoolCombiner
 
 
 class ExtractiveQAModel(Initializable):
@@ -43,12 +45,7 @@ class ExtractiveQAModel(Initializable):
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
         children = []
-        self._lookup = (DictEnchancedLookup(vocab=vocab,
-                                            num_input_words=self._num_input_words,
-                                            dim=dim,
-                                            emb_dim=emb_dim)
-                        if self._use_definitions
-                        else LookupTable(self._num_input_words, emb_dim))
+        self._lookup = LookupTable(self._num_input_words, emb_dim)
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
@@ -64,6 +61,14 @@ class ExtractiveQAModel(Initializable):
         self._softmax = NDimensionalSoftmax()
         children.extend([self._begin_readout, self._end_readout, self._softmax])
 
+        if self._use_definitions:
+            self._def_reader = ReadDefinitions(
+                num_input_words=self._num_input_words,
+                dim=dim, emb_dim=emb_dim,
+                vocab=vocab)
+            self._combiner = MeanPoolCombiner(dim=dim, emb_dim=emb_dim)
+            children.extend([self._def_reader, self._combiner])
+
         super(ExtractiveQAModel, self).__init__(children=children, **kwargs)
 
         # create default input variables
@@ -73,7 +78,7 @@ class ExtractiveQAModel(Initializable):
         self.question_mask = tensor.matrix('questions_mask')
         self.answer_begins = tensor.lvector('answer_begins')
         self.answer_ends = tensor.lvector('answer_ends')
-        self.input_vars = [
+        input_vars = [
             self.contexts, self.context_mask,
             self.questions, self.question_mask,
             self.answer_begins, self.answer_ends]
@@ -82,9 +87,9 @@ class ExtractiveQAModel(Initializable):
             self.def_mask = tensor.matrix('def_mask')
             self.contexts_def_map = tensor.lmatrix('contexts_def_map')
             self.questions_def_map = tensor.lmatrix('questions_def_map')
-            self.input_vars.extend([self.defs, self.def_mask,
-                                    self.contexts_def_map, self.questions_def_map])
-
+            input_vars.extend([self.defs, self.def_mask,
+                               self.contexts_def_map, self.questions_def_map])
+        self.input_vars = OrderedDict([(var.name, var) for var in input_vars])
 
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
@@ -110,16 +115,17 @@ class ExtractiveQAModel(Initializable):
         questions = (
             tensor.lt(questions, self._num_input_words) * questions
             + tensor.ge(questions, self._num_input_words) * self._vocab.unk)
+
+        context_embs = self._lookup.apply(contexts)
+        question_embs = self._lookup.apply(questions)
         if self._use_definitions:
-            context_embs = self._lookup.apply_with_given_defs(
-                contexts, contexts_mask,
-                defs, def_mask, contexts_def_map)
-            question_embs = self._lookup.apply_with_given_defs(
-                questions, questions_mask,
-                defs, def_mask, questions_def_map)
-        else:
-            context_embs = self._lookup.apply(contexts)
-            question_embs = self._lookup.apply(questions)
+            def_embs = self._def_reader.apply(defs, def_mask)
+            context_embs = self._combiner.apply(
+                context_embs, contexts_mask,
+                def_embs, contexts_def_map)
+            question_embs = self._combiner.apply(
+                question_embs, questions_mask,
+                def_embs, questions_def_map)
 
         context_enc = flip01(
             self._encoder_rnn.apply(
@@ -196,4 +202,4 @@ class ExtractiveQAModel(Initializable):
         return begin_costs + end_costs
 
     def apply_with_default_vars(self):
-        return self.apply(*self.input_vars)
+        return self.apply(*self.input_vars.values())

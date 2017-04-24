@@ -86,7 +86,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
         test_value_data = next(
             data.get_stream('train', shuffle=True, batch_size=4, max_length=5)
             .get_epoch_iterator(as_dict=True))
-        for var in qam.input_vars:
+        for var in qam.input_vars.values():
             var.tag.test_value = test_value_data[var.name]
 
     costs = qam.apply_with_default_vars()
@@ -106,6 +106,12 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     num_unk = (tensor.eq(context_word_ids, data.vocab.unk) * qam.context_mask).sum()
     context_unk_ratio = rename(num_unk / qam.context_mask.sum(), 'context_unk_ratio')
     monitored_vars = [length, batch_size, cost, exact_match_ratio, context_unk_ratio]
+    if c['dict_path']:
+        num_definitions = rename(qam.input_vars['defs'].shape[0],
+                                 'num_definitions')
+        max_definition_length = rename(qam.input_vars['defs'].shape[1],
+                                       'max_definition_length')
+        monitored_vars.extend([num_definitions, max_definition_length])
 
     parameters = cg.get_parameter_dict()
     logger.info("Cost parameters" + "\n" +

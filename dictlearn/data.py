@@ -11,18 +11,18 @@ Currently the following layouts are supported:
     HDF5 file "train.h5". The training data is read randomly
     by taking random spans.
 
+TODO: Unit test SNLI data
 """
 
 import os
 import functools
 import h5py
-
 import numpy
 
 import fuel
 from fuel.transformers import (
     Mapping, Batch, Padding, AgnosticSourcewiseTransformer,
-    FilterSources)
+    FilterSources, Transformer)
 from fuel.schemes import IterationScheme, ConstantScheme, ShuffledExampleScheme
 from fuel.streams import DataStream
 from fuel.datasets import H5PYDataset
@@ -123,7 +123,7 @@ class Data(object):
                         'dev' : 'dev.h5'}
         elif self._layout == 'snli':
             part_map = {'train' : 'train.h5',
-                        'dev' : 'dev.h5',
+                        'valid' : 'valid.h5',
                         'test': 'test.h5'}
         else:
             raise NotImplementedError('Not implemented layout ' + self._layout)
@@ -138,7 +138,7 @@ class Data(object):
                 self._dataset_cache[part] = SQuADDataset(part_path, ('all',))
             elif self._layout == 'snli':
                 self._dataset_cache[part] = H5PYDataset(h5py.File(part_path, "r"), \
-                    ('all',), sources=('sentence1_ids', 'sentence2_ids', 'label',), load_in_memory=True)
+                    ('all',), sources=('sentence1', 'sentence2', 'label',), load_in_memory=True)
             else:
                 self._dataset_cache[part] = TextDataset(part_path)
         return self._dataset_cache[part]
@@ -185,7 +185,7 @@ def select_random_answer(rng, example):
     return example
 
 
-def retrieve_and_pad(retrieval, example):
+def retrieve_and_pad_squad(retrieval, example):
     contexts = example['contexts']
     questions = example['questions']
     text = list(contexts) + list(questions)
@@ -199,6 +199,21 @@ def retrieve_and_pad(retrieval, example):
             'def_mask': def_mask,
             'contexts_def_map': contexts_def_map,
             'questions_def_map': questions_def_map}
+
+def retrieve_and_pad_snli(retrieval, example):
+    # TODO(kudkudak): We could joint retrieve retrieve_and_pad_squad and retrieve_and_pad_snli
+    # this will be done along lookup refactor
+    s1, s2, label = example
+    assert label.ndim == 1
+    text = list(s1) + list(s2)
+    defs, def_mask, def_map = retrieval.retrieve_and_pad(text)
+    context_defs = def_map[:, 0] < len(s1)
+    s1_def_map = def_map[context_defs]
+    # Def map is (batch_index, time_step, def_index)
+    s2_def_map = (
+        def_map[numpy.logical_not(context_defs)]
+        - numpy.array([len(s1), 0, 0]))
+    return [defs, def_mask, s1_def_map, s2_def_map]
 
 def digitize(vocab, source_data):
     return numpy.array([vocab.encode(words) for words in source_data])
@@ -250,7 +265,7 @@ class ExtractiveQAData(Data):
         if self._retrieval:
             stream = Mapping(
                 stream,
-                functools.partial(retrieve_and_pad, self._retrieval),
+                functools.partial(retrieve_and_pad_squad, self._retrieval),
                 mapping_accepts=dict,
                 add_sources=('defs', 'def_mask', 'contexts_def_map', 'questions_def_map'))
         if not raw_text:
@@ -259,8 +274,51 @@ class ExtractiveQAData(Data):
         stream = Padding(stream, mask_sources=('contexts', 'questions'), mask_dtype='float32')
         return stream
 
+# TODO(kudkudak): Introduce this to Fuel
+class FixedMapping(Transformer):
+    """Applies a mapping to the data of the wrapped data stream.
+
+    Parameters
+    ----------
+    data_stream : instance of :class:`DataStream`
+        The wrapped data stream.
+    mapping : callable
+        The mapping to be applied.
+    add_sources : tuple of str, optional
+        When given, the data produced by the mapping is added to original
+        data under source names `add_sources`.
+
+    """
+    def __init__(self, data_stream, mapping, add_sources=None, **kwargs):
+        super(FixedMapping, self).__init__(
+            data_stream, data_stream.produces_examples, **kwargs)
+        self.mapping = mapping
+        self.add_sources = add_sources
+
+    @property
+    def sources(self):
+        return self.data_stream.sources + (self.add_sources
+                                           if self.add_sources else ())
+
+    def get_data(self, request=None):
+        if request is not None:
+            raise ValueError
+        data = next(self.child_epoch_iterator)
+        image = self.mapping(data)
+        if not self.add_sources:
+            return image
+        # This is the fixed line. We need to transform data to list(data) to concatenate the two!
+        return tuple(list(data) + image)
+
 
 class SNLIData(Data):
+    def __init__(self, *args, **kwargs):
+        super(SNLIData, self).__init__(*args, **kwargs)
+        self._retrieval = None
+
+    def set_retrieval(self, retrieval):
+        self._retrieval = retrieval
+
     @property
     def vocab(self):
         if not self._vocab:
@@ -268,14 +326,25 @@ class SNLIData(Data):
                 os.path.join(self._path, "vocab.txt"))
         return self._vocab
 
-    def get_stream(self, part, batch_size=None, seed=None):
+    def get_stream(self, part, batch_size, seed=None, raw_text=False):
         d = self.get_dataset(part)
         print("Dataset with {} examples".format(d.num_examples))
         it = ShuffledExampleScheme(d.num_examples, rng=numpy.random.RandomState(seed))
-
         stream = DataStream(d, iteration_scheme=it)
-        # TODO: Is constant what we want here?
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
-        stream = Padding(stream, mask_sources=('sentence1_ids', 'sentence2_ids'))  # Increases amount of outputs by x2
+
+        if self._retrieval:
+            stream = FixedMapping(
+                stream,
+                functools.partial(retrieve_and_pad_snli, self._retrieval),
+                add_sources=("defs", "def_mask", "sentence1_def_map", "sentence2_def_map")) # This is because there is bug in Fuel :( Cannot concatenate tuple and list
+
+        if not raw_text:
+            stream = SourcewiseMapping(stream, functools.partial(digitize, self.vocab),
+                which_sources=('sentence1', 'sentence2'))
+
+        stream = Padding(stream, mask_sources=('sentence1', 'sentence2'))  # Increases amount of outputs by x2
 
         return stream
+
+

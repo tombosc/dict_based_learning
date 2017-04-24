@@ -9,7 +9,7 @@ from fuel.server import start_server
 logger = logging.getLogger()
 
 def main():
-    parser = argparse.ArgumentParser("Builds a dictionary")
+    parser = argparse.ArgumentParser("Starts fuel server")
     parser.add_argument("stream", help="The path to the pickled stream")
     parser.add_argument("port", type=int, help="The port to use")
     parser.add_argument("hwm", type=int, default=10, help="HWM")
