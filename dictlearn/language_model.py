@@ -207,4 +207,10 @@ class LanguageModel(Initializable):
         application_call.add_auxiliary_variable(
             last_correct, name='last_correct')
 
+        # Analyze cost on tokens that follow definitions only
+        mask_words_have_def = (def_map.sum(axis=2) != 0).astype('int64') * mask
+        mask_words_follow_def = T.array_like(z)
+        mask_words_follow_def = T.vstack([T.zeros(), mask_words_follow_def])
+        cost_follow_def = (minus_logs * mask_words_follow_def).sum(axis=0)
+
         return costs
