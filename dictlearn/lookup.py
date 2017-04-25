@@ -165,7 +165,7 @@ class MeanPoolCombiner(Initializable):
     # TODO: What is the cleanest way of resolving BN duplication?
     def __init__(self, emb_dim, dim, dropout=0.0,
             dropout_type="per_unit", compose_type="sum",
-            word_dropout_weighting="mean",
+            word_dropout_weighting="mean", word_dropout_topK=-1,
             bn=False, n_calls=1, **kwargs):
         self._dropout = dropout
         self._dropout_type = dropout_type
@@ -260,6 +260,10 @@ class MeanPoolCombiner(Initializable):
                 def_mean = mask_defs * def_mean
                 word_embs = mask_we * word_embs
             elif self._dropout_type == "per_word":
+
+                # Note dropout here just becomes preference for word embeddings.
+                # The higher dropout the more likely is picking word embedding
+
                 logger.info("Apply per_word dropou on dict and normal emb")
                 mask = T.ones((batch_shape[0], batch_shape[1]))
                 mask = apply_dropout(mask, drop_prob=self._dropout)
@@ -271,7 +275,7 @@ class MeanPoolCombiner(Initializable):
 
                 if self._word_dropout_weighting:
                     def_mean = 2*(mask * def_mean)
-                    word_embs = 2*(mask * word_embs)
+                    word_embs = 2*((1 - mask) * word_embs)
                 else:
                     raise NotImplementedError()
 
@@ -304,7 +308,6 @@ class MeanPoolCombiner(Initializable):
         application_call.add_auxiliary_variable(
             masked_root_mean_square(final_embeddings, words_mask),
             name=call_name + '_merged_input_rootmean2')
-
 
         return final_embeddings
 
