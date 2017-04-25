@@ -37,7 +37,7 @@ class SNLISimple(Initializable):
             # Dict lookup kwargs
             retrieval=None, reader_type="rnn", compose_type="sum",
             disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
-            combiner_dropout_type="regular", share_def_lookup=False,
+            combiner_dropout_type="regular", share_def_lookup=False, exclude_top_k=-1,
             # Others
             **kwargs):
 

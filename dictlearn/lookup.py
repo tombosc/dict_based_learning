@@ -165,14 +165,14 @@ class MeanPoolCombiner(Initializable):
     # TODO: What is the cleanest way of resolving BN duplication?
     def __init__(self, emb_dim, dim, dropout=0.0,
             dropout_type="per_unit", compose_type="sum",
-            word_dropout_weighting="mean", word_dropout_topK=-1,
+            word_dropout_weighting="no_weighting",
             bn=False, n_calls=1, **kwargs):
         self._dropout = dropout
         self._dropout_type = dropout_type
         self._compose_type = compose_type
         self._word_dropout_weighting = word_dropout_weighting
 
-        if word_dropout_weighting not in {"mean"}:
+        if word_dropout_weighting not in {"no_weighting"}:
             raise NotImplementedError("Not implemented " + word_dropout_weighting)
 
         if dropout_type not in {"per_unit", "per_example", "per_word"}:
@@ -219,7 +219,7 @@ class MeanPoolCombiner(Initializable):
     @application
     def apply(self, application_call,
               word_embs, words_mask,
-              def_embeddings, def_map, train_phase=False, call_name=""):
+              def_embeddings, def_map, train_phase, call_name=""):
         batch_shape = word_embs.shape
 
         # Mean-pooling of definitions
@@ -251,7 +251,7 @@ class MeanPoolCombiner(Initializable):
                 mask_defs = apply_dropout(mask_defs, drop_prob=self._dropout)
                 mask_we = apply_dropout(mask_we, drop_prob=self._dropout)
 
-                # this reduces variance. If both 0 will select both. Classy
+                # this reduces variance. If both 0 will select both
                 where_both_zero = T.eq((mask_defs + mask_we), 0)
 
                 mask_defs = (where_both_zero + mask_defs).dimshuffle(0, "x", "x")
@@ -259,8 +259,10 @@ class MeanPoolCombiner(Initializable):
 
                 def_mean = mask_defs * def_mean
                 word_embs = mask_we * word_embs
+            elif self._dropout_type == "per_word_independent":
+                # TODO: Maybe we also want to have possibility of including both (like in per_example)
+                pass # TODO: implement
             elif self._dropout_type == "per_word":
-
                 # Note dropout here just becomes preference for word embeddings.
                 # The higher dropout the more likely is picking word embedding
 
@@ -269,15 +271,15 @@ class MeanPoolCombiner(Initializable):
                 mask = apply_dropout(mask, drop_prob=self._dropout)
                 mask = mask.dimshuffle(0, 1, "x")
 
-                # Hack assuming same norm after norm
-                # TODO: How to fit weights in a smart way
-                # TODO: Add flag for weighting based on word frequency
+                # Reduce variance: if def_mean is 0 let's call it uninformative
+                is_retrieved = T.gt(def_mean.sum(axis=2, keepdims=True), 0)
+                mask = mask * is_retrieved # Includes mean if: sampled AND retrieved
 
-                if self._word_dropout_weighting:
-                    def_mean = 2*(mask * def_mean)
-                    word_embs = 2*((1 - mask) * word_embs)
-                else:
-                    raise NotImplementedError()
+                # Competitive
+                def_mean = mask * def_mean
+                word_embs = (1 - mask) * word_embs
+
+                # TODO: Smarter weighting (at least like divisor in dropout)
 
                 if not self._compose_type == "sum":
                     raise NotImplementedError()
