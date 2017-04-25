@@ -57,6 +57,8 @@ def _initialize_data_and_model(config):
     qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
                             data.vocab,
                             use_definitions=bool(c['dict_path']),
+                            compose_type=c['compose_type'],
+                            reuse_word_embeddings=c['reuse_word_embeddings'],
                             weights_init=Uniform(width=0.1),
                             biases_init=Constant(0.))
     qam.initialize()
@@ -153,7 +155,7 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
 
     extensions = [
         LoadNoUnpickling(tar_path, load_iteration_state=True, load_log=True)
-            .set_conditions(before_training=not new_training_job),
+           .set_conditions(before_training=not new_training_job),
         StartFuelServer(original_training_stream,
                         os.path.join(save_path, 'stream.pkl'),
                         before_training=fuel_server),

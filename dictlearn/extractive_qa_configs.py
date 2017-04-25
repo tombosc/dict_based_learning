@@ -13,6 +13,8 @@ qa_config_registry.set_root_config({
     'batch_size_valid' : 32,
     'max_def_length' : 1000,
     'exclude_top_k' : 0,
+    'compose_type' : "sum",
+    'reuse_word_embeddings' : False,
 
     # model
     'dim' : 128,
@@ -32,7 +34,7 @@ qa_config_registry.set_root_config({
 })
 
 c = qa_config_registry['root']
-c['data_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch_nolowercase'
+c['data_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch'
 c['layout'] = 'squad'
 c['mon_freq_train'] = 100
 c['grad_clip_threshold'] = 50.
@@ -46,8 +48,8 @@ c['num_input_words'] = 0
 qa_config_registry['squad_glove'] = c
 
 def from1to2(c):
-    c['batch_size'] = 256
-    c['batch_size_valid'] = 256
+    c['batch_size'] = 128
+    c['batch_size_valid'] = 128
     c['dim'] = 200
 
 c = qa_config_registry['squad']
@@ -61,4 +63,5 @@ qa_config_registry['squad_glove2'] = c
 c = qa_config_registry['squad2']
 c['max_def_length'] = 30
 c['exclude_top_k'] = 10000
+c['dict_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch/dict.json'
 qa_config_registry['squad3'] = c

@@ -219,7 +219,7 @@ class MeanPoolCombiner(Initializable):
     @application
     def apply(self, application_call,
               word_embs, words_mask,
-              def_embeddings, def_map, train_phase, call_name=""):
+              def_embeddings, def_map, train_phase=False, call_name=""):
         batch_shape = word_embs.shape
 
         # Mean-pooling of definitions
