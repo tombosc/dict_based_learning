@@ -5,7 +5,7 @@ TODO: Unit test data preprocessing
 TODO: Second round of debugging reloading
 TODO: Why dict embeddings are all 0 in the beginning?
 TODO: Add tracking norms
-TODO: Peculiar jigsaw shape in http://ec2-52-33-77-210.us-west-2.compute.amazonaws.com/
+TODO: Peculiar jigsaw shape
 """
 
 import sys
@@ -118,9 +118,25 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     s1_mask, s2_mask = T.fmatrix('sentence1_mask'), T.fmatrix('sentence2_mask')
     y = T.ivector('label')
-    pred = simple.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
-        s2_def_map=s2_def_map)
-    cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
+
+    cg = {}
+    for train_phase in [True, False]:
+        pred = simple.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+            s2_def_map=s2_def_map, train_phase=train_phase)
+        cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
+        error_rate = MisclassificationRate().apply(y.flatten(), pred)
+        cg[train_phase] = ComputationGraph([cost, error_rate])
+        cg[train_phase] = apply_batch_normalization(cg[train_phase])
+
+    # Weight decay (TODO: Make it less bug prone)
+    weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg[True].variables)
+    final_cost = cg[True].outputs[0] + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
+    final_cost.name = 'final_cost'
+
+    # Add updates for population parameters
+    pop_updates = get_batch_normalization_updates(cg[True])
+    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
+        for p, m in pop_updates]
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
@@ -132,37 +148,12 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         s2_mask.tag.test_value = test_value_data[3]
         y.tag.test_value = test_value_data[4]
 
-    # Monitors
-    error_rate = MisclassificationRate().apply(y.flatten(), pred)
-
-    # Computation graph
-    cg = ComputationGraph([cost, error_rate])
-
-    # Weight decay (TODO: Make it less bug prone)
-    weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg.variables)
-    final_cost = cost + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
-    final_cost.name = 'final_cost'
-
-    cg = apply_batch_normalization(cg)
-    # Add updates for population parameters
-    pop_updates = get_batch_normalization_updates(cg)
-    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
-        for p, m in pop_updates]
-
-    # extra_updates = []
-    # pop_updates = []
-
-    test_cg = cg
-    for name, param, var in simple.get_cg_transforms():
-        logger.info("Applying " + name + " to " + str(var))
-        cg = apply_dropout(cg, [var], param)
-
     # Freeze embeddings
     if not c['train_emb']:
         frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]
     else:
         frozen_params = []
-    train_params = [p for p in cg.parameters if p not in frozen_params]
+    train_params = [p for p in cg[True].parameters if p not in frozen_params]
     train_params_keys = [get_brick(p).get_hierarchical_name(p) for p in train_params]
 
     # Optimizer
@@ -188,8 +179,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                         for key in sorted(train_params_keys)],
                     width=120))
 
-    train_monitored_vars = [final_cost] + cg.outputs
-    monitored_vars = test_cg.outputs
+    train_monitored_vars = [final_cost] + cg[True].outputs
+    monitored_vars = cg[False].outputs
 
     try:
         train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg)[0])
@@ -248,7 +239,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         #     after_training=True,
         #     prefix="test"),
         Checkpoint(main_loop_path,
-            parameters=cg.parameters + [p for p, m in pop_updates],
+            parameters=cg[True].parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
             after_training=not fast_start)
@@ -260,7 +251,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     # Similarity trackers for embeddings
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
-        variables = VariableFilter(name=name)(cg)
+        variables = VariableFilter(name=name)(cg[False])
         if len(variables):
             print(variables)
             # TODO: Why is it 2?

@@ -14,7 +14,7 @@ import theano
 import theano.tensor as T
 
 from dictlearn.inits import GlorotUniform
-from dictlearn.util import masked_root_mean_square
+from dictlearn.util import masked_root_mean_square, apply_dropout
 from dictlearn.ops import RetrievalOp
 
 import logging
@@ -163,13 +163,14 @@ class MeanPoolCombiner(Initializable):
     """
 
     # TODO: What is the cleanest way of resolving BN duplication?
-    def __init__(self, emb_dim, dim, dropout=0.0, dropout_type="regular", compose_type="sum",
+    def __init__(self, emb_dim, dim, dropout=0.0,
+            dropout_type="per_unit", compose_type="sum",
             bn=False, n_calls=1, **kwargs):
         self._dropout = dropout
         self._dropout_type = dropout_type
         self._compose_type = compose_type
 
-        if dropout_type not in {"regular", "multimodal"}:
+        if dropout_type not in {"per_unit", "per_example", "per_word"}:
             raise NotImplementedError()
 
         children = []
@@ -210,13 +211,10 @@ class MeanPoolCombiner(Initializable):
 
         super(MeanPoolCombiner, self).__init__(children=children, **kwargs)
 
-    def get_cg_transforms(self):
-        return self._cg_transforms
-
     @application
     def apply(self, application_call,
               word_embs, words_mask,
-              def_embeddings, def_map, call_name=""):
+              def_embeddings, def_map, train_phase=False, call_name=""):
         batch_shape = word_embs.shape
 
         # Mean-pooling of definitions
@@ -232,29 +230,44 @@ class MeanPoolCombiner(Initializable):
         application_call.add_auxiliary_variable(
             masked_root_mean_square(def_mean, words_mask), name=call_name + '_def_mean_rootmean2')
 
-        self._cg_transforms = []
-        if self._dropout != 0.0 and self._dropout_type == "regular":
-            logger.info("Adding drop on dict and normal emb")
-            self._cg_transforms.append(['dropout', self._dropout, word_embs])
-            self._cg_transforms.append(['dropout', self._dropout, def_mean])
-        elif self._dropout != 0.0 and self._dropout_type == "multimodal":
-            logger.info("Adding multimod drop on dict and normal emb")
-            # We dropout mask
-            mask_defs = T.ones((batch_shape[0],))
-            mask_we = T.ones((batch_shape[0],))
 
-            # Mask dropout
-            self._cg_transforms.append(['dropout', self._dropout, mask_defs])
-            self._cg_transforms.append(['dropout', self._dropout, mask_we])
+        if train_phase and self._dropout != 0.0:
+            if self._dropout_type == "per_unit":
+                logger.info("Adding per_unit drop on dict and normal emb")
+                word_embs = apply_dropout(word_embs, drop_prob=self._dropout)
+                def_mean = apply_dropout(def_mean, drop_prob=self._dropout)
+            elif self._dropout_type == "per_example":
+                logger.info("Adding per_example drop on dict and normal emb")
+                # We dropout mask
+                mask_defs = T.ones((batch_shape[0],))
+                mask_we = T.ones((batch_shape[0],))
 
-            # this reduces variance. If both 0 will select both. Classy
-            where_both_zero = T.eq((mask_defs + mask_we), 0)
+                # Mask dropout
+                mask_defs = apply_dropout(mask_defs, drop_prob=self._dropout)
+                mask_we = apply_dropout(mask_we, drop_prob=self._dropout)
 
-            mask_defs = (where_both_zero + mask_defs).dimshuffle(0, "x", "x")
-            mask_we = (where_both_zero + mask_we).dimshuffle(0, "x", "x")
+                # this reduces variance. If both 0 will select both. Classy
+                where_both_zero = T.eq((mask_defs + mask_we), 0)
 
-            def_mean = mask_defs * def_mean
-            word_embs = mask_we * word_embs
+                mask_defs = (where_both_zero + mask_defs).dimshuffle(0, "x", "x")
+                mask_we = (where_both_zero + mask_we).dimshuffle(0, "x", "x")
+
+                def_mean = mask_defs * def_mean
+                word_embs = mask_we * word_embs
+            elif self._dropout_type == "per_word":
+                logger.info("Apply per_word dropou on dict and normal emb")
+                mask = T.ones((batch_shape[0], batch_shape[1]))
+                mask = apply_dropout(mask, drop_prob=self._dropout)
+                mask = mask.dimshuffle(0, 1, "x")
+
+                # Hack assuming same norm after norm
+                # TODO: How to fit weights in a smart way
+                # TODO: Add flag for weighting based on word frequency
+                def_mean = 2*(mask * def_mean)
+                word_embs = 2*(mask * word_embs)
+
+                if not self._compose_type == "sum":
+                    raise NotImplementedError()
 
         application_call.add_auxiliary_variable(
             def_mean.copy(),

@@ -25,6 +25,7 @@ from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitializa
 
 from dictlearn.inits import GlorotUniform
 from dictlearn.lookup import MeanPoolCombiner, ReadDefinitions, MeanPoolReadDefinitions
+from dictlearn.util import apply_dropout
 
 class SNLISimple(Initializable):
     """
@@ -115,8 +116,6 @@ class SNLISimple(Initializable):
             else:
                 raise NotImplementedError("Not implemented encoder")
 
-
-
         self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn", conserve_memory=False)
         self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn", conserve_memory=False)
         children += [self._hyp_bn, self._prem_bn]
@@ -168,15 +167,9 @@ class SNLISimple(Initializable):
         else:
             raise NotImplementedError()
 
-    def get_cg_transforms(self):
-        cg = self._cg_transforms
-        if self._retrieval:
-            cg += self._combiner.get_cg_transforms()
-        return cg
-
     @application
     def apply(self, application_call,
-            s1, s1_mask, s2, s2_mask, def_mask=None, defs=None, s1_def_map=None, s2_def_map=None):
+            s1, s1_mask, s2, s2_mask, def_mask=None, defs=None, s1_def_map=None, s2_def_map=None, train_phase=True):
 
         # Shortlist words (sometimes we want smaller vocab, especially when dict is small)
         s1 = (tensor.lt(s1, self._num_input_words) * s1
@@ -195,11 +188,11 @@ class SNLISimple(Initializable):
 
             s1_transl = self._combiner.apply(
                 s1_emb, s1_mask,
-                def_embs, s1_def_map, call_name="s1")
+                def_embs, s1_def_map, train_phase=train_phase, call_name="s1")
 
             s2_transl = self._combiner.apply(
                 s2_emb, s2_mask,
-                def_embs, s2_def_map, call_name="s2")
+                def_embs, s2_def_map, train_phase=train_phase, call_name="s2")
         else:
             application_call.add_auxiliary_variable(
                 1*s1_emb,
@@ -244,14 +237,19 @@ class SNLISimple(Initializable):
 
         joint = T.concatenate([prem, hyp], axis=1)
         joint.name = "MLP_input"
-        self._cg_transforms = [['dropout', self._dropout, joint]]
+
+        if train_phase:
+            joint = apply_dropout(joint, drop_prob=self._dropout)
 
         # MLP
         for block in self._mlp:
             dense, relu, bn = block
             joint = dense.apply(joint)
             joint = relu.apply(joint)
-            self._cg_transforms.append(['dropout', self._dropout, joint])
+
+            if train_phase:
+                joint = apply_dropout(joint, drop_prob=self._dropout)
+
             joint = bn.apply(joint)
 
         return self._pred.apply(joint)
