@@ -165,10 +165,15 @@ class MeanPoolCombiner(Initializable):
     # TODO: What is the cleanest way of resolving BN duplication?
     def __init__(self, emb_dim, dim, dropout=0.0,
             dropout_type="per_unit", compose_type="sum",
+            word_dropout_weighting="mean",
             bn=False, n_calls=1, **kwargs):
         self._dropout = dropout
         self._dropout_type = dropout_type
         self._compose_type = compose_type
+        self._word_dropout_weighting = word_dropout_weighting
+
+        if word_dropout_weighting not in {"mean"}:
+            raise NotImplementedError("Not implemented " + word_dropout_weighting)
 
         if dropout_type not in {"per_unit", "per_example", "per_word"}:
             raise NotImplementedError()
@@ -263,8 +268,12 @@ class MeanPoolCombiner(Initializable):
                 # Hack assuming same norm after norm
                 # TODO: How to fit weights in a smart way
                 # TODO: Add flag for weighting based on word frequency
-                def_mean = 2*(mask * def_mean)
-                word_embs = 2*(mask * word_embs)
+
+                if self._word_dropout_weighting:
+                    def_mean = 2*(mask * def_mean)
+                    word_embs = 2*(mask * word_embs)
+                else:
+                    raise NotImplementedError()
 
                 if not self._compose_type == "sum":
                     raise NotImplementedError()

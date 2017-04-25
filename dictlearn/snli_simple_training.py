@@ -2,9 +2,7 @@
 Training loop for simple SNLI model that can use dict enchanced embeddings
 
 TODO: Unit test data preprocessing
-TODO: Second round of debugging reloading
-TODO: Why dict embeddings are all 0 in the beginning?
-TODO: Add tracking norms
+TODO: Review dropout implementation
 TODO: Peculiar jigsaw shape
 """
 
@@ -183,10 +181,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     monitored_vars = cg[False].outputs
 
     try:
-        train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg)[0])
-        train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg)[0])
-        monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(test_cg)[0])
-        monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(test_cg)[0])
+        train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[True])[0])
+        train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[True])[0])
+        monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[False])[0])
+        monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[False])[0])
     except:
         pass
 
