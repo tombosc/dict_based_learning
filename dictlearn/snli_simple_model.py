@@ -79,7 +79,7 @@ class SNLISimple(Initializable):
 
             # TODO: Implement multimodal drop! For now using regular dropout
             self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim, bn=combiner_bn,
-                n_calls=2,  dropout=combiner_dropout, dropout_type=combiner_dropout_type, gating=combiner_gating,
+                n_calls=2,  dropout=combiner_dropout, dropout_type=combiner_dropout_type, def_word_gating=combiner_gating,
                 compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 

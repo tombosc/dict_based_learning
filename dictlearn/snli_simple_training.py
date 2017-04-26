@@ -17,6 +17,8 @@ from blocks.bricks.cost import MisclassificationRate
 from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
+from blocks.serialization import load_parameters
+
 import os
 import time
 import atexit
@@ -57,8 +59,13 @@ from dictlearn.retrieval import Retrieval, Dictionary
 #     """
 #     Wraps GradientDescent adding shareable weights for updates
 #     """
-#     def __init__(self, **kwargs):
-#         super(WeightedGradientDescent, self).__init__(**kwargs)
+#     def __init__(self, parameters, **kwargs):
+#
+#         self._weight_dict = {}
+#         for p in parameters:
+#             self._weight_dict[p.name] = T.sharedvar()
+#
+#         super(WeightedGradientDescent, self).__init__(parameters=parameters, **kwargs)
 #
 #     def get_weight_dict(self):
 #         pass
@@ -145,6 +152,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         cg[train_phase] = ComputationGraph([cost, error_rate])
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
+    if params:
+        logger.debug("Load parameters from {}".format(params))
+        with open(params) as src:
+            cg[True].set_parameter_values(load_parameters(src))
+
     # Weight decay (TODO: Make it less bug prone)
     weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg[True].variables)
     final_cost = cg[True].outputs[0] + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
@@ -165,6 +177,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         s2_mask.tag.test_value = test_value_data[3]
         y.tag.test_value = test_value_data[4]
 
+    # TODO: Support freezing all but dict
     # Freeze embeddings
     if not c['train_emb']:
         frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]

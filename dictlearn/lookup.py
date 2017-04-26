@@ -208,7 +208,7 @@ class MeanPoolCombiner(Initializable):
                 self._bn_layers.append((_def_emb_bn, _word_emb_bn))
 
         if self._def_word_gating== "multiplicative":
-            self._gate_mlp = Linear(emb_dim, emb_dim)
+            self._gate_mlp = Linear(emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
             self._gate_act = Logistic()
             children.extend([self._gate_mlp, self._gate_act])
 
@@ -232,7 +232,7 @@ class MeanPoolCombiner(Initializable):
             if dropout_type == "per_word" or dropout_type == "per_example":
                 raise RuntimeError("I dont think this combination makes much sense")
 
-            self._compose_gate_mlp = Linear(2 * emb_dim, emb_dim)
+            self._compose_gate_mlp = Linear(2 * emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
             self._compose_gate_act = Logistic()
             children.extend([self._compose_gate_mlp, self._compose_gate_act])
         elif compose_type == 'sum':
