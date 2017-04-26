@@ -3,7 +3,11 @@ Methods of constructing word embeddings
 
 TODO(kudkudak): Competitive multimodal might be one way. But
 also it might be useful to ecnourage learning complementary features
-Hypothesis: we *dont* want to replicate learning the same thing
+Why would FC work worse? Maybe with shareable def lookup it would?
+
+Idea: Learn to pick by gating that's learnable (and would ignore unknown words)
+Idea: Then start tarining gate late?
+
 """
 from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application, _variable_name
@@ -169,7 +173,8 @@ class MeanPoolCombiner(Initializable):
         If 'fully_connected_tanh', ...
     """
 
-    def __init__(self, emb_dim, dim, dropout=0.0, gating="none",
+    def __init__(self, emb_dim, dim, dropout=0.0,
+            def_word_gating="none",
             dropout_type="per_unit", compose_type="sum",
             word_dropout_weighting="no_weighting",
             bn=False, n_calls=1, **kwargs):
@@ -177,9 +182,9 @@ class MeanPoolCombiner(Initializable):
         self._dropout_type = dropout_type
         self._compose_type = compose_type
         self._word_dropout_weighting = word_dropout_weighting
-        self._gating = gating
+        self._def_word_gating = def_word_gating
 
-        if gating not in {"none", "multiplicative"}:
+        if def_word_gating not in {"none", "multiplicative"}:
             raise NotImplementedError()
 
         if word_dropout_weighting not in {"no_weighting"}:
@@ -202,7 +207,7 @@ class MeanPoolCombiner(Initializable):
                 children.append(_word_emb_bn)
                 self._bn_layers.append((_def_emb_bn, _word_emb_bn))
 
-        if self._gating== "multiplicative":
+        if self._def_word_gating== "multiplicative":
             self._gate_mlp = Linear(emb_dim, emb_dim)
             self._gate_act = Logistic()
             children.extend([self._gate_mlp, self._gate_act])
@@ -222,6 +227,14 @@ class MeanPoolCombiner(Initializable):
         elif compose_type == 'fully_connected_linear':
             self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
+        elif compose_type == "gated_sum":
+
+            if dropout_type == "per_word" or dropout_type == "per_example":
+                raise RuntimeError("I dont think this combination makes much sense")
+
+            self._compose_gate_mlp = Linear(2 * emb_dim, emb_dim)
+            self._compose_gate_act = Logistic()
+            children.extend([self._compose_gate_mlp, self._compose_gate_act])
         elif compose_type == 'sum':
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
@@ -243,10 +256,10 @@ class MeanPoolCombiner(Initializable):
         def_lens = T.zeros_like(def_sum[:, 0])
         flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1] # Index of word in flat
 
-        if self._gating == "none":
+        if self._def_word_gating == "none":
             def_sum = T.inc_subtensor(def_sum[flat_indices],
                 def_embeddings[def_map[:, 2]])
-        elif self._gating == "multiplicative":
+        elif self._def_word_gating == "multiplicative":
             gates = word_embs.reshape((batch_shape[0] * batch_shape[1], -1))
             gates = self._gate_mlp.apply(gates)
             gates = self._gate_act.apply(gates)
@@ -333,6 +346,18 @@ class MeanPoolCombiner(Initializable):
 
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
+        elif self._compose_type == 'gated_sum':
+            # How to learn here?
+            concat = T.concatenate([word_embs, def_mean], axis=2)
+            gates = concat.reshape((batch_shape[0] * batch_shape[1], -1))
+            gates = self._compose_gate_mlp.apply(gates)
+            gates = self._compose_gate_act.apply(gates)
+            gates = gates.reshape((batch_shape[0], batch_shape[1], -1))
+            final_embeddings = gates * word_embs + (1 - gates) * def_mean
+
+            application_call.add_auxiliary_variable(
+                masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
+                name=call_name + '_compose_gate_rootmean2')
         elif self._compose_type.startswith('fully_connected'):
             concat = T.concatenate([word_embs, def_mean], axis=2)
             final_embeddings = self._def_state_compose.apply(concat)
