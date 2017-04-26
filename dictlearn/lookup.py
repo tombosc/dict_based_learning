@@ -322,7 +322,6 @@ class MeanPoolCombiner(Initializable):
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
         elif self._compose_type == 'gated_sum':
-            # How to learn here?
             concat = T.concatenate([word_embs, def_mean], axis=2)
             gates = concat.reshape((batch_shape[0] * batch_shape[1], -1))
             gates = self._compose_gate_mlp.apply(gates)
@@ -339,12 +338,14 @@ class MeanPoolCombiner(Initializable):
         else:
             raise NotImplementedError()
 
-        # Last bit is optional forcing dict or word emb in case of exclued or unks
         if self._shortcut_unk_and_excluded:
-            final_embeddings = final_embeddings * T.lt(word_ids, self._num_input_words) + \
-                               def_mean * T.ge(word_ids, self._num_input_words)
-            final_embeddings = word_embs * T.lt(word_ids, self._exclude_top_K) + \
-                               final_embeddings * T.ge(word_ids, self._exclude_top_K)
+            # WARNING: Dont pass UNKed word ids here!
+
+            final_embeddings = word_embs * T.lt(word_ids, self._exclude_top_K).dimshuffle(0, 1, "x") + \
+                               final_embeddings * T.ge(word_ids, self._exclude_top_K).dimshuffle(0, 1, "x")
+
+            final_embeddings = final_embeddings * T.lt(word_ids, self._num_input_words).dimshuffle(0, 1, "x")  + \
+                               def_mean * T.ge(word_ids, self._num_input_words).dimshuffle(0, 1, "x")
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(final_embeddings, words_mask),
