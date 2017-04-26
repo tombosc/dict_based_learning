@@ -23,6 +23,7 @@ snli_config_registry.set_root_config({
     'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
     "combiner_dropout": 0.0,
     "combiner_dropout_type": "per_unit",
+    "combiner_gating": "none",
     'reader_type': 'rnn',
     'share_def_lookup': False,
     'combiner_bn': False,

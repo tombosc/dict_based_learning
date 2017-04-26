@@ -7,8 +7,10 @@ from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application, _variable_name
 from blocks.bricks.lookup import LookupTable
 from blocks.bricks.recurrent import LSTM
+from blocks.bricks.simple import Softmax
 from blocks.bricks.bn import BatchNormalization
 from blocks.initialization import Uniform, Constant
+from blocks.bricks import Softmax, Rectifier, Logistic
 
 import theano
 import theano.tensor as T
@@ -21,7 +23,7 @@ import logging
 logger = logging.getLogger(__file__)
 
 
-class ReadDefinitions(Initializable):
+class LSTMReadDefinitions(Initializable):
     """
     Converts definition into embeddings.
 
@@ -55,7 +57,7 @@ class ReadDefinitions(Initializable):
         self._def_rnn = LSTM(dim, name='def_rnn')
         children.extend([self._def_fork, self._def_rnn])
 
-        super(ReadDefinitions, self).__init__(children=children, **kwargs)
+        super(LSTMReadDefinitions, self).__init__(children=children, **kwargs)
 
 
     @application
@@ -76,6 +78,8 @@ class ReadDefinitions(Initializable):
         return def_embeddings
 
 
+
+
 class MeanPoolReadDefinitions(Initializable):
     """
     Converts definition into embeddings using simple sum + translation
@@ -93,7 +97,7 @@ class MeanPoolReadDefinitions(Initializable):
         Dimensionality of word embeddings
 
     """
-    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab, gating="none", lookup=None, **kwargs):
         self._num_input_words = num_input_words
         self._vocab = vocab
 
@@ -106,6 +110,15 @@ class MeanPoolReadDefinitions(Initializable):
             self._def_lookup = lookup
             # TODO(kudkudak): Should I add to children if I just pass it?
 
+        if gating == "none":
+            pass
+        elif gating == "multiplicative":
+            raise NotImplementedError()
+        else:
+            raise NotImplementedError()
+
+        # TODO(kudkudak): Does this make sense, given that WVh = (WV)h ? I think encouraging
+        # sparsity of gating here would work way better
         self._def_translate = Linear(emb_dim, dim, name='def_translate')
         children.append(self._def_translate)
 
@@ -140,15 +153,7 @@ class MeanPoolCombiner(Initializable):
     ----------
     dim: int
 
-    dropout_type: str, default: "regular"
-        "regular": applies regular dropout to both word and def emb
-
-        "multimodal": If set applies "multimodal" dropout, i.e. drops at once whole word and *independentyl*
-        whole def emb.
-
-        Note: It does it independently for simplicity (otherwise inference would require some extra
-        training). Maybe we could start with the dependent dropout and then phase into
-        independent one. Could work, but adds complexity.
+    dropout_type: str
 
     dropout: float, defaut: 0.0
 
@@ -162,8 +167,7 @@ class MeanPoolCombiner(Initializable):
         If 'fully_connected_tanh', ...
     """
 
-    # TODO: What is the cleanest way of resolving BN duplication?
-    def __init__(self, emb_dim, dim, dropout=0.0,
+    def __init__(self, emb_dim, dim, dropout=0.0, gating="none",
             dropout_type="per_unit", compose_type="sum",
             word_dropout_weighting="no_weighting",
             bn=False, n_calls=1, **kwargs):
@@ -171,6 +175,10 @@ class MeanPoolCombiner(Initializable):
         self._dropout_type = dropout_type
         self._compose_type = compose_type
         self._word_dropout_weighting = word_dropout_weighting
+        self._gating = gating
+
+        if gating not in {"none", "multiplicative"}:
+            raise NotImplementedError()
 
         if word_dropout_weighting not in {"no_weighting"}:
             raise NotImplementedError("Not implemented " + word_dropout_weighting)
@@ -192,6 +200,10 @@ class MeanPoolCombiner(Initializable):
                 children.append(_word_emb_bn)
                 self._bn_layers.append((_def_emb_bn, _word_emb_bn))
 
+        if self._gating== "multiplicative":
+            self._gate_mlp = Linear(emb_dim, emb_dim)
+            self._gate_act = Logistic()
+            children.extend([self._gate_mlp, self._gate_act])
 
         if compose_type == 'fully_connected_tanh':
             self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
@@ -222,12 +234,30 @@ class MeanPoolCombiner(Initializable):
               def_embeddings, def_map, train_phase, call_name=""):
         batch_shape = word_embs.shape
 
+        # def_map is (seq_pos, word_pos, def_index)
+
         # Mean-pooling of definitions
         def_sum = T.zeros((batch_shape[0] * batch_shape[1], def_embeddings.shape[1]))
         def_lens = T.zeros_like(def_sum[:, 0])
-        flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1]
-        def_sum = T.inc_subtensor(def_sum[flat_indices],
-            def_embeddings[def_map[:, 2]])
+        flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1] # Index of word in flat
+
+        if self._gating == "none":
+            def_sum = T.inc_subtensor(def_sum[flat_indices],
+                def_embeddings[def_map[:, 2]])
+        elif self._gating == "multiplicative":
+            gates = word_embs.reshape((batch_shape[0] * batch_shape[1], -1))
+            gates = self._gate_mlp.apply(gates)
+            gates = self._gate_act.apply(gates)
+
+            application_call.add_auxiliary_variable(
+                masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
+                    name=call_name + '_gate_rootmean2')
+
+            def_sum = T.inc_subtensor(def_sum[flat_indices],
+                gates[flat_indices] * def_embeddings[def_map[:, 2]])
+        else:
+            raise NotImplementedError()
+
         def_lens = T.inc_subtensor(def_lens[flat_indices], 1)
         def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
@@ -272,8 +302,8 @@ class MeanPoolCombiner(Initializable):
                 mask = mask.dimshuffle(0, 1, "x")
 
                 # Reduce variance: if def_mean is 0 let's call it uninformative
-                is_retrieved = T.gt(def_mean.sum(axis=2, keepdims=True), 0)
-                mask = mask * is_retrieved # Includes mean if: sampled AND retrieved
+                # is_retrieved = T.gt(T.abs_(def_mean).sum(axis=2, keepdims=True), 0)
+                # mask = mask * is_retrieved # Includes mean if: sampled AND retrieved
 
                 # Competitive
                 def_mean = mask * def_mean

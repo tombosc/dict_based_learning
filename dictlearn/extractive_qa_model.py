@@ -11,7 +11,7 @@ from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
-from dictlearn.lookup import ReadDefinitions, MeanPoolCombiner
+from dictlearn.lookup import LSTMReadDefinitions, MeanPoolCombiner
 
 
 class ExtractiveQAModel(Initializable):
@@ -62,7 +62,7 @@ class ExtractiveQAModel(Initializable):
         children.extend([self._begin_readout, self._end_readout, self._softmax])
 
         if self._use_definitions:
-            self._def_reader = ReadDefinitions(
+            self._def_reader = LSTMReadDefinitions(
                 num_input_words=self._num_input_words,
                 dim=dim, emb_dim=emb_dim,
                 vocab=vocab)
