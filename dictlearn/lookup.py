@@ -1,7 +1,9 @@
 """
 Methods of constructing word embeddings
 
-TODO(kudkudak): Add multiplicative compose_type
+TODO(kudkudak): Competitive multimodal might be one way. But
+also it might be useful to ecnourage learning complementary features
+Hypothesis: we *dont* want to replicate learning the same thing
 """
 from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application, _variable_name

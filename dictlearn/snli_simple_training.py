@@ -32,7 +32,7 @@ from theano import tensor as T
 
 from blocks.algorithms import (
     GradientDescent, Adam)
-from blocks.graph import ComputationGraph, apply_batch_normalization, apply_dropout, get_batch_normalization_updates
+from blocks.graph import ComputationGraph, apply_batch_normalization, get_batch_normalization_updates
 from blocks.model import Model
 from blocks.extensions import FinishAfter, Timing, Printing
 from blocks.extensions.saveload import Load, Checkpoint
@@ -51,6 +51,24 @@ from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWo
 from dictlearn.data import SNLIData
 from dictlearn.snli_simple_model import SNLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
+
+
+# class WeightedGradientDescent(GradientDescent):
+#     """
+#     Wraps GradientDescent adding shareable weights for updates
+#     """
+#     def __init__(self, **kwargs):
+#         super(WeightedGradientDescent, self).__init__(**kwargs)
+#
+#     def get_weight_dict(self):
+#         pass
+#
+#     def _compute_gradients(self, known_grads, consider_constant):
+#         gradients = super(WeightedGradientDescent, self).\
+#             _compute_gradients(known_grads=known_grads, consider_constant=consider_constant)
+#
+#         return gradients
+
 
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
@@ -182,10 +200,18 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     monitored_vars = cg[False].outputs
 
     try:
+        logger.info("Adding dict lookup norm tracking")
         train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[True])[0])
         train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[True])[0])
         monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[False])[0])
         monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[False])[0])
+    except:
+        pass
+
+    try:
+        logger.info("Adding gating tracking")
+        train_monitored_vars.append(VariableFilter(name="s1_gate_rootmean2")(cg[True])[0])
+        monitored_vars.append(VariableFilter(name="s1_gate_rootmean2")(cg[False])[0])
     except:
         pass
 
