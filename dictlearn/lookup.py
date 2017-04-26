@@ -53,6 +53,8 @@ class LSTMReadDefinitions(Initializable):
         children = []
 
         if lookup is None:
+            # TODO: Does it make sense it is self._num_input_words?
+            # Check definition coverage
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
             children.append(self._def_lookup)
         else:
@@ -177,10 +179,14 @@ class MeanPoolCombiner(Initializable):
             def_word_gating="none",
             dropout_type="per_unit", compose_type="sum",
             word_dropout_weighting="no_weighting",
-            bn=False, n_calls=1, **kwargs):
+            shortcut_unk_and_excluded=False,  num_input_words=-1, exclude_top_K=-1,
+            **kwargs):
         self._dropout = dropout
+        self._num_input_words = num_input_words
+        self._exclude_top_K = exclude_top_K
         self._dropout_type = dropout_type
         self._compose_type = compose_type
+        self._shortcut_unk_or_excluded = shortcut_unk_and_excluded
         self._word_dropout_weighting = word_dropout_weighting
         self._def_word_gating = def_word_gating
 
@@ -195,37 +201,14 @@ class MeanPoolCombiner(Initializable):
 
         children = []
 
-        self._bn_layers = []
-        self._bn = bn
-        if self._bn:
-            for i in range(n_calls):
-                _word_emb_bn = BatchNormalization(emb_dim, name="word_emb_bn" + str(i),
-                    conserve_memory=True)
-                _def_emb_bn = BatchNormalization(dim, name="def_emb_bn" + str(i),
-                    conserve_memory=True)
-                children.append(_def_emb_bn)
-                children.append(_word_emb_bn)
-                self._bn_layers.append((_def_emb_bn, _word_emb_bn))
-
         if self._def_word_gating== "multiplicative":
             self._gate_mlp = Linear(emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
             self._gate_act = Logistic()
             children.extend([self._gate_mlp, self._gate_act])
 
-        if compose_type == 'fully_connected_tanh':
-            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
-                , weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_relu':
-            self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
-                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_linear':
+        if compose_type == 'fully_connected_linear':
             self._def_state_compose = MLP(activations=[None],
                 dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_linear':
-            self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
         elif compose_type == "gated_sum":
 
@@ -246,7 +229,7 @@ class MeanPoolCombiner(Initializable):
     @application
     def apply(self, application_call,
               word_embs, words_mask,
-              def_embeddings, def_map, train_phase, call_name=""):
+              def_embeddings, def_map, train_phase, word_ids=False, call_name=""):
         batch_shape = word_embs.shape
 
         # def_map is (seq_pos, word_pos, def_index)
@@ -279,7 +262,6 @@ class MeanPoolCombiner(Initializable):
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(def_mean, words_mask), name=call_name + '_def_mean_rootmean2')
-
 
         if train_phase and self._dropout != 0.0:
             if self._dropout_type == "per_unit":
@@ -337,13 +319,6 @@ class MeanPoolCombiner(Initializable):
             word_embs.copy(),
             name=call_name + '_word_embeddings')
 
-        if self._bn:
-            _def_emb_bn, _word_emb_bn = self._bn_layers.pop()
-            def_mean_after_bn = _def_emb_bn.apply(def_mean.reshape((def_mean.shape[0] * def_mean.shape[1], -1)))
-            word_embs_after_bn = _word_emb_bn.apply(word_embs.reshape((word_embs.shape[0] * word_embs.shape[1], -1)))
-            def_mean = def_mean_after_bn.reshape(def_mean.shape)
-            word_embs = word_embs_after_bn.reshape(word_embs.shape)
-
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
         elif self._compose_type == 'gated_sum':
@@ -363,6 +338,13 @@ class MeanPoolCombiner(Initializable):
             final_embeddings = self._def_state_compose.apply(concat)
         else:
             raise NotImplementedError()
+
+        # Last bit is optional forcing dict or word emb in case of exclued or unks
+        if self._shortcut_unk_and_excluded:
+            final_embeddings = final_embeddings * T.lt(word_ids, self._num_input_words) + \
+                               def_mean * T.ge(word_ids, self._num_input_words)
+            final_embeddings = word_embs * T.lt(word_ids, self._exclude_top_K) + \
+                               final_embeddings * T.ge(word_ids, self._exclude_top_K)
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(final_embeddings, words_mask),

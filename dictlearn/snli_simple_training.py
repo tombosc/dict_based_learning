@@ -118,9 +118,10 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
         reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
+
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
-        combiner_gating=c['combiner_gating']
+        combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut']
     )
     simple.initialize()
 
@@ -227,6 +228,14 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         monitored_vars.append(VariableFilter(name="s1_gate_rootmean2")(cg[False])[0])
     except:
         pass
+
+    try:
+        logger.info("Adding gating tracking")
+        train_monitored_vars.append(VariableFilter(name="s1_compose_gate_rootmean2")(cg[True])[0])
+        monitored_vars.append(VariableFilter(name="s1_compose_gate_rootmean2")(cg[False])[0])
+    except:
+        pass
+
 
     if c['monitor_parameters']:
         for name in train_params_keys:
