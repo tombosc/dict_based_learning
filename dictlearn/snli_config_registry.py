@@ -23,6 +23,8 @@ snli_config_registry.set_root_config({
     'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
     "combiner_dropout": 0.0,
     "combiner_dropout_type": "per_unit",
+    "combiner_gating": "none",
+    "combiner_shortcut": False,
     'reader_type': 'rnn',
     'share_def_lookup': False,
     'combiner_bn': False,
@@ -52,8 +54,8 @@ c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
-c['combiner_dropout'] = 0.5 # TODO: Tune?
-c['combiner_dropout_type'] = "per_example"
+c['combiner_dropout'] = 0.5
+c['combiner_dropout_type'] = "per_unit" # Safer choice
 c['train_emb'] = 1
 c['embedding_path'] = ''
 c['lr'] = 0.0006 # Note: 0.001 works better

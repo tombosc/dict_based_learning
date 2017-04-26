@@ -1,14 +1,22 @@
 """
 Methods of constructing word embeddings
 
-TODO(kudkudak): Add multiplicative compose_type
+TODO(kudkudak): Competitive multimodal might be one way. But
+also it might be useful to ecnourage learning complementary features
+Why would FC work worse? Maybe with shareable def lookup it would?
+
+Idea: Learn to pick by gating that's learnable (and would ignore unknown words)
+Idea: Then start tarining gate late?
+
 """
 from blocks.bricks import Initializable, Linear, MLP, Tanh, Rectifier
 from blocks.bricks.base import application, _variable_name
 from blocks.bricks.lookup import LookupTable
 from blocks.bricks.recurrent import LSTM
+from blocks.bricks.simple import Softmax
 from blocks.bricks.bn import BatchNormalization
 from blocks.initialization import Uniform, Constant
+from blocks.bricks import Softmax, Rectifier, Logistic
 
 import theano
 import theano.tensor as T
@@ -21,7 +29,7 @@ import logging
 logger = logging.getLogger(__file__)
 
 
-class ReadDefinitions(Initializable):
+class LSTMReadDefinitions(Initializable):
     """
     Converts definition into embeddings.
 
@@ -45,6 +53,8 @@ class ReadDefinitions(Initializable):
         children = []
 
         if lookup is None:
+            # TODO: Does it make sense it is self._num_input_words?
+            # Check definition coverage
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
             children.append(self._def_lookup)
         else:
@@ -55,7 +65,7 @@ class ReadDefinitions(Initializable):
         self._def_rnn = LSTM(dim, name='def_rnn')
         children.extend([self._def_fork, self._def_rnn])
 
-        super(ReadDefinitions, self).__init__(children=children, **kwargs)
+        super(LSTMReadDefinitions, self).__init__(children=children, **kwargs)
 
 
     @application
@@ -76,6 +86,8 @@ class ReadDefinitions(Initializable):
         return def_embeddings
 
 
+
+
 class MeanPoolReadDefinitions(Initializable):
     """
     Converts definition into embeddings using simple sum + translation
@@ -93,7 +105,7 @@ class MeanPoolReadDefinitions(Initializable):
         Dimensionality of word embeddings
 
     """
-    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab, gating="none", lookup=None, **kwargs):
         self._num_input_words = num_input_words
         self._vocab = vocab
 
@@ -106,6 +118,15 @@ class MeanPoolReadDefinitions(Initializable):
             self._def_lookup = lookup
             # TODO(kudkudak): Should I add to children if I just pass it?
 
+        if gating == "none":
+            pass
+        elif gating == "multiplicative":
+            raise NotImplementedError()
+        else:
+            raise NotImplementedError()
+
+        # TODO(kudkudak): Does this make sense, given that WVh = (WV)h ? I think encouraging
+        # sparsity of gating here would work way better
         self._def_translate = Linear(emb_dim, dim, name='def_translate')
         children.append(self._def_translate)
 
@@ -140,15 +161,7 @@ class MeanPoolCombiner(Initializable):
     ----------
     dim: int
 
-    dropout_type: str, default: "regular"
-        "regular": applies regular dropout to both word and def emb
-
-        "multimodal": If set applies "multimodal" dropout, i.e. drops at once whole word and *independentyl*
-        whole def emb.
-
-        Note: It does it independently for simplicity (otherwise inference would require some extra
-        training). Maybe we could start with the dependent dropout and then phase into
-        independent one. Could work, but adds complexity.
+    dropout_type: str
 
     dropout: float, defaut: 0.0
 
@@ -162,15 +175,23 @@ class MeanPoolCombiner(Initializable):
         If 'fully_connected_tanh', ...
     """
 
-    # TODO: What is the cleanest way of resolving BN duplication?
     def __init__(self, emb_dim, dim, dropout=0.0,
+            def_word_gating="none",
             dropout_type="per_unit", compose_type="sum",
             word_dropout_weighting="no_weighting",
-            bn=False, n_calls=1, **kwargs):
+            shortcut_unk_and_excluded=False,  num_input_words=-1, exclude_top_k=-1,
+            **kwargs):
         self._dropout = dropout
+        self._num_input_words = num_input_words
+        self._exclude_top_K = exclude_top_k
         self._dropout_type = dropout_type
         self._compose_type = compose_type
+        self._shortcut_unk_and_excluded = shortcut_unk_and_excluded
         self._word_dropout_weighting = word_dropout_weighting
+        self._def_word_gating = def_word_gating
+
+        if def_word_gating not in {"none", "multiplicative"}:
+            raise NotImplementedError()
 
         if word_dropout_weighting not in {"no_weighting"}:
             raise NotImplementedError("Not implemented " + word_dropout_weighting)
@@ -180,34 +201,23 @@ class MeanPoolCombiner(Initializable):
 
         children = []
 
-        self._bn_layers = []
-        self._bn = bn
-        if self._bn:
-            for i in range(n_calls):
-                _word_emb_bn = BatchNormalization(emb_dim, name="word_emb_bn" + str(i),
-                    conserve_memory=True)
-                _def_emb_bn = BatchNormalization(dim, name="def_emb_bn" + str(i),
-                    conserve_memory=True)
-                children.append(_def_emb_bn)
-                children.append(_word_emb_bn)
-                self._bn_layers.append((_def_emb_bn, _word_emb_bn))
+        if self._def_word_gating== "multiplicative":
+            self._gate_mlp = Linear(emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
+            self._gate_act = Logistic()
+            children.extend([self._gate_mlp, self._gate_act])
 
-
-        if compose_type == 'fully_connected_tanh':
-            self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[emb_dim + dim, dim]
-                , weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_relu':
-            self._def_state_compose = MLP(activations=[Rectifier(name="def_state_compose")],
-                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_linear':
+        if compose_type == 'fully_connected_linear':
             self._def_state_compose = MLP(activations=[None],
                 dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
-        elif compose_type == 'fully_connected_linear':
-            self._def_state_compose = Linear(emb_dim + dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
-            children.append(self._def_state_compose)
+        elif compose_type == "gated_sum":
+
+            if dropout_type == "per_word" or dropout_type == "per_example":
+                raise RuntimeError("I dont think this combination makes much sense")
+
+            self._compose_gate_mlp = Linear(2 * emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
+            self._compose_gate_act = Logistic()
+            children.extend([self._compose_gate_mlp, self._compose_gate_act])
         elif compose_type == 'sum':
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
@@ -222,22 +232,39 @@ class MeanPoolCombiner(Initializable):
     @application
     def apply(self, application_call,
               word_embs, words_mask,
-              def_embeddings, def_map, train_phase=False, call_name=""):
+              def_embeddings, def_map, train_phase=False, word_ids=False, call_name=""):
         batch_shape = word_embs.shape
+
+        # def_map is (seq_pos, word_pos, def_index)
 
         # Mean-pooling of definitions
         def_sum = T.zeros((batch_shape[0] * batch_shape[1], def_embeddings.shape[1]))
         def_lens = T.zeros_like(def_sum[:, 0])
-        flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1]
-        def_sum = T.inc_subtensor(def_sum[flat_indices],
-            def_embeddings[def_map[:, 2]])
+        flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1] # Index of word in flat
+
+        if self._def_word_gating == "none":
+            def_sum = T.inc_subtensor(def_sum[flat_indices],
+                def_embeddings[def_map[:, 2]])
+        elif self._def_word_gating == "multiplicative":
+            gates = word_embs.reshape((batch_shape[0] * batch_shape[1], -1))
+            gates = self._gate_mlp.apply(gates)
+            gates = self._gate_act.apply(gates)
+
+            application_call.add_auxiliary_variable(
+                masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
+                    name=call_name + '_gate_rootmean2')
+
+            def_sum = T.inc_subtensor(def_sum[flat_indices],
+                gates[flat_indices] * def_embeddings[def_map[:, 2]])
+        else:
+            raise NotImplementedError()
+
         def_lens = T.inc_subtensor(def_lens[flat_indices], 1)
         def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(def_mean, words_mask), name=call_name + '_def_mean_rootmean2')
-
 
         if train_phase and self._dropout != 0.0:
             if self._dropout_type == "per_unit":
@@ -275,8 +302,8 @@ class MeanPoolCombiner(Initializable):
                 mask = mask.dimshuffle(0, 1, "x")
 
                 # Reduce variance: if def_mean is 0 let's call it uninformative
-                is_retrieved = T.gt(def_mean.sum(axis=2, keepdims=True), 0)
-                mask = mask * is_retrieved # Includes mean if: sampled AND retrieved
+                # is_retrieved = T.gt(T.abs_(def_mean).sum(axis=2, keepdims=True), 0)
+                # mask = mask * is_retrieved # Includes mean if: sampled AND retrieved
 
                 # Competitive
                 def_mean = mask * def_mean
@@ -295,23 +322,36 @@ class MeanPoolCombiner(Initializable):
             word_embs.copy(),
             name=call_name + '_word_embeddings')
 
-        if self._bn:
-            _def_emb_bn, _word_emb_bn = self._bn_layers.pop()
-            def_mean_after_bn = _def_emb_bn.apply(def_mean.reshape((def_mean.shape[0] * def_mean.shape[1], -1)))
-            word_embs_after_bn = _word_emb_bn.apply(word_embs.reshape((word_embs.shape[0] * word_embs.shape[1], -1)))
-            def_mean = def_mean_after_bn.reshape(def_mean.shape)
-            word_embs = word_embs_after_bn.reshape(word_embs.shape)
-
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
         elif self._compose_type == 'transform_and_sum':
             final_embeddings = (word_embs +
                                 self._def_state_transform.apply(def_mean))
+        elif self._compose_type == 'gated_sum':
+            concat = T.concatenate([word_embs, def_mean], axis=2)
+            gates = concat.reshape((batch_shape[0] * batch_shape[1], -1))
+            gates = self._compose_gate_mlp.apply(gates)
+            gates = self._compose_gate_act.apply(gates)
+            gates = gates.reshape((batch_shape[0], batch_shape[1], -1))
+            final_embeddings = gates * word_embs + (1 - gates) * def_mean
+
+            application_call.add_auxiliary_variable(
+                masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
+                name=call_name + '_compose_gate_rootmean2')
         elif self._compose_type.startswith('fully_connected'):
             concat = T.concatenate([word_embs, def_mean], axis=2)
             final_embeddings = self._def_state_compose.apply(concat)
         else:
             raise NotImplementedError()
+
+        if self._shortcut_unk_and_excluded:
+            # WARNING: Dont pass UNKed word ids here!
+
+            final_embeddings = word_embs * T.lt(word_ids, self._exclude_top_K).dimshuffle(0, 1, "x") + \
+                               final_embeddings * T.ge(word_ids, self._exclude_top_K).dimshuffle(0, 1, "x")
+
+            final_embeddings = final_embeddings * T.lt(word_ids, self._num_input_words).dimshuffle(0, 1, "x")  + \
+                               def_mean * T.ge(word_ids, self._num_input_words).dimshuffle(0, 1, "x")
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(final_embeddings, words_mask),
