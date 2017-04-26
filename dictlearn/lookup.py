@@ -211,6 +211,9 @@ class MeanPoolCombiner(Initializable):
         elif compose_type == 'sum':
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
+        elif compose_type == 'transform_and_sum':
+            self._def_state_transform = Linear(emb_dim, dim)
+            children.append(self._def_state_transform)
         else:
             raise NotImplementedError()
 
@@ -301,6 +304,9 @@ class MeanPoolCombiner(Initializable):
 
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
+        elif self._compose_type == 'transform_and_sum':
+            final_embeddings = (word_embs +
+                                self._def_state_transform.apply(def_mean))
         elif self._compose_type.startswith('fully_connected'):
             concat = T.concatenate([word_embs, def_mean], axis=2)
             final_embeddings = self._def_state_compose.apply(concat)
