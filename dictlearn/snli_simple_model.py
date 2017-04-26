@@ -191,11 +191,11 @@ class SNLISimple(Initializable):
 
             s1_transl = self._combiner.apply(
                 s1_emb, s1_mask,
-                def_embs, s1_def_map, word_ids=s1_preunk, train_phase=train_phase, call_name="s1")
+                def_embs, s1_def_map, word_ids=s1, train_phase=train_phase, call_name="s1")
 
             s2_transl = self._combiner.apply(
                 s2_emb, s2_mask,
-                def_embs, s2_def_map, word_ids=s2_preunk, train_phase=train_phase, call_name="s2")
+                def_embs, s2_def_map, word_ids=s2, train_phase=train_phase, call_name="s2")
         else:
             application_call.add_auxiliary_variable(
                 1*s1_emb,

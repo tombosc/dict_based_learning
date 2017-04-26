@@ -179,13 +179,14 @@ class MeanPoolCombiner(Initializable):
             def_word_gating="none",
             dropout_type="per_unit", compose_type="sum",
             word_dropout_weighting="no_weighting",
-            shortcut_unk_and_excluded=False,  num_input_words=-1, exclude_top_k=-1,
+            shortcut_unk_and_excluded=False,  num_input_words=-1, exclude_top_k=-1, vocab=None,
             **kwargs):
         self._dropout = dropout
         self._num_input_words = num_input_words
         self._exclude_top_K = exclude_top_k
         self._dropout_type = dropout_type
         self._compose_type = compose_type
+        self._vocab = vocab
         self._shortcut_unk_and_excluded = shortcut_unk_and_excluded
         self._word_dropout_weighting = word_dropout_weighting
         self._def_word_gating = def_word_gating
@@ -339,13 +340,17 @@ class MeanPoolCombiner(Initializable):
             raise NotImplementedError()
 
         if self._shortcut_unk_and_excluded:
-            # WARNING: Dont pass UNKed word ids here!
+            # NOTE: It might be better to move it out of Lookup, because it breaks API a bit
+            # but at the same time it makes sense to share this code
 
+            # 1. If no def, just go with word emb
             final_embeddings = word_embs * T.lt(word_ids, self._exclude_top_K).dimshuffle(0, 1, "x") + \
                                final_embeddings * T.ge(word_ids, self._exclude_top_K).dimshuffle(0, 1, "x")
 
-            final_embeddings = final_embeddings * T.lt(word_ids, self._num_input_words).dimshuffle(0, 1, "x")  + \
-                               def_mean * T.ge(word_ids, self._num_input_words).dimshuffle(0, 1, "x")
+            # 2. UNKs always get def embeddings (UNK can happen for dev/test set of course)
+            final_embeddings = final_embeddings * T.neq(word_ids, self._vocab.unk).dimshuffle(0, 1, "x") + \
+                               def_mean * T.eq(word_ids, self._vocab.unk).dimshuffle(0, 1, "x")
+
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(final_embeddings, words_mask),
