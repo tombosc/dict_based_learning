@@ -30,9 +30,13 @@ class ExtractiveQAModel(Initializable):
         The vocabulary object.
     use_definitions : bool
         Triggers the use of definitions.
+    reuse_word_embeddings : bool
+    compose_type : str
 
     """
-    def __init__(self, dim, emb_dim, coattention, num_input_words, vocab, use_definitions=False, **kwargs):
+    def __init__(self, dim, emb_dim, coattention, num_input_words, vocab,
+                 use_definitions, compose_type,
+                 reuse_word_embeddings, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
@@ -65,8 +69,10 @@ class ExtractiveQAModel(Initializable):
             self._def_reader = LSTMReadDefinitions(
                 num_input_words=self._num_input_words,
                 dim=dim, emb_dim=emb_dim,
-                vocab=vocab)
-            self._combiner = MeanPoolCombiner(dim=dim, emb_dim=emb_dim)
+                vocab=vocab,
+                lookup=self._lookup if reuse_word_embeddings else None)
+            self._combiner = MeanPoolCombiner(
+                dim=dim, emb_dim=emb_dim, compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
         super(ExtractiveQAModel, self).__init__(children=children, **kwargs)

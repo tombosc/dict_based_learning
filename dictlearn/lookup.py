@@ -222,6 +222,9 @@ class MeanPoolCombiner(Initializable):
         elif compose_type == 'sum':
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
+        elif compose_type == 'transform_and_sum':
+            self._def_state_transform = Linear(emb_dim, dim)
+            children.append(self._def_state_transform)
         else:
             raise NotImplementedError()
 
@@ -230,7 +233,7 @@ class MeanPoolCombiner(Initializable):
     @application
     def apply(self, application_call,
               word_embs, words_mask,
-              def_embeddings, def_map, train_phase, word_ids=False, call_name=""):
+              def_embeddings, def_map, train_phase=False, word_ids=False, call_name=""):
         batch_shape = word_embs.shape
 
         # def_map is (seq_pos, word_pos, def_index)
@@ -322,6 +325,9 @@ class MeanPoolCombiner(Initializable):
 
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
+        elif self._compose_type == 'transform_and_sum':
+            final_embeddings = (word_embs +
+                                self._def_state_transform.apply(def_mean))
         elif self._compose_type == 'gated_sum':
             concat = T.concatenate([word_embs, def_mean], axis=2)
             gates = concat.reshape((batch_shape[0] * batch_shape[1], -1))
