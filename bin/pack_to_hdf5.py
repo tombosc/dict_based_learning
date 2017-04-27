@@ -4,7 +4,8 @@ import argparse
 import logging
 
 from dictlearn.h5py_conversion import (
-    text_to_h5py_dataset, squad_to_h5py_dataset, snli_to_h5py_dataset)
+    text_to_h5py_dataset, squad_to_h5py_dataset, snli_to_h5py_dataset,
+    obw_to_h5py_dataset)
 from dictlearn.corenlp import start_corenlp
 from dictlearn.util import get_free_port
 
@@ -16,7 +17,7 @@ def main():
         format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser("Converts text to HDF5")
-    parser.add_argument("--type", choices=("text", "squad", "snli"), default='text',
+    parser.add_argument("--type", choices=("text", "squad", "snli", "obw"), default='text',
                         help="What kind of data should be converted")
     parser.add_argument("data", help="The data to convert")
     parser.add_argument("--lowercase", default=False)
@@ -27,6 +28,14 @@ def main():
         if args.lowercase:
             raise NotImplementedError() # Just to be safe
         text_to_h5py_dataset(args.data, args.h5)
+    elif args.type == 'obw':
+        if args.lowercase:
+            raise NotImplementedError() # Just to be safe
+        for split in ['training', 'heldout']:
+            print "Converting 1 billion word " + split + " set to HDF5"
+            print "Expect a lot of memory use..."
+            dst_path = args.h5 + "_" + split + ".h5"
+            obw_to_h5py_dataset(dst_path, split)
     elif args.type == 'squad':
         if args.lowercase:
             raise NotImplementedError() # Just to be safe

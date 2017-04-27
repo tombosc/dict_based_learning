@@ -10,6 +10,7 @@ import numpy as np
 
 from os import path
 from fuel.datasets.hdf5 import H5PYDataset
+from fuel.utils import find_in_data_path
 
 from dictlearn.corenlp import StanfordCoreNLP
 
@@ -47,6 +48,46 @@ def text_to_h5py_dataset(text_path, dst_path):
                     'words' : (0, len(words))
                 }
             })
+
+def obw_to_h5py_dataset(dst_path, part):
+    """
+    one billion word version
+    """
+    if part not in ('training', 'heldout'):
+        raise ValueError
+    #TODO(tombosc): isn't there an error in Fuel's doc in start range of partit
+    if part == 'training':
+        which_partitions = range(1,100)
+        files = [find_in_data_path(path.join(
+                    '1-billion-word', 'training-monolingual.tokenized.shuffled',
+                    'news.en-{:05d}-of-00100'.format(partition)))
+                    for partition in which_partitions]
+    else:
+        which_partitions = range(0,50)
+        files = [find_in_data_path(path.join(
+                    '1-billion-word', 'heldout-monolingual.tokenized.shuffled',
+                    'news.en.heldout-{:05d}-of-00050'.format(partition)))
+                    for partition in which_partitions]
+    # instead of copypaste text_to_h5py_dataset...
+    # could use temporary_content_path from tests.util
+    words = []
+    for text_path in files:
+        print "reading:", text_path
+        with open(text_path, 'r') as src:
+            for line in src:
+                words.extend(line.strip().split())
+
+    with h5py.File(dst_path, 'w') as dst:
+        dtype = h5py.special_dtype(vlen=bytes)
+        table = dst.create_dataset('words', (len(words),), dtype=dtype)
+        table[:] = words
+
+        dst.attrs['split'] = H5PYDataset.create_split_array({
+                part : {
+                    'words' : (0, len(words))
+                }
+            })
+
 
 
 def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
