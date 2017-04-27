@@ -100,7 +100,7 @@ class Data(object):
     def __init__(self, path, layout):
         self._path = path
         self._layout = layout
-        if not self._layout in ['standard', 'lambada', 'squad', 'snli']:
+        if not self._layout in ['standard', 'lambada', 'squad', 'snli', 'onebillion']:
             raise "layout {} is not supported".format(self._layout)
 
         self._vocab = None
@@ -126,6 +126,9 @@ class Data(object):
             part_map = {'train' : 'train.h5',
                         'valid' : 'valid.h5',
                         'test': 'test.h5'}
+        elif self._layout == 'onebillion':
+            part_map = {'train': 'obw_training.h5',
+                        'valid': 'obw_heldout.h5'}
         else:
             raise NotImplementedError('Not implemented layout ' + self._layout)
         return os.path.join(self._path, part_map[part])
@@ -140,6 +143,9 @@ class Data(object):
             elif self._layout == 'snli':
                 self._dataset_cache[part] = H5PYDataset(h5py.File(part_path, "r"), \
                     ('all',), sources=('sentence1', 'sentence2', 'label',), load_in_memory=True)
+            elif self._layout == 'onebillion':
+                map_part = {"train": "training", "valid": "heldout"}
+                self._dataset_cache[part] = H5PYDataset(part_path, (map_part[part],))
             else:
                 self._dataset_cache[part] = TextDataset(part_path)
         return self._dataset_cache[part]
@@ -159,7 +165,8 @@ class LanguageModellingData(Data):
     def get_stream(self, part, batch_size=None, max_length=None, seed=None):
         dataset = self.get_dataset(part)
 
-        if self._layout == 'lambada' and part == 'train':
+        if (self._layout == 'lambada' and part == 'train' or 
+            self._layout == 'onebillion'):
             stream = DataStream(
                 dataset,
                 iteration_scheme=RandomSpanScheme(
@@ -176,45 +183,6 @@ class LanguageModellingData(Data):
         stream = Batch(
             stream,
             iteration_scheme=ConstantScheme(batch_size))
-        stream = Padding(stream)
-        return stream
-
-class OneBillionWordData():
-    def __init__(self, vocab_path):
-        self._dictionary, _ = pickle.load(open(vocab_path, "r"))
-        vocab_size = len(self._dictionary)
-        self._dictionary[Vocabulary.BOS] = vocab_size
-        self._dictionary[Vocabulary.EOS] = vocab_size+1
-        self._dictionary[Vocabulary.UNK] = vocab_size+2
-        self._dictionary[Vocabulary.BOD] = vocab_size+3
-        self._dictionary[Vocabulary.EOD] = vocab_size+4
-        self._vocab = Vocabulary(self._dictionary)
-
-    @property
-    def vocab(self):
-        return self._vocab
-
-    def get_stream(self, part, batch_size=None, max_length=None, seed=None):
-        if part == 'training':
-            partitions = range(1, 100)
-        elif part == 'heldout':
-            partitions = range(50)
-        else:
-            raise Exception("Part not recognized: " + part)
-
-        dataset = OneBillionWord(which_set=part,
-                                 which_partitions=partitions,
-                                 dictionary=self._dictionary,
-                                 bos_token=Vocabulary.BOS,
-                                 eos_token=Vocabulary.EOS,
-                                 unk_token=Vocabulary.UNK)
-
-        stream = dataset.get_example_stream()
-
-        if not batch_size:
-            return stream
-
-        stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
         stream = Padding(stream)
         return stream
 

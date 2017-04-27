@@ -28,8 +28,8 @@ from blocks.serialization import load_parameters
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
-from dictlearn.theano_util import parameter_stats
-from dictlearn.data import LanguageModellingData, OneBillionWordData
+#from dictlearn.theano_util import parameter_stats
+from dictlearn.data import LanguageModellingData
 from dictlearn.extensions import (
     DumpTensorflowSummaries, StartFuelServer)
 from dictlearn.language_model import LanguageModel
@@ -50,10 +50,7 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
-    if c['layout'] == 'onebillion':
-          data = OneBillionWordData(c['vocab_path'])
-    else:
-        data = LanguageModellingData(c['data_path'], c['layout'])
+    data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
     if c['dict_path']:
         retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
@@ -91,11 +88,14 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     last_correct, = VariableFilter(name='last_correct')(cg)
     last_correct_acc = rename(last_correct.mean(), 'last_correct_acc')
     perplexity, = VariableFilter(name='perplexity')(cg)
+
     monitored_vars = [length, cost, last_correct_acc, perplexity]
     if c['dict_path']:
         num_definitions, = VariableFilter(name='num_definitions')(cg)
         max_definition_length, = VariableFilter(name='max_definition_length')(cg)
+        #perplexity_follow_def, = VariableFilter(name='perplexity_follow_def')(cg)
         monitored_vars.extend([num_definitions, max_definition_length])
+                               #perplexity_follow_def])
 
     parameters = cg.get_parameter_dict()
     logger.info("Trainable parameters" + "\n" +
@@ -139,8 +139,8 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         train_monitored_vars.append(
             rename(masked_root_mean_square(main_rnn_states, words_mask.T), 'main_rnn_states_root_mean2'))
 
-    if c['monitor_parameters']:
-        train_monitored_vars.extend(parameter_stats(parameters, algorithm))
+    #if c['monitor_parameters']:
+    #    train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 
     # We use a completely random seed on purpose. With Fuel server
     # it's currently not possible to restore the state of the training
@@ -168,7 +168,8 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
             every_n_batches=c['mon_freq_train']),
         DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=c['batch_size_valid']),
+            data.get_stream('valid', batch_size=c['batch_size_valid'], 
+                            max_length=c['max_length']),
             prefix="valid").set_conditions(
                 before_first_epoch=not fast_start,
                 every_n_batches=c['mon_freq_valid']),
