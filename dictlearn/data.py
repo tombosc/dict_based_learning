@@ -24,7 +24,8 @@ import fuel
 from fuel.transformers import (
     Mapping, Batch, Padding, AgnosticSourcewiseTransformer,
     FilterSources, Transformer)
-from fuel.schemes import IterationScheme, ConstantScheme, ShuffledExampleScheme
+from fuel.schemes import (
+    IterationScheme, ConstantScheme, ShuffledExampleScheme, SequentialScheme)
 from fuel.streams import DataStream
 from fuel.datasets import H5PYDataset, OneBillionWord
 
@@ -44,7 +45,6 @@ def vectorize(words):
 
 def listify(example):
     return tuple(list(source) for source in example)
-
 
 def add_bos(bos, source_data):
     return [bos] + source_data
@@ -145,6 +145,10 @@ class Data(object):
                     ('all',), sources=('sentence1', 'sentence2', 'label',), load_in_memory=True)
             elif self._layout == 'onebillion':
                 map_part = {"train": "training", "valid": "heldout"}
+                if part == 'valid':
+                    subset = slice(0,5000) # heldout set in total has 7790011 words...
+                else:
+                    subset = None
                 self._dataset_cache[part] = H5PYDataset(part_path, (map_part[part],))
             else:
                 self._dataset_cache[part] = TextDataset(part_path)
@@ -165,13 +169,22 @@ class LanguageModellingData(Data):
     def get_stream(self, part, batch_size=None, max_length=None, seed=None):
         dataset = self.get_dataset(part)
 
-        if (self._layout == 'lambada' and part == 'train' or 
-            self._layout == 'onebillion'):
+        if self._layout == 'lambada' and part == 'train':
             stream = DataStream(
                 dataset,
                 iteration_scheme=RandomSpanScheme(
                     dataset.num_examples, max_length, seed))
             stream = Mapping(stream, listify)
+        elif self._layout == 'onebillion':# and part == 'train':
+            stream = DataStream(
+                dataset, 
+                iteration_scheme=SequentialScheme(
+                    dataset.num_examples, max_length))
+            stream = Mapping(stream, listify)
+            # after using SequentialScheme the stream is considered to be batch
+            # even though it's not as an example is a sentence
+            # next line correct that and allow sentences to be batched after
+            stream.produces_examples = True
         else:
             stream = dataset.get_example_stream()
 
