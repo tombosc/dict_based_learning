@@ -216,9 +216,13 @@ def add_word_ids_to_snli(h5_file, vocab):
 def extract_tokens_from_binary_parse(parse):
     return parse.replace('(', ' ').replace(')', ' ').replace('-LRB-', '(').replace('-RRB-', ')').split()
 
+
 def snli_to_h5py_dataset(snli_path, dst_path, lowercase=False):
     logging.info("Reading CSV file")
-    d = pd.read_csv(snli_path, sep="\t")
+    # TODO: pd.read_csv fails on MNLI. Very strange, should fix
+    # d = pd.read_csv(snli_path, sep="\t")
+    lines = [l.split("\t") for l in open(snli_path).read().splitlines()]
+    d = pd.DataFrame(lines[1:], columns=lines[0])
 
     # Remove NaN
     d = d[d['sentence2_binary_parse'].apply(lambda x: isinstance(x, str))]

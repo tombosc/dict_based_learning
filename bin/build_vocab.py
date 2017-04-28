@@ -3,8 +3,10 @@
 import h5py
 import argparse
 import logging
+from six import text_type
 
 from dictlearn.vocab import Vocabulary
+
 
 def main():
     logging.basicConfig(
@@ -22,13 +24,19 @@ def main():
         logging.info("Processing " + f_name)
         if f_name.endswith('.h5'):
             with h5py.File(f_name) as h5_file:
+                if 'text' not in h5_file.keys():
+                    print("Missing text field from " + f_name)
+
                 text.extend(h5_file['text'][:])
         else:
             with open(f_name) as file_:
                 def data():
                     for line in file_:
                         for word in line.strip().split():
-                            yield word
+                            try:
+                                yield text_type(word, 'utf-8')
+                            except:
+                                print("Skipped word " + word)
                 text.extend(data())
         logging.info("{} words".format(len(text)))
 

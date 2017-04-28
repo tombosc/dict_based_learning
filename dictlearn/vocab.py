@@ -4,8 +4,9 @@ from __future__ import print_function
 
 from collections import Counter
 import logging
-
 import numpy
+
+from six import text_type
 
 logger = logging.getLogger()
 
@@ -137,4 +138,10 @@ class Vocabulary(object):
     def save(self, filename):
         with open(filename, 'w') as f:
             for word, freq in zip(self._id_to_word, self._id_to_freq):
+
+                # Note: if this fails for you make sure that words read
+                # and used by Vocabulary were utf-8 encoded prior to that
+                if not isinstance(word, text_type):
+                    word = text_type(word, "utf-8")
+
                 print(word.encode('utf-8'), freq, file=f)
