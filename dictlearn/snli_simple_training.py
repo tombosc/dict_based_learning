@@ -18,6 +18,9 @@ from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
 from blocks.serialization import load_parameters
+from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
+
+from dictlearn.inits import GlorotUniform
 
 import os
 import time
@@ -121,8 +124,14 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
-        combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut']
+        combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
+
+        weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
+    simple.push_initialization_config()
+    if c['encoder'] == 'rnn':
+        simple._rnn_encoder.weights_init = Uniform(std=0.1)
+        simple._rnn_fork.weights_init = Uniform(std=0.1)
     simple.initialize()
 
     if c['embedding_path']:

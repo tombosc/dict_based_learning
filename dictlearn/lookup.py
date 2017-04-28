@@ -328,13 +328,17 @@ class MeanPoolCombiner(Initializable):
         elif self._compose_type == 'transform_and_sum':
             final_embeddings = (word_embs +
                                 self._def_state_transform.apply(def_mean))
-        elif self._compose_type == 'gated_sum':
+        elif self._compose_type == 'gated_sum' or self._compose_type == 'gated_transform_and_sum':
             concat = T.concatenate([word_embs, def_mean], axis=2)
             gates = concat.reshape((batch_shape[0] * batch_shape[1], -1))
             gates = self._compose_gate_mlp.apply(gates)
             gates = self._compose_gate_act.apply(gates)
             gates = gates.reshape((batch_shape[0], batch_shape[1], -1))
-            final_embeddings = gates * word_embs + (1 - gates) * def_mean
+
+            if self._compose_type == 'gated_sum':
+                final_embeddings = gates * word_embs + (1 - gates) * def_mean
+            else:
+                final_embeddings = gates * word_embs + (1 - gates) * self._def_state_transform.apply(def_mean)
 
             application_call.add_auxiliary_variable(
                 masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
