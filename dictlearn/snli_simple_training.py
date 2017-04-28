@@ -2,10 +2,8 @@
 Training loop for simple SNLI model that can use dict enchanced embeddings
 
 TODO: Unit test data preprocessing
-TODO: Second round of debugging reloading
-TODO: Why dict embeddings are all 0 in the beginning?
-TODO: Add tracking norms
-TODO: Peculiar jigsaw shape in http://ec2-52-33-77-210.us-west-2.compute.amazonaws.com/
+TODO: Review dropout implementation
+TODO: Peculiar jigsaw shape
 """
 
 import sys
@@ -19,6 +17,11 @@ from blocks.bricks.cost import MisclassificationRate
 from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
+from blocks.serialization import load_parameters
+from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
+
+from dictlearn.inits import GlorotUniform
+
 import os
 import time
 import atexit
@@ -34,7 +37,7 @@ from theano import tensor as T
 
 from blocks.algorithms import (
     GradientDescent, Adam)
-from blocks.graph import ComputationGraph, apply_batch_normalization, apply_dropout, get_batch_normalization_updates
+from blocks.graph import ComputationGraph, apply_batch_normalization, get_batch_normalization_updates
 from blocks.model import Model
 from blocks.extensions import FinishAfter, Timing, Printing
 from blocks.extensions.saveload import Load, Checkpoint
@@ -53,6 +56,29 @@ from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWo
 from dictlearn.data import SNLIData
 from dictlearn.snli_simple_model import SNLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
+
+
+# class WeightedGradientDescent(GradientDescent):
+#     """
+#     Wraps GradientDescent adding shareable weights for updates
+#     """
+#     def __init__(self, parameters, **kwargs):
+#
+#         self._weight_dict = {}
+#         for p in parameters:
+#             self._weight_dict[p.name] = T.sharedvar()
+#
+#         super(WeightedGradientDescent, self).__init__(parameters=parameters, **kwargs)
+#
+#     def get_weight_dict(self):
+#         pass
+#
+#     def _compute_gradients(self, known_grads, consider_constant):
+#         gradients = super(WeightedGradientDescent, self).\
+#             _compute_gradients(known_grads=known_grads, consider_constant=consider_constant)
+#
+#         return gradients
+
 
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
@@ -95,9 +121,17 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
         reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
+
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
-        combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn']
+        combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
+        combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
+
+        weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
+    simple.push_initialization_config()
+    if c['encoder'] == 'rnn':
+        simple._rnn_encoder.weights_init = Uniform(std=0.1)
+        simple._rnn_fork.weights_init = Uniform(std=0.1)
     simple.initialize()
 
     if c['embedding_path']:
@@ -118,9 +152,30 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     s1_mask, s2_mask = T.fmatrix('sentence1_mask'), T.fmatrix('sentence2_mask')
     y = T.ivector('label')
-    pred = simple.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
-        s2_def_map=s2_def_map)
-    cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
+
+    cg = {}
+    for train_phase in [True, False]:
+        pred = simple.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+            s2_def_map=s2_def_map, train_phase=train_phase)
+        cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
+        error_rate = MisclassificationRate().apply(y.flatten(), pred)
+        cg[train_phase] = ComputationGraph([cost, error_rate])
+        cg[train_phase] = apply_batch_normalization(cg[train_phase])
+
+    if params:
+        logger.debug("Load parameters from {}".format(params))
+        with open(params) as src:
+            cg[True].set_parameter_values(load_parameters(src))
+
+    # Weight decay (TODO: Make it less bug prone)
+    weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg[True].variables)
+    final_cost = cg[True].outputs[0] + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
+    final_cost.name = 'final_cost'
+
+    # Add updates for population parameters
+    pop_updates = get_batch_normalization_updates(cg[True])
+    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
+        for p, m in pop_updates]
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
@@ -132,37 +187,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         s2_mask.tag.test_value = test_value_data[3]
         y.tag.test_value = test_value_data[4]
 
-    # Monitors
-    error_rate = MisclassificationRate().apply(y.flatten(), pred)
-
-    # Computation graph
-    cg = ComputationGraph([cost, error_rate])
-
-    # Weight decay (TODO: Make it less bug prone)
-    weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg.variables)
-    final_cost = cost + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
-    final_cost.name = 'final_cost'
-
-    cg = apply_batch_normalization(cg)
-    # Add updates for population parameters
-    pop_updates = get_batch_normalization_updates(cg)
-    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
-        for p, m in pop_updates]
-
-    # extra_updates = []
-    # pop_updates = []
-
-    test_cg = cg
-    for name, param, var in simple.get_cg_transforms():
-        logger.info("Applying " + name + " to " + str(var))
-        cg = apply_dropout(cg, [var], param)
-
+    # TODO: Support freezing all but dict
     # Freeze embeddings
     if not c['train_emb']:
         frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]
     else:
         frozen_params = []
-    train_params = [p for p in cg.parameters if p not in frozen_params]
+    train_params = [p for p in cg[True].parameters if p not in frozen_params]
     train_params_keys = [get_brick(p).get_hierarchical_name(p) for p in train_params]
 
     # Optimizer
@@ -188,16 +219,32 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                         for key in sorted(train_params_keys)],
                     width=120))
 
-    train_monitored_vars = [final_cost] + cg.outputs
-    monitored_vars = test_cg.outputs
+    train_monitored_vars = [final_cost] + cg[True].outputs
+    monitored_vars = cg[False].outputs
 
     try:
-        train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg)[0])
-        train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg)[0])
-        monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(test_cg)[0])
-        monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(test_cg)[0])
+        logger.info("Adding dict lookup norm tracking")
+        train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[True])[0])
+        train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[True])[0])
+        monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[False])[0])
+        monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[False])[0])
     except:
         pass
+
+    try:
+        logger.info("Adding gating tracking")
+        train_monitored_vars.append(VariableFilter(name="s1_gate_rootmean2")(cg[True])[0])
+        monitored_vars.append(VariableFilter(name="s1_gate_rootmean2")(cg[False])[0])
+    except:
+        pass
+
+    try:
+        logger.info("Adding gating tracking")
+        train_monitored_vars.append(VariableFilter(name="s1_compose_gate_rootmean2")(cg[True])[0])
+        monitored_vars.append(VariableFilter(name="s1_compose_gate_rootmean2")(cg[False])[0])
+    except:
+        pass
+
 
     if c['monitor_parameters']:
         for name in train_params_keys:
@@ -248,7 +295,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         #     after_training=True,
         #     prefix="test"),
         Checkpoint(main_loop_path,
-            parameters=cg.parameters + [p for p, m in pop_updates],
+            parameters=cg[True].parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
             after_training=not fast_start)
@@ -260,7 +307,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
     # Similarity trackers for embeddings
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
-        variables = VariableFilter(name=name)(cg)
+        variables = VariableFilter(name=name)(cg[False])
         if len(variables):
             print(variables)
             # TODO: Why is it 2?

@@ -6,7 +6,6 @@ from theano import tensor
 from dictlearn.util import vec2str
 from dictlearn.retrieval import Retrieval
 
-
 class WordToIdOp(theano.Op):
     """Replaces words with their ids."""
     def __init__(self, vocab):

@@ -28,7 +28,7 @@ class GlorotUniform(NdarrayInitialization):
 
     def generate(self, rng, shape):
         if not len(shape) == 2:
-            raise NotImplementedError()
+            raise NotImplementedError("GlorotUniform doesnt work for " + str(shape) + " shape")
 
         fan_in, fan_out = shape[0], shape[1]
         s = np.sqrt(6. / (fan_in + fan_out))

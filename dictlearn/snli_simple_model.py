@@ -24,7 +24,8 @@ from blocks.bricks.lookup import LookupTable
 from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
 
 from dictlearn.inits import GlorotUniform
-from dictlearn.lookup import MeanPoolCombiner, ReadDefinitions, MeanPoolReadDefinitions
+from dictlearn.lookup import MeanPoolCombiner, LSTMReadDefinitions, MeanPoolReadDefinitions
+from dictlearn.util import apply_dropout
 
 class SNLISimple(Initializable):
     """
@@ -36,7 +37,9 @@ class SNLISimple(Initializable):
             # Dict lookup kwargs
             retrieval=None, reader_type="rnn", compose_type="sum",
             disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
-            combiner_dropout_type="regular", share_def_lookup=False,
+            combiner_dropout_type="regular", share_def_lookup=False, exclude_top_k=-1,
+            combiner_gating="none",
+            combiner_shortcut=False,
             # Others
             **kwargs):
 
@@ -69,16 +72,20 @@ class SNLISimple(Initializable):
                 def_lookup = None
 
             if reader_type== "rnn":
-                self._def_reader = ReadDefinitions(num_input_words=self._num_input_words, weights_init=Uniform(width=0.1),
+                self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_words,
+                    weights_init=Uniform(width=0.1),
                     biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_words,
                     weights_init=Uniform(width=0.1), lookup=def_lookup,
                     biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
 
-            # TODO: Implement multimodal drop! For now using regular dropout
-            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim, bn=combiner_bn,
-                n_calls=2,  dropout=combiner_dropout, dropout_type=combiner_dropout_type,
+            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
+
+                dropout=combiner_dropout, dropout_type=combiner_dropout_type,
+                def_word_gating=combiner_gating,
+
+                shortcut_unk_and_excluded=combiner_shortcut, num_input_words=num_input_words, exclude_top_k=exclude_top_k, vocab=vocab,
                 compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
@@ -114,8 +121,6 @@ class SNLISimple(Initializable):
                 children.append(self._translation_act)
             else:
                 raise NotImplementedError("Not implemented encoder")
-
-
 
         self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn", conserve_memory=False)
         self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn", conserve_memory=False)
@@ -168,21 +173,15 @@ class SNLISimple(Initializable):
         else:
             raise NotImplementedError()
 
-    def get_cg_transforms(self):
-        cg = self._cg_transforms
-        if self._retrieval:
-            cg += self._combiner.get_cg_transforms()
-        return cg
-
     @application
     def apply(self, application_call,
-            s1, s1_mask, s2, s2_mask, def_mask=None, defs=None, s1_def_map=None, s2_def_map=None):
+            s1_preunk, s1_mask, s2_preunk, s2_mask, def_mask=None, defs=None, s1_def_map=None, s2_def_map=None, train_phase=True):
 
         # Shortlist words (sometimes we want smaller vocab, especially when dict is small)
-        s1 = (tensor.lt(s1, self._num_input_words) * s1
-              + tensor.ge(s1, self._num_input_words) * self._vocab.unk)
-        s2 = (tensor.lt(s2, self._num_input_words) * s2
-              + tensor.ge(s2, self._num_input_words) * self._vocab.unk)
+        s1 = (tensor.lt(s1_preunk, self._num_input_words) * s1_preunk
+              + tensor.ge(s1_preunk, self._num_input_words) * self._vocab.unk)
+        s2 = (tensor.lt(s2_preunk, self._num_input_words) * s2_preunk
+              + tensor.ge(s2_preunk, self._num_input_words) * self._vocab.unk)
 
         # Embeddings
         s1_emb = self._lookup.apply(s1)
@@ -195,11 +194,11 @@ class SNLISimple(Initializable):
 
             s1_transl = self._combiner.apply(
                 s1_emb, s1_mask,
-                def_embs, s1_def_map, call_name="s1")
+                def_embs, s1_def_map, word_ids=s1, train_phase=train_phase, call_name="s1")
 
             s2_transl = self._combiner.apply(
                 s2_emb, s2_mask,
-                def_embs, s2_def_map, call_name="s2")
+                def_embs, s2_def_map, word_ids=s2, train_phase=train_phase, call_name="s2")
         else:
             application_call.add_auxiliary_variable(
                 1*s1_emb,
@@ -244,14 +243,19 @@ class SNLISimple(Initializable):
 
         joint = T.concatenate([prem, hyp], axis=1)
         joint.name = "MLP_input"
-        self._cg_transforms = [['dropout', self._dropout, joint]]
+
+        if train_phase:
+            joint = apply_dropout(joint, drop_prob=self._dropout)
 
         # MLP
         for block in self._mlp:
             dense, relu, bn = block
             joint = dense.apply(joint)
             joint = relu.apply(joint)
-            self._cg_transforms.append(['dropout', self._dropout, joint])
+
+            if train_phase:
+                joint = apply_dropout(joint, drop_prob=self._dropout)
+
             joint = bn.apply(joint)
 
         return self._pred.apply(joint)

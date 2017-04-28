@@ -262,7 +262,8 @@ class Retrieval(object):
                         continue
 
                     if self._max_def_per_word < len(word_defs):
-                        word_defs = numpy.random.choice(word_defs, self._max_def_per_word, replace=False)
+                        word_defs_ids = numpy.random.choice(range(len(word_defs)), self._max_def_per_word, replace=False)
+                        word_defs = [word_defs[i] for i in word_defs_ids]
 
                     for i, def_ in enumerate(word_defs):
                         if len(def_) > self._max_def_length:
