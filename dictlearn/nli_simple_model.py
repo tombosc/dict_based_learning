@@ -27,7 +27,7 @@ from dictlearn.inits import GlorotUniform
 from dictlearn.lookup import MeanPoolCombiner, LSTMReadDefinitions, MeanPoolReadDefinitions
 from dictlearn.util import apply_dropout
 
-class SNLISimple(Initializable):
+class NLISimple(Initializable):
     """
     Simple model based on https://github.com/Smerity/keras_snl
     """
@@ -89,6 +89,7 @@ class SNLISimple(Initializable):
                 compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
+
             if self._encoder == "rnn":
                 self._rnn_fork = Linear(input_dim=translate_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
@@ -110,6 +111,7 @@ class SNLISimple(Initializable):
             if self._encoder == "rnn":
                 self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._rnn_fork = self._translation
                 self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.01))
                 children.append(self._rnn_encoder)
                 children.append(self._translation)
@@ -144,7 +146,7 @@ class SNLISimple(Initializable):
             biases_init=Constant(0))
         children.append(self._pred)
 
-        super(SNLISimple, self).__init__(children=children, **kwargs)
+        super(NLISimple, self).__init__(children=children, **kwargs)
 
     def get_embeddings_lookups(self):
         if not self._retrieval:
