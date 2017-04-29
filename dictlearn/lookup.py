@@ -53,17 +53,13 @@ class LSTMReadDefinitions(Initializable):
         children = []
 
         if lookup is None:
-            # TODO: Does it make sense it is self._num_input_words?
-            # Check definition coverage
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
-            children.append(self._def_lookup)
         else:
             self._def_lookup = lookup
-            # TODO(kudkudk): Should I add to children if I just pass it?
 
         self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
         self._def_rnn = LSTM(dim, name='def_rnn')
-        children.extend([self._def_fork, self._def_rnn])
+        children.extend([self._def_lookup, self._def_fork, self._def_rnn])
 
         super(LSTMReadDefinitions, self).__init__(children=children, **kwargs)
 
@@ -86,8 +82,6 @@ class LSTMReadDefinitions(Initializable):
         return def_embeddings
 
 
-
-
 class MeanPoolReadDefinitions(Initializable):
     """
     Converts definition into embeddings using simple sum + translation
@@ -105,30 +99,24 @@ class MeanPoolReadDefinitions(Initializable):
         Dimensionality of word embeddings
 
     """
-    def __init__(self, num_input_words, emb_dim, dim, vocab, gating="none", lookup=None, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab,
+                 lookup=None, translate=True, normalize=True, **kwargs):
         self._num_input_words = num_input_words
         self._vocab = vocab
+        self._translate = translate
+        self._normalize = normalize
 
         children = []
 
         if lookup is None:
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
-            children.append(self._def_lookup)
         else:
             self._def_lookup = lookup
-            # TODO(kudkudak): Should I add to children if I just pass it?
-
-        if gating == "none":
-            pass
-        elif gating == "multiplicative":
-            raise NotImplementedError()
-        else:
-            raise NotImplementedError()
 
         # TODO(kudkudak): Does this make sense, given that WVh = (WV)h ? I think encouraging
         # sparsity of gating here would work way better
         self._def_translate = Linear(emb_dim, dim, name='def_translate')
-        children.append(self._def_translate)
+        children.extend([self._def_lookup, self._def_translate])
 
         super(MeanPoolReadDefinitions, self).__init__(children=children, **kwargs)
 
@@ -144,15 +132,16 @@ class MeanPoolReadDefinitions(Initializable):
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)
         defs_emb = self._def_lookup.apply(defs)
 
-        # Translate. Crucial for recovering useful information from embeddings
-        def_emb_flatten = defs_emb.reshape((defs_emb.shape[0] * defs_emb.shape[1], defs_emb.shape[2]))
-        def_transl = self._def_translate.apply(def_emb_flatten)
-        def_transl = def_transl.reshape((defs_emb.shape[0], defs_emb.shape[1], -1))
+        if self._translate:
+            # Translate. Crucial for recovering useful information from embeddings
+            defs_emb = self._def_translate.apply(defs_emb)
 
-        def_emb_mask = def_mask.dimshuffle((0, 1, "x"))
-        def_embeddings = (def_emb_mask * def_transl).mean(axis=1)
+        def_emb_mask = def_mask[:, :, None]
+        defs_emb = (def_emb_mask * defs_emb).sum(axis=1)
+        if self._normalize:
+            defs_emb = defs_emb / def_emb_mask.sum(axis=1)
 
-        return def_embeddings
+        return defs_emb
 
 
 class MeanPoolCombiner(Initializable):
