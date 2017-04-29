@@ -117,8 +117,6 @@ class MeanPoolReadDefinitions(Initializable):
         else:
             self._def_lookup = lookup
 
-        children.append(self._def_translate)
-
         super(MeanPoolReadDefinitions, self).__init__(children=children, **kwargs)
 
 

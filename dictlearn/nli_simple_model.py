@@ -234,8 +234,6 @@ class NLISimple(Initializable):
             # TODO: This should be mean, might make learning harder otherwise
             prem = (s1_emb_mask * s1_transl).sum(axis=1)
             hyp = (s2_emb_mask * s2_transl).sum(axis=1)
-            # prem = ( s1_transl).sum(axis=1)
-            # hyp = (s2_transl).sum(axis=1)
         else:
             prem = self._rnn_encoder.apply(s1_transl.transpose(1, 0, 2), mask=s1_mask.transpose(1, 0))[0][-1]
             hyp = self._rnn_encoder.apply(s2_transl.transpose(1, 0, 2), mask=s2_mask.transpose(1, 0))[0][-1]
