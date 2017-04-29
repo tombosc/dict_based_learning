@@ -44,27 +44,54 @@ snli_config_registry.set_root_config({
     'n_batches': 200000 # ~200 epochs of SNLI
 })
 
-### Establish baseline ###
+### Establish baselines ###
 c = snli_config_registry['root']
 snli_config_registry['baseline'] = c
+
+c = snli_config_registry['baseline']
+c['train_emb'] = 0 # Following Squad convention
+c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy'
+snli_config_registry['baseline_glove'] = c
+
 c = snli_config_registry['root']
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
 snli_config_registry['baseline_mnli'] = c
 
+c = snli_config_registry['root']
+c['train_emb'] = 0 # Following Squad convention
+c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy'
+c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+snli_config_registry['baseline_mnli_glove'] = c
+
 ### Small dict ###
+
+# Note: requires >6GB mem, unfortunately. Keeping large batch size for now.
+
+# Looking up words from test/dev as well
+c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/dict_all_with_lowercase.json'
+c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+c['exclude_top_k'] = 2500
+c['share_def_lookup'] = False
+c['reader_type'] = 'mean'
+c['max_def_per_word'] = 20
+c['combiner_dropout'] = 0.0
+c['train_emb'] = 1
+c['embedding_path'] = ''
+c['num_input_words'] = 5000
+c['compose_type'] = 'sum'
+snli_config_registry['sum_small_dict_mnli'] = c
+
 # Looking up words from test/dev as well
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
-c['combiner_dropout'] = 0.5
-c['combiner_dropout_type'] = "per_unit" # Safer choice
+c['max_def_per_word'] = 20
+c['combiner_dropout'] = 0.0
 c['train_emb'] = 1
 c['embedding_path'] = ''
-c['lr'] = 0.0006 # Note: 0.001 works better
 c['num_input_words'] = 5000
-c['compose_type'] = 'sum' # Forces to use dict
-c['disregard_word_embeddings'] = False
+c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict'] = c
 
 ### RNN + Small dict ###
