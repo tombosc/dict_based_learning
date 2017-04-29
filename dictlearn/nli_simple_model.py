@@ -78,7 +78,7 @@ class NLISimple(Initializable):
             elif reader_type == "mean":
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_words,
                     weights_init=Uniform(width=0.1), lookup=def_lookup,
-                    biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
+                    biases_init=Constant(0.), emb_dim=emb_dim, vocab=vocab)
 
             self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
 
