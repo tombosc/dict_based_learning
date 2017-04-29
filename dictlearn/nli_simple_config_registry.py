@@ -73,7 +73,7 @@ c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
-c['max_def_per_word'] = 20
+c['max_def_per_word'] = 20 # Allows to have strict calculation on memory consumption
 c['combiner_dropout'] = 0.0
 c['train_emb'] = 1
 c['embedding_path'] = ''
@@ -83,6 +83,7 @@ snli_config_registry['sum_small_dict_mnli'] = c
 
 # Looking up words from test/dev as well
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
+c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/'
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
