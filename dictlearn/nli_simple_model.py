@@ -27,7 +27,7 @@ from dictlearn.inits import GlorotUniform
 from dictlearn.lookup import MeanPoolCombiner, LSTMReadDefinitions, MeanPoolReadDefinitions
 from dictlearn.util import apply_dropout
 
-class SNLISimple(Initializable):
+class NLISimple(Initializable):
     """
     Simple model based on https://github.com/Smerity/keras_snl
     """
@@ -78,7 +78,7 @@ class SNLISimple(Initializable):
             elif reader_type == "mean":
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_words,
                     weights_init=Uniform(width=0.1), lookup=def_lookup,
-                    biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab)
+                    biases_init=Constant(0.), emb_dim=emb_dim, vocab=vocab)
 
             self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
 
@@ -88,6 +88,7 @@ class SNLISimple(Initializable):
                 shortcut_unk_and_excluded=combiner_shortcut, num_input_words=num_input_words, exclude_top_k=exclude_top_k, vocab=vocab,
                 compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
+
 
             if self._encoder == "rnn":
                 self._rnn_fork = Linear(input_dim=translate_dim, output_dim=4 * translate_dim,
@@ -110,6 +111,7 @@ class SNLISimple(Initializable):
             if self._encoder == "rnn":
                 self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._rnn_fork = self._translation
                 self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.01))
                 children.append(self._rnn_encoder)
                 children.append(self._translation)
@@ -144,7 +146,7 @@ class SNLISimple(Initializable):
             biases_init=Constant(0))
         children.append(self._pred)
 
-        super(SNLISimple, self).__init__(children=children, **kwargs)
+        super(NLISimple, self).__init__(children=children, **kwargs)
 
     def get_embeddings_lookups(self):
         if not self._retrieval:
@@ -232,8 +234,6 @@ class SNLISimple(Initializable):
             # TODO: This should be mean, might make learning harder otherwise
             prem = (s1_emb_mask * s1_transl).sum(axis=1)
             hyp = (s2_emb_mask * s2_transl).sum(axis=1)
-            # prem = ( s1_transl).sum(axis=1)
-            # hyp = (s2_transl).sum(axis=1)
         else:
             prem = self._rnn_encoder.apply(s1_transl.transpose(1, 0, 2), mask=s1_mask.transpose(1, 0))[0][-1]
             hyp = self._rnn_encoder.apply(s2_transl.transpose(1, 0, 2), mask=s2_mask.transpose(1, 0))[0][-1]

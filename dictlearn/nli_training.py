@@ -1,9 +1,7 @@
 """
 Training loop for simple SNLI model that can use dict enchanced embeddings
 
-TODO: Unit test data preprocessing
-TODO: Review dropout implementation
-TODO: Peculiar jigsaw shape
+TODO: What's best way to refactor it. I think training loop taking model + cost would be good enough for us
 """
 
 import sys
@@ -54,7 +52,7 @@ from dictlearn.util import configure_logger
 from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWordEmbeddingEval, construct_embedder, \
     construct_dict_embedder
 from dictlearn.data import SNLIData
-from dictlearn.snli_simple_model import SNLISimple
+from dictlearn.nli_simple_model import NLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
 
 
@@ -113,7 +111,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         retrieval = None
 
     # Initialize
-    simple = SNLISimple(
+    simple = NLISimple(
         # Common arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
         num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
@@ -131,7 +129,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     simple.push_initialization_config()
     if c['encoder'] == 'rnn':
         simple._rnn_encoder.weights_init = Uniform(std=0.1)
-        simple._rnn_fork.weights_init = Uniform(std=0.1)
+        # simple._rnn_fork.weights_init = Uniform(std=0.1)
     simple.initialize()
 
     if c['embedding_path']:
@@ -168,8 +166,9 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             cg[True].set_parameter_values(load_parameters(src))
 
     # Weight decay (TODO: Make it less bug prone)
-    weights = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg[True].variables)
-    final_cost = cg[True].outputs[0] + np.float32(c['l2']) * sum((w ** 2).sum() for w in weights)
+    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg[True].variables)
+    weight_decay = sum((w ** 2).sum() for w in weights_to_decay)
+    final_cost = cg[True].outputs[0] + np.float32(c['l2']) * weight_decay
     final_cost.name = 'final_cost'
 
     # Add updates for population parameters
@@ -245,7 +244,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     except:
         pass
 
-
     if c['monitor_parameters']:
         for name in train_params_keys:
             param = parameters[name]
@@ -289,20 +287,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             prefix="valid").set_conditions(
             before_training=not fast_start,
             every_n_batches=c['mon_freq_valid']),
-        # DataStreamMonitoring(
-        #     monitored_vars,
-        #     data.get_stream('test', batch_size=c['batch_size']),
-        #     after_training=True,
-        #     prefix="test"),
         Checkpoint(main_loop_path,
             parameters=cg[True].parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
             after_training=not fast_start)
-        # DumpTensorflowSummaries(
-        #     save_path,
-        #     every_n_batches=c['mon_freq_train'],
-        #     after_training=True),
     ]
 
     # Similarity trackers for embeddings
