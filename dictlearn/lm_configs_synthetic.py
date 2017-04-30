@@ -1,8 +1,8 @@
 from dictlearn.config_registry import ConfigRegistry
 from dictlearn.language_model_configs import lm_config_registry
 
-#prefix = '/data/lisa/exp/bosctom/dict_based_learning/'
-prefix = '/media/Docs/projets/dict_based_learning/'
+prefix = '/data/lisa/exp/bosctom/dict_based_learning/'
+#prefix = '/media/Docs/projets/dict_based_learning/'
 
 
 # With dictionary
@@ -84,18 +84,49 @@ lm_config_registry['nodict0003'] = c
 ### new sets of experiments:
 c = lm_config_registry['root']
 c['learning_rate'] = 0.0003
-c['data_path'] = prefix + 'data/toy_data_2'
-c['dict_path'] = prefix + 'data/toy_data_2/dict.json'
+c['data_path'] = prefix + 'data/toy_data_3'
+c['dict_path'] = prefix + 'data/toy_data_3/dict.json'
 c['batch_size'] = 16
 c['batch_size_valid'] = 16
 c['top_k_words'] = 100
-c['exclude_top_k'] = 100
-c['dim'] = 80 # Features_size * Markov_order
-c['mon_freq_train'] = 100
-c['mon_freq_valid'] = 1000
-c['compose_type'] = 'sum'
+# Here I forgot to put exclude top k but it shouldn't change a thing
+# as the primes doesn't have any def
 lm_config_registry['d_dict_std'] = c
 
 c = lm_config_registry['d_dict_std']
 c['dict_path'] = ''
 lm_config_registry['d_no_dict'] = c
+
+c = lm_config_registry['d_dict_std']
+c['compose_type'] = 'fully_connected_linear'
+lm_config_registry['d_dict_lin'] = c
+
+c = lm_config_registry['d_dict_std']
+c['compose_type'] = 'linear_and_sum'
+lm_config_registry['d_dict_lin_sum'] = c
+
+c = lm_config_registry['d_dict_lin']
+c['dim'] = 32
+lm_config_registry['d_dict_lin_sd'] = c
+
+c = lm_config_registry['d_no_dict']
+c['dim'] = 32
+lm_config_registry['d_no_dict_sd'] = c
+
+# New set of exps with toy_data_2 which is bigger than 3
+c = lm_config_registry['root']
+c['learning_rate'] = 0.0003
+c['data_path'] = prefix + 'data/toy_data_2'
+c['dict_path'] = prefix + 'data/toy_data_2/dict.json'
+c['batch_size'] = 16
+c['batch_size_valid'] = 16
+c['top_k_words'] = 100
+#c['exclude_top_k'] = 100
+c['compose_type'] = 'sum'
+c['dim'] = 32
+lm_config_registry['d2_dict_sum_sd'] = c
+
+c = lm_config_registry['d2_dict_sum_sd']
+c['dict_path'] = ''
+lm_config_registry['d2_no_dict_sd'] = c
+

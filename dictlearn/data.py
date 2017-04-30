@@ -129,7 +129,7 @@ class Data(object):
             raise NotImplementedError('Not implemented layout ' + self._layout)
         return os.path.join(self._path, part_map[part])
 
-    def get_dataset(self, part):
+    def get_dataset(self, part, max_length=None):
         if not part in self._dataset_cache:
             part_path = self.get_dataset_path(part)
             if self._layout == 'lambada' and part == 'train':
@@ -140,7 +140,7 @@ class Data(object):
                 self._dataset_cache[part] = H5PYDataset(h5py.File(part_path, "r"), \
                     ('all',), sources=('sentence1', 'sentence2', 'label',), load_in_memory=True)
             else:
-                self._dataset_cache[part] = TextDataset(part_path)
+                self._dataset_cache[part] = TextDataset(part_path, max_length)
         return self._dataset_cache[part]
 
     def get_stream(self, *args, **kwargs):
@@ -157,7 +157,7 @@ class LanguageModellingData(Data):
         return self._vocab
 
     def get_stream(self, part, batch_size=None, max_length=None, seed=None):
-        dataset = self.get_dataset(part)
+        dataset = self.get_dataset(part, max_length)
         if self._layout == 'lambada' and part == 'train':
             stream = DataStream(
                 dataset,

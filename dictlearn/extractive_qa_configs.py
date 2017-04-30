@@ -15,6 +15,7 @@ qa_config_registry.set_root_config({
     'exclude_top_k' : 0,
     'compose_type' : "sum",
     'reuse_word_embeddings' : False,
+    'def_reader' : 'LSTMReadDefinitions',
 
     # model
     'dim' : 128,

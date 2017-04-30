@@ -1,10 +1,6 @@
 """
 Methods of constructing word embeddings
 
-TODO(kudkudak): Competitive multimodal might be one way. But
-also it might be useful to ecnourage learning complementary features
-Why would FC work worse? Maybe with shareable def lookup it would?
-
 Idea: Learn to pick by gating that's learnable (and would ignore unknown words)
 Idea: Then start tarining gate late?
 
@@ -22,7 +18,8 @@ import theano
 import theano.tensor as T
 
 from dictlearn.inits import GlorotUniform
-from dictlearn.util import masked_root_mean_square, apply_dropout
+from dictlearn.util import masked_root_mean_square
+from dictlearn.theano_util import apply_dropout
 from dictlearn.ops import RetrievalOp
 
 import logging
@@ -53,17 +50,13 @@ class LSTMReadDefinitions(Initializable):
         children = []
 
         if lookup is None:
-            # TODO: Does it make sense it is self._num_input_words?
-            # Check definition coverage
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
-            children.append(self._def_lookup)
         else:
             self._def_lookup = lookup
-            # TODO(kudkudk): Should I add to children if I just pass it?
 
-        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork', biases_init=Constant(0))
-        self._def_rnn = LSTM(dim, name='def_rnn', biases_init=Constant(0))
-        children.extend([self._def_fork, self._def_rnn])
+        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
+        self._def_rnn = LSTM(dim, name='def_rnn')
+        children.extend([self._def_lookup, self._def_fork, self._def_rnn])
 
         super(LSTMReadDefinitions, self).__init__(children=children, **kwargs)
 
@@ -86,8 +79,6 @@ class LSTMReadDefinitions(Initializable):
         return def_embeddings
 
 
-
-
 class MeanPoolReadDefinitions(Initializable):
     """
     Converts definition into embeddings using simple sum + translation
@@ -105,17 +96,24 @@ class MeanPoolReadDefinitions(Initializable):
         Dimensionality of word embeddings
 
     """
-    def __init__(self, num_input_words, emb_dim, vocab, lookup=None, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab,
+                 lookup=None, translate=True, normalize=True, **kwargs):
         self._num_input_words = num_input_words
         self._vocab = vocab
+        self._translate = translate
+        self._normalize = normalize
 
         children = []
 
         if lookup is None:
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
-            children.append(self._def_lookup)
         else:
             self._def_lookup = lookup
+
+        # Makes sense for shared lookup. Then we precondition embeddings.
+        # Doesn't makes otherwise (WH = W')
+        self._def_translate = Linear(emb_dim, dim, name='def_translate')
+        children.extend([self._def_lookup, self._def_translate])
 
         super(MeanPoolReadDefinitions, self).__init__(children=children, **kwargs)
 
@@ -131,10 +129,16 @@ class MeanPoolReadDefinitions(Initializable):
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)
         defs_emb = self._def_lookup.apply(defs)
 
-        def_emb_mask = def_mask.dimshuffle((0, 1, "x"))
-        def_embeddings = (def_emb_mask * defs_emb).sum(axis=1) / (def_emb_mask.sum(axis=1))
+        if self._translate:
+            # Translate. Crucial for recovering useful information from embeddings
+            defs_emb = self._def_translate.apply(defs_emb)
 
-        return def_embeddings
+        def_emb_mask = def_mask[:, :, None]
+        defs_emb = (def_emb_mask * defs_emb).sum(axis=1)
+        if self._normalize:
+            defs_emb = defs_emb / def_emb_mask.sum(axis=1)
+
+        return defs_emb
 
 
 class MeanPoolCombiner(Initializable):

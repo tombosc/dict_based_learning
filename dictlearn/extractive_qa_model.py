@@ -11,7 +11,9 @@ from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
-from dictlearn.lookup import LSTMReadDefinitions, MeanPoolCombiner
+from dictlearn.lookup import (
+    LSTMReadDefinitions, MeanPoolReadDefinitions,
+    MeanPoolCombiner)
 
 
 class ExtractiveQAModel(Initializable):
@@ -35,7 +37,7 @@ class ExtractiveQAModel(Initializable):
 
     """
     def __init__(self, dim, emb_dim, coattention, num_input_words, vocab,
-                 use_definitions, compose_type,
+                 use_definitions, compose_type, def_reader,
                  reuse_word_embeddings, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
@@ -66,11 +68,15 @@ class ExtractiveQAModel(Initializable):
         children.extend([self._begin_readout, self._end_readout, self._softmax])
 
         if self._use_definitions:
-            self._def_reader = LSTMReadDefinitions(
+            def_reader_class = eval(def_reader)
+            def_reader_kwargs = dict(
                 num_input_words=self._num_input_words,
                 dim=dim, emb_dim=emb_dim,
                 vocab=vocab,
                 lookup=self._lookup if reuse_word_embeddings else None)
+            if def_reader_class == MeanPoolReadDefinitions:
+                def_reader_kwargs.update(dict(normalize=True, translate=False))
+            self._def_reader = def_reader_class(**def_reader_kwargs)
             self._combiner = MeanPoolCombiner(
                 dim=dim, emb_dim=emb_dim, compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
