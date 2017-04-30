@@ -41,7 +41,7 @@ snli_config_registry.set_root_config({
     'mon_freq_train': 1000,
     'save_freq_batches': 1000,
     'mon_freq_valid': 1000,
-    'n_batches': 200000 # ~200 epochs of SNLI
+    'n_batches': 200000 # ~200 epochs of SNLI with batch size 500 (!
 })
 
 ### Establish baselines ###
@@ -81,6 +81,8 @@ c['num_input_words'] = 5000
 c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict_mnli'] = c
 
+
+
 # Looking up words from test/dev as well
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/'
@@ -99,3 +101,7 @@ snli_config_registry['sum_small_dict'] = c
 c = snli_config_registry['sum_small_dict']
 c['reader_type'] = 'rnn'
 snli_config_registry['rnn_small_dict'] = c
+
+c = snli_config_registry['sum_small_dict_mnli']
+c['reader_type'] = 'rnn'
+snli_config_registry['rnn_small_dict_mnli'] = c

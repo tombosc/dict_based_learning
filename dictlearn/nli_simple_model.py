@@ -25,7 +25,7 @@ from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitializa
 
 from dictlearn.inits import GlorotUniform
 from dictlearn.lookup import MeanPoolCombiner, LSTMReadDefinitions, MeanPoolReadDefinitions
-from dictlearn.util import apply_dropout
+from dictlearn.theano_util import apply_dropout
 
 class NLISimple(Initializable):
     """
