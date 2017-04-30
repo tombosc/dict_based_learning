@@ -22,15 +22,21 @@ class TextDataset(Dataset):
     provides_sources = ('words',)
     example_iteration_scheme = None
 
-    def __init__(self, path, **kwargs):
+    def __init__(self, path, max_length, **kwargs):
+        """
+        max_length: max sentence length
+        """
         self._path = path
+        if not max_length:
+            max_length = 100000
+        self._max_length = max_length
         super(TextDataset, self).__init__(**kwargs)
 
     def open(self):
         return open(self._path, 'r')
 
     def get_data(self, state, request=None):
-        return (next(state).strip().split(),)
+        return (next(state).strip().split()[:self._max_length],)
 
 
 class PutTextTransfomer(Transformer):
