@@ -37,7 +37,7 @@ from blocks.extensions.predicates import OnLogRecord
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
-from dictlearn.theano_util import parameter_stats
+from dictlearn.theano_util import parameter_stats, unk_ratio
 from dictlearn.data import ExtractiveQAData
 from dictlearn.extensions import (
     DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer)
@@ -109,10 +109,10 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     batch_size = rename(qam.contexts.shape[0], 'batch_size')
     exact_match, = VariableFilter(name='exact_match')(cg)
     exact_match_ratio = rename(exact_match.mean(), 'exact_match_ratio')
-    context_word_ids, = VariableFilter(name='context_word_ids')(cg)
-    num_unk = (tensor.eq(context_word_ids, data.vocab.unk) * qam.context_mask).sum()
-    context_unk_ratio = rename(num_unk / qam.context_mask.sum(), 'context_unk_ratio')
-    monitored_vars = [length, batch_size, cost, exact_match_ratio, context_unk_ratio]
+    context_unk_ratio, = VariableFilter(name='context_unk_ratio')(cg)
+    def_unk_ratio, = VariableFilter(name='def_unk_ratio')(cg)
+    monitored_vars = [length, batch_size, cost, exact_match_ratio,
+                      def_unk_ratio, context_unk_ratio]
     if c['dict_path']:
         num_definitions = rename(qam.input_vars['defs'].shape[0],
                                  'num_definitions')

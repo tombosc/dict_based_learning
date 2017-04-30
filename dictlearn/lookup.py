@@ -19,7 +19,7 @@ import theano.tensor as T
 
 from dictlearn.inits import GlorotUniform
 from dictlearn.util import masked_root_mean_square
-from dictlearn.theano_util import apply_dropout
+from dictlearn.theano_util import apply_dropout, unk_ratio
 from dictlearn.ops import RetrievalOp
 
 import logging
@@ -70,6 +70,9 @@ class LSTMReadDefinitions(Initializable):
         # Short listing
         defs = (T.lt(defs, self._num_input_words) * defs
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)
+        application_call.add_auxiliary_variable(
+            unk_ratio(defs, def_mask, self._vocab.unk),
+            name='def_unk_ratio')
 
         embedded_def_words = self._def_lookup.apply(defs)
         def_embeddings = self._def_rnn.apply(

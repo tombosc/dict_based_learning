@@ -14,6 +14,7 @@ from dictlearn.ops import WordToIdOp, RetrievalOp
 from dictlearn.lookup import (
     LSTMReadDefinitions, MeanPoolReadDefinitions,
     MeanPoolCombiner)
+from dictlearn.theano_util import unk_ratio
 
 
 class ExtractiveQAModel(Initializable):
@@ -123,7 +124,8 @@ class ExtractiveQAModel(Initializable):
             tensor.lt(contexts, self._num_input_words) * contexts
             + tensor.ge(contexts, self._num_input_words) * self._vocab.unk)
         application_call.add_auxiliary_variable(
-            contexts, name='context_word_ids')
+            unk_ratio(contexts, contexts_mask, self._vocab.unk),
+            name='context_unk_ratio')
         questions = (
             tensor.lt(questions, self._num_input_words) * questions
             + tensor.ge(questions, self._num_input_words) * self._vocab.unk)
