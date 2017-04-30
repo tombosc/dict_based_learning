@@ -17,6 +17,35 @@ from fuel.utils import do_not_pickle_attributes
 from fuel.transformers import Transformer
 
 
+class PicklableFile(object):
+
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+        self._file = open(*args, **kwargs)
+
+    def __getstate__(self):
+        state = self.__dict__
+        state['_pos'] = self._file.tell()
+        del state['_file']
+        return state
+
+    def __setstate__(self, state):
+        state['_file'] = open(*state['_args'], **state['_kwargs'])
+        state['_file'].seek(state['_pos'])
+        del state['_pos']
+        self.__dict__.update(state)
+
+    def read(self, *args):
+        return self._file.read(*args)
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        return self._file.readline()
+
+
 class TextDataset(Dataset):
     """Provides basic access to lines of a text file."""
     provides_sources = ('words',)
@@ -27,7 +56,7 @@ class TextDataset(Dataset):
         super(TextDataset, self).__init__(**kwargs)
 
     def open(self):
-        return open(self._path, 'r')
+        return PicklableFile(self._path, 'r')
 
     def get_data(self, state, request=None):
         return (next(state).strip().split(),)
