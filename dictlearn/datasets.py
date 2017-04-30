@@ -43,6 +43,9 @@ class PicklableFile(object):
         return self
 
     def next(self):
+        # note, that we can't use next(self._file) because this
+        # will trigger the use of a lookahead buffer, and
+        # self._file.tell() will become unreliable
         return self._file.readline()
 
 
