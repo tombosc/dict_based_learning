@@ -9,6 +9,7 @@ from collections import OrderedDict
 import socket
 import numpy
 
+# TODO: remove all Theano and Blocks imports
 import theano.tensor as T
 import theano
 from theano.sandbox.rng_mrg import MRG_RandomStreams

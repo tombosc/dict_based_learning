@@ -212,7 +212,7 @@ class MeanPoolCombiner(Initializable):
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
         elif compose_type == 'transform_and_sum':
-            self._def_state_transform = Linear(emb_dim, dim)
+            self._def_state_transform = Linear(dim, emb_dim)
             children.append(self._def_state_transform)
         else:
             raise NotImplementedError()
