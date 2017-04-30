@@ -61,8 +61,8 @@ class LSTMReadDefinitions(Initializable):
             self._def_lookup = lookup
             # TODO(kudkudk): Should I add to children if I just pass it?
 
-        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
-        self._def_rnn = LSTM(dim, name='def_rnn')
+        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork', biases_init=Constant(0))
+        self._def_rnn = LSTM(dim, name='def_rnn', biases_init=Constant(0))
         children.extend([self._def_fork, self._def_rnn])
 
         super(LSTMReadDefinitions, self).__init__(children=children, **kwargs)
@@ -132,7 +132,7 @@ class MeanPoolReadDefinitions(Initializable):
         defs_emb = self._def_lookup.apply(defs)
 
         def_emb_mask = def_mask.dimshuffle((0, 1, "x"))
-        def_embeddings = (def_emb_mask * defs_emb).mean(axis=1)
+        def_embeddings = (def_emb_mask * defs_emb).sum(axis=1) / (def_emb_mask.sum(axis=1))
 
         return def_embeddings
 
@@ -205,7 +205,7 @@ class MeanPoolCombiner(Initializable):
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
         elif compose_type == 'transform_and_sum':
-            self._def_state_transform = Linear(emb_dim, dim)
+            self._def_state_transform = Linear(emb_dim, dim, weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_transform)
         else:
             raise NotImplementedError()
@@ -276,25 +276,23 @@ class MeanPoolCombiner(Initializable):
                 # TODO: Maybe we also want to have possibility of including both (like in per_example)
                 pass # TODO: implement
             elif self._dropout_type == "per_word":
-                # Note dropout here just becomes preference for word embeddings.
-                # The higher dropout the more likely is picking word embedding
+                # Drop with dropout percentage. If dropout -> selects at random word vs df
+                mask_higher = T.ones((batch_shape[0], batch_shape[1]))
+                mask_higher = apply_dropout(mask_higher, drop_prob=self._dropout)
+                mask_higher = mask_higher.dimshuffle(0, 1, "x")
 
                 logger.info("Apply per_word dropou on dict and normal emb")
                 mask = T.ones((batch_shape[0], batch_shape[1]))
-                mask = apply_dropout(mask, drop_prob=self._dropout)
+                mask = apply_dropout(mask, drop_prob=0.5)
                 mask = mask.dimshuffle(0, 1, "x")
 
-                # Reduce variance: if def_mean is 0 let's call it uninformative
-                # is_retrieved = T.gt(T.abs_(def_mean).sum(axis=2, keepdims=True), 0)
-                # mask = mask * is_retrieved # Includes mean if: sampled AND retrieved
-
                 # Competitive
-                def_mean = mask * def_mean
-                word_embs = (1 - mask) * word_embs
+                def_mean = mask_higher * def_mean + (1 - mask_higher) * mask * def_mean
+                word_embs = word_embs * def_mean + (1 - mask_higher) * (1 - mask) * word_embs
 
                 # TODO: Smarter weighting (at least like divisor in dropout)
 
-                if not self._compose_type == "sum":
+                if not self._compose_type == "sum" and not self._compose_type == "transform_and_sum":
                     raise NotImplementedError()
 
         application_call.add_auxiliary_variable(
