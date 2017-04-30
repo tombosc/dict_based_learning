@@ -42,6 +42,7 @@ from dictlearn.data import ExtractiveQAData
 from dictlearn.extensions import (
     DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer)
 from dictlearn.extractive_qa_model import ExtractiveQAModel
+from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import Retrieval, Dictionary
 
 logger = logging.getLogger()
@@ -52,7 +53,10 @@ def _initialize_data_and_model(config):
     data = ExtractiveQAData(path=c['data_path'], layout=c['layout'])
     # TODO: fix me, I'm so ugly
     if c['dict_path']:
-        data._retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
+        dict_vocab = data.vocab
+        if c['dict_vocab_path']:
+            dict_vocab = Vocabulary(c['dict_vocab_path'])
+        data._retrieval = Retrieval(dict_vocab, Dictionary(c['dict_path']),
                                     c['max_def_length'], c['exclude_top_k'])
     qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
                             data.vocab,
