@@ -16,6 +16,7 @@ import nltk
 from wordnik import swagger, WordApi, AccountApi
 
 from dictlearn.util import vec2str
+from dictlearn.corenlp import StanfordCoreNLP
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,9 @@ class Dictionary(object):
             self._data[word] = [[word.lower()]]
         self.save()
 
-    def crawl_wordnik(self, vocab, api_key, call_quota=15000, crawl_also_lowercase=False):
+    def crawl_wordnik(self, vocab, api_key, corenlp_url,
+                      call_quota=15000, crawl_also_lowercase=False):
+
         """Download and preprocess definitions from Wordnik.
 
         vocab
@@ -130,6 +133,8 @@ class Dictionary(object):
             Maximum number of calls per hour.
 
         """
+        corenlp = StanfordCoreNLP(corenlp_url)
+
         self._remaining_calls = call_quota
         self._last_saved = 0
 
@@ -137,7 +142,6 @@ class Dictionary(object):
             api_key, 'https://api.wordnik.com/v4')
         self._word_api = WordApi.WordApi(client)
         self._account_api = AccountApi.AccountApi(client)
-        toktok = nltk.ToktokTokenizer()
 
         words = list(vocab.words)
 
@@ -179,13 +183,16 @@ class Dictionary(object):
                 definitions = []
             self._data[word] = []
             for def_ in definitions:
-                # TODO(kudkudak): Not super sure if lowering here is correct if we don't lower in
-                # normal text
-                # Note: should be fine when def has separate lookup and if initialzed from raw embeddinggs
-                # uses some fallback strategy
-                tokenized_def = [token.encode('utf-8')
-                                 for token in toktok.tokenize(def_.text.lower())]
-                self._data[word].append(tokenized_def)
+                try:
+                    # seems like definition text can be both str and unicode
+                    text = def_.text
+                    if isinstance(text, str):
+                        text = text.decode('utf-8')
+                    tokenized_def = corenlp.tokenize(text)[0]
+                    self._data[word].append(tokenized_def)
+                except Exception:
+                    logger.error("error during tokenizing '{}'".format(text))
+                    logger.error(traceback.format_exc())
             logger.debug("definitions for '{}' fetched {} remaining".format(word, self._remaining_calls))
         self.save()
         self._last_saved = 0
