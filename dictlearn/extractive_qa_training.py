@@ -110,15 +110,15 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     exact_match, = VariableFilter(name='exact_match')(cg)
     exact_match_ratio = rename(exact_match.mean(), 'exact_match_ratio')
     context_unk_ratio, = VariableFilter(name='context_unk_ratio')(cg)
-    def_unk_ratio, = VariableFilter(name='def_unk_ratio')(cg)
     monitored_vars = [length, batch_size, cost, exact_match_ratio,
-                      def_unk_ratio, context_unk_ratio]
+                      context_unk_ratio]
     if c['dict_path']:
+        def_unk_ratio, = VariableFilter(name='def_unk_ratio')(cg)
         num_definitions = rename(qam.input_vars['defs'].shape[0],
                                  'num_definitions')
         max_definition_length = rename(qam.input_vars['defs'].shape[1],
                                        'max_definition_length')
-        monitored_vars.extend([num_definitions, max_definition_length])
+        monitored_vars.extend([def_unk_ratio, num_definitions, max_definition_length])
 
     parameters = cg.get_parameter_dict()
     logger.info("Cost parameters" + "\n" +
