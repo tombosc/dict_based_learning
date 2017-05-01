@@ -90,6 +90,7 @@ def _initialize_model_and_data(c):
         data.set_retrieval(retrieval)
     else:
         retrieval = None
+        dict = None
 
     # Initialize
     simple = NLISimple(
@@ -172,7 +173,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             cg[True].set_parameter_values(load_parameters(src))
 
     # Weight decay (TODO: Make it less bug prone)
-    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg[True].variables)
+    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp],
+        roles=[WEIGHT])(cg[True].variables)
     weight_decay = sum((w ** 2).sum() for w in weights_to_decay)
     final_cost = cg[True].outputs[0] + np.float32(c['l2']) * weight_decay
     final_cost.name = 'final_cost'
