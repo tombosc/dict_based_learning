@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from dictlearn.language_model_training import train_language_model
-from dictlearn.language_model_configs import lm_config_registry
+#from dictlearn.language_model_configs import lm_config_registry
+from dictlearn.obw_configs import lm_config_registry
 from dictlearn.main import main
 
 

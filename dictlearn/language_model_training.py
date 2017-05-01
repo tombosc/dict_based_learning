@@ -58,6 +58,7 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
 
     lm = LanguageModel(c['dim'], c['num_input_words'], c['num_output_words'],
                        data.vocab, retrieval,
+                       c['standalone_def_lookup'],
                        c['standalone_def_rnn'],
                        c['disregard_word_embeddings'],
                        c['compose_type'],

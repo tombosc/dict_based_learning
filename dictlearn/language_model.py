@@ -45,6 +45,7 @@ class LanguageModel(Initializable):
     """
     def __init__(self, dim, num_input_words, num_output_words,
                  vocab, retrieval=None,
+                 standalone_def_lookup=True,
                  standalone_def_rnn=True,
                  disregard_word_embeddings=False,
                  compose_type='sum',
@@ -69,15 +70,20 @@ class LanguageModel(Initializable):
         self._main_rnn = DebugLSTM(dim, name='main_rnn')
         children.extend([self._main_lookup, self._main_fork, self._main_rnn])
         if self._retrieval:
-            if standalone_def_rnn:
+            if standalone_def_lookup:
                 self._def_lookup = LookupTable(self._num_input_words, dim, name='def_lookup')
-                self._def_fork = Linear(dim, 4 * dim, name='def_fork')
-                self._def_rnn = DebugLSTM(dim, name='def_rnn')
-                children.extend([self._def_lookup, self._def_fork, self._def_rnn])
+                children.append(self._def_lookup)
             else:
                 self._def_lookup = self._main_lookup
+
+            if standalone_def_rnn:
+                self._def_fork = Linear(dim, 4 * dim, name='def_fork')
+                self._def_rnn = DebugLSTM(dim, name='def_rnn')
+                children.extend([self._def_fork, self._def_rnn])
+            else:
                 self._def_fork = self._main_fork
                 self._def_rnn = self._main_rnn
+
         if compose_type == 'fully_connected_tanh':
             self._def_state_compose = MLP(activations=[Tanh(name="def_state_compose")], dims=[2*dim, dim])
             children.append(self._def_state_compose)
