@@ -35,9 +35,9 @@ def main():
             elif dict_.get_definitions(words[i].lower()):
                 n_covered_by_dict_by_lowercasing += freqs[i]
         print("Dictionary has {} entries".format(dict_.num_entries()))
-        print("Dictionary covers {}% of total occurences".format(n_covered_by_dict / total))
-        print("Dictionary covers {}% of total occurences not covered by vocab".format(n_covered_by_dict / (total * (1 - coverage[args.top_k-1]))))
-        print("Querying dict with lowercased words covers {}% of total occurences not covered by vocab".format(n_covered_by_dict_by_lowercasing / (total * (1 - coverage[args.top_k-1]))))
+        print("Dictionary fraction {} of total occurences".format(n_covered_by_dict / total))
+        print("Dictionary covers {}% of total occurences not covered by word emb".format(100 * n_covered_by_dict / (total * (1 - coverage[args.top_k-1]))))
+        print("Querying dict with lowercased words covers {}% of total occurences not covered by word emb".format(100 * n_covered_by_dict_by_lowercasing / (total * (1 - coverage[args.top_k-1]))))
 
     elif args.embedding and args.top_k:
 
@@ -59,7 +59,7 @@ def main():
         assert args.top_k is not None
 
         print("Embedding has {} entries".format(len(word_set)))
-        print("Embedding covers {}% of total occurences".format(n_covered_by_dict / total))
+        print("Embedding covers fraction {} of total occurences".format(n_covered_by_dict / total))
     else:
         raise NotImplementedError()
 
