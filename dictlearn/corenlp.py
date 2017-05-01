@@ -52,3 +52,16 @@ class StanfordCoreNLP(object):
             except:
                 pass
         return output
+
+
+    def tokenize(self, str_):
+        annotations = json.loads(
+            self.annotate(str_,
+                                properties={'annotators': 'tokenize,ssplit'}))
+        tokens = []
+        positions = []
+        for sentence in annotations['sentences']:
+            for token in sentence['tokens']:
+                tokens.append(token['originalText'])
+                positions.append(token['characterOffsetBegin'])
+        return tokens, positions

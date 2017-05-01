@@ -5,6 +5,8 @@ import logging
 
 from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import Dictionary
+from dictlearn.corenlp import start_corenlp
+from dictlearn.util import get_free_port
 
 def main():
     logging.basicConfig(
@@ -33,7 +35,15 @@ def main():
     vocab = Vocabulary(args.vocab)
     dict_ = Dictionary(args.dict)
     if args.api_key:
-        dict_.crawl_wordnik(vocab, args.api_key, crawl_also_lowercase=args.crawl_also_lowercase)
+        port = get_free_port()
+        try:
+            popen = start_corenlp(port)
+            dict_.crawl_wordnik(
+                    vocab, args.api_key, "http://localhost:{}".format(port),
+                crawl_also_lowercase=args.crawl_also_lowercase)
+        finally:
+            if popen and popen.returncode is None:
+                popen.kill()
     elif args.add_lemma_defs:
         dict_.add_from_lemma_definitions(vocab)
     elif args.just_lemmas:

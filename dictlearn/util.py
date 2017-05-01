@@ -3,6 +3,7 @@ Few utilities
 """
 
 import os, sys, logging
+from contextlib import contextmanager
 from logging import handlers
 import datetime
 from collections import OrderedDict
@@ -174,3 +175,53 @@ class LoggerWriter:
 
     def flush(self):
         pass
+
+
+## Dima's redirection code
+
+class Fork(object):
+    def __init__(self, file1, file2):
+        self.file1 = file1
+        self.file2 = file2
+
+    def write(self, data):
+        self.file1.write(data)
+        self.file2.write(data)
+
+
+@contextmanager
+def replace_logging_stream(file_):
+    root = logging.getLogger()
+    if len(root.handlers) != 1:
+        raise ValueError("Don't know what to do with many handlers")
+    if not isinstance(root.handlers[0], logging.StreamHandler):
+        raise ValueError
+    stream = root.handlers[0].stream
+    root.handlers[0].stream = file_
+    try:
+        yield
+    finally:
+        root.handlers[0].stream = stream
+
+
+@contextmanager
+def replace_standard_stream(stream_name, file_):
+    stream = getattr(sys, stream_name)
+    setattr(sys, stream_name, file_)
+    try:
+        yield
+    finally:
+        setattr(sys, stream_name, stream)
+
+
+def run_with_redirection(stdout_path, stderr_path, func):
+    def func_wrapper(*args, **kwargs):
+        with open(stdout_path, 'a', 1) as out_dst:
+            with open(stderr_path, 'a', 1) as err_dst:
+                out_fork = Fork(sys.stdout, out_dst)
+                err_fork = Fork(sys.stderr, err_dst)
+                with replace_standard_stream('stderr', err_fork):
+                    with replace_standard_stream('stdout', out_fork):
+                        with replace_logging_stream(err_fork):
+                            func(*args, **kwargs)
+    return func_wrapper

@@ -6,7 +6,7 @@ from collections import Counter
 import logging
 import numpy
 
-from six import text_type
+from six import text_type, string_types
 
 logger = logging.getLogger()
 
@@ -35,7 +35,7 @@ class Vocabulary(object):
             Note, this does not include the special tokens.
 
         """
-        if isinstance(path_or_data, str):
+        if isinstance(path_or_data, string_types):
             words_and_freqs = []
             with open(path_or_data) as f:
                 for line in f:

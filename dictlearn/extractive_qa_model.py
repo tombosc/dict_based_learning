@@ -17,6 +17,14 @@ from dictlearn.lookup import (
 from dictlearn.theano_util import unk_ratio
 
 
+def flip01(x):
+    return x.transpose((1, 0, 2))
+
+
+def flip12(x):
+    return x.transpose((0, 2, 1))
+
+
 class ExtractiveQAModel(Initializable):
     """The dictionary-equipped extractive QA model.
 
@@ -111,46 +119,38 @@ class ExtractiveQAModel(Initializable):
         return self._lookup.parameters[0]
 
     @application
+    def _encode(self, application_call, text, mask, def_embs=None, def_map=None, text_name=None):
+        text = (
+            tensor.lt(text, self._num_input_words) * text
+            + tensor.ge(text, self._num_input_words) * self._vocab.unk)
+        if text_name:
+            application_call.add_auxiliary_variable(
+                unk_ratio(text, mask, self._vocab.unk),
+                name='{}_unk_ratio'.format(text_name))
+        embs = self._lookup.apply(text)
+        if def_embs:
+            embs = self._combiner.apply(embs, mask, def_embs, def_map)
+        encoded = flip01(
+            self._encoder_rnn.apply(
+                self._encoder_fork.apply(
+                    flip01(embs)),
+                mask=mask.T)[0])
+        return encoded
+
+
+    @application
     def apply(self, application_call,
               contexts, contexts_mask, questions, questions_mask,
               answer_begins, answer_ends,
               defs=None, def_mask=None, contexts_def_map=None, questions_def_map=None):
-        def flip01(x):
-            return x.transpose((1, 0, 2))
-        def flip12(x):
-            return x.transpose((0, 2, 1))
-
-        contexts = (
-            tensor.lt(contexts, self._num_input_words) * contexts
-            + tensor.ge(contexts, self._num_input_words) * self._vocab.unk)
-        application_call.add_auxiliary_variable(
-            unk_ratio(contexts, contexts_mask, self._vocab.unk),
-            name='context_unk_ratio')
-        questions = (
-            tensor.lt(questions, self._num_input_words) * questions
-            + tensor.ge(questions, self._num_input_words) * self._vocab.unk)
-
-        context_embs = self._lookup.apply(contexts)
-        question_embs = self._lookup.apply(questions)
+        def_embs = None
         if self._use_definitions:
             def_embs = self._def_reader.apply(defs, def_mask)
-            context_embs = self._combiner.apply(
-                context_embs, contexts_mask,
-                def_embs, contexts_def_map)
-            question_embs = self._combiner.apply(
-                question_embs, questions_mask,
-                def_embs, questions_def_map)
 
-        context_enc = flip01(
-            self._encoder_rnn.apply(
-                self._encoder_fork.apply(
-                    flip01(context_embs)),
-                mask=contexts_mask.T)[0])
-        question_enc_pre = flip01(
-            self._encoder_rnn.apply(
-                self._encoder_fork.apply(
-                    flip01(question_embs)),
-                mask=questions_mask.T)[0])
+        context_enc = self._encode(contexts, contexts_mask,
+                                   def_embs, contexts_def_map, 'context')
+        question_enc_pre = self._encode(questions, questions_mask,
+                                         def_embs, questions_def_map, 'question')
         question_enc = tensor.tanh(self._question_transform.apply(question_enc_pre))
 
         # should be (batch size, context length, question_length)

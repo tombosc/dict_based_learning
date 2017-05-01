@@ -78,6 +78,46 @@ from dictlearn.retrieval import Retrieval, Dictionary
 #         return gradients
 
 
+def _initialize_model_and_data(c):
+    # Load data
+    data = SNLIData(c['data_path'], c['layout'])
+
+    # Dict
+    if c['dict_path']:
+        dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
+        retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
+            exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
+        data.set_retrieval(retrieval)
+    else:
+        retrieval = None
+        dict = None
+
+    # Initialize
+    simple = NLISimple(
+        # Common arguments
+        emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
+        num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
+
+        # Dict lookup kwargs (will get refactored)
+        translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
+        reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
+
+        combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
+        combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
+        combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
+
+        weights_init=GlorotUniform(), biases_init=Constant(0.0)
+    )
+    simple.push_initialization_config()
+    if c['encoder'] == 'rnn':
+        simple._rnn_encoder.weights_init = Uniform(std=0.1)
+    simple.initialize()
+
+    if c['embedding_path']:
+        embeddings = np.load(c['embedding_path'])
+        simple.set_embeddings(embeddings.astype(theano.config.floatX))
+
+    return simple, data, dict
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
@@ -101,44 +141,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # Save config to save_path
     json.dump(config, open(os.path.join(save_path, "config.json"), "w"))
 
-    # Load data
-    data = SNLIData(c['data_path'], c['layout'])
-
-    # Dict
-    if c['dict_path']:
-        dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
-        retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
-            exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
-        retrieval_all = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'])
-        data.set_retrieval(retrieval)
-    else:
-        retrieval = None
-
-    # Initialize
-    simple = NLISimple(
-        # Common arguments
-        emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
-        num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
-
-        # Dict lookup kwargs (will get refactored)
-        translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
-        reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
-
-        combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
-        combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
-        combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
-
-        weights_init=GlorotUniform(), biases_init=Constant(0.0)
-    )
-    simple.push_initialization_config()
-    if c['encoder'] == 'rnn':
-        simple._rnn_encoder.weights_init = Uniform(std=0.1)
-        # simple._rnn_fork.weights_init = Uniform(std=0.1)
-    simple.initialize()
-
-    if c['embedding_path']:
-        embeddings = np.load(c['embedding_path'])
-        simple.set_embeddings(embeddings.astype(theano.config.floatX))
+    simple, data, used_dict = _initialize_model_and_data(c)
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
@@ -170,7 +173,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             cg[True].set_parameter_values(load_parameters(src))
 
     # Weight decay (TODO: Make it less bug prone)
-    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp], roles=[WEIGHT])(cg[True].variables)
+    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp],
+        roles=[WEIGHT])(cg[True].variables)
     weight_decay = sum((w ** 2).sum() for w in weights_to_decay)
     final_cost = cg[True].outputs[0] + np.float32(c['l2']) * weight_decay
     final_cost.name = 'final_cost'
@@ -299,6 +303,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     ]
 
     # Similarity trackers for embeddings
+    retrieval_all = Retrieval(vocab=data.vocab, dictionary=used_dict,
+        exclude_top_k=None, max_def_length=c['max_def_length'])
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
         variables = VariableFilter(name=name)(cg[False])
         if len(variables):

@@ -36,7 +36,9 @@ from blocks.extensions.predicates import OnLogRecord
 
 from fuel.streams import ServerDataStream
 
-from dictlearn.util import rename, masked_root_mean_square, get_free_port
+from dictlearn.util import (
+    rename, masked_root_mean_square, get_free_port,
+    copy_streams_to_file, run_with_redirection)
 from dictlearn.theano_util import parameter_stats, unk_ratio
 from dictlearn.data import ExtractiveQAData
 from dictlearn.extensions import (
@@ -74,14 +76,24 @@ def _initialize_data_and_model(config):
     return data, qam
 
 
-def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
+def train_extractive_qa(config, save_path, *args, **kwargs):
     new_training_job = False
     if not os.path.exists(save_path):
-        logger.info("Start a new job")
         new_training_job = True
         os.mkdir(save_path)
+
+    run_with_redirection(os.path.join(save_path, 'stdout.txt'),
+                         os.path.join(save_path, 'stderr.txt'),
+                        _train_extractive_qa_impl)(
+        new_training_job, config, save_path, *args, **kwargs)
+
+def _train_extractive_qa_impl(new_training_job, config, save_path,
+                              params, fast_start, fuel_server):
+    if new_training_job:
+        logger.info("Start a new job")
     else:
         logger.info("Continue an existing job")
+
     root_path = os.path.join(save_path, 'training_state')
     extension = '.tar'
     tar_path = root_path + extension
@@ -110,15 +122,15 @@ def train_extractive_qa(config, save_path, params, fast_start, fuel_server):
     exact_match, = VariableFilter(name='exact_match')(cg)
     exact_match_ratio = rename(exact_match.mean(), 'exact_match_ratio')
     context_unk_ratio, = VariableFilter(name='context_unk_ratio')(cg)
-    def_unk_ratio, = VariableFilter(name='def_unk_ratio')(cg)
     monitored_vars = [length, batch_size, cost, exact_match_ratio,
-                      def_unk_ratio, context_unk_ratio]
+                      context_unk_ratio]
     if c['dict_path']:
+        def_unk_ratio, = VariableFilter(name='def_unk_ratio')(cg)
         num_definitions = rename(qam.input_vars['defs'].shape[0],
                                  'num_definitions')
         max_definition_length = rename(qam.input_vars['defs'].shape[1],
                                        'max_definition_length')
-        monitored_vars.extend([num_definitions, max_definition_length])
+        monitored_vars.extend([def_unk_ratio, num_definitions, max_definition_length])
 
     parameters = cg.get_parameter_dict()
     logger.info("Cost parameters" + "\n" +
