@@ -165,7 +165,8 @@ class MeanPoolCombiner(Initializable):
             def_word_gating="none",
             dropout_type="per_unit", compose_type="sum",
             word_dropout_weighting="no_weighting",
-            shortcut_unk_and_excluded=False,  num_input_words=-1, exclude_top_k=-1, vocab=None,
+            shortcut_unk_and_excluded=False,
+            num_input_words=-1, exclude_top_k=-1, vocab=None,
             **kwargs):
         self._dropout = dropout
         self._num_input_words = num_input_words

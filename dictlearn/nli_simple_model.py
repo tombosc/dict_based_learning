@@ -6,7 +6,8 @@ Inspired by https://github.com/Smerity/keras_snli
 TODO: Refactor SNLI baseline so that it takes embedded words (this will factor out dict lookup kwargs nicely)
 TODO: Add bn before LSTM
 TODO: Recurrent dropout
-TODO: Translatin layer ReLU
+TODO: Pass translate intelligently
+TODO: Debug simlex?
 """
 import theano
 import theano.tensor as T
@@ -33,7 +34,7 @@ class NLISimple(Initializable):
     """
 
     def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum",
-            n_layers=3,
+            n_layers=3, translate_after_emb=True,
             # Dict lookup kwargs
             retrieval=None, reader_type="rnn", compose_type="sum",
             disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
@@ -48,6 +49,7 @@ class NLISimple(Initializable):
         self._dropout = dropout
         self._retrieval = retrieval
         self._only_def = disregard_word_embeddings
+        self._translate_after_emb = translate_after_emb
 
         if reader_type not in {"rnn", "mean"}:
             raise NotImplementedError("Not implemented " + reader_type)
@@ -65,7 +67,6 @@ class NLISimple(Initializable):
             children.append(self._lookup)
 
         if retrieval:
-
             if share_def_lookup:
                 def_lookup = self._lookup
             else:
@@ -77,18 +78,15 @@ class NLISimple(Initializable):
                     biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_words,
-                    weights_init=Uniform(width=0.1), lookup=def_lookup,
+                    weights_init=Uniform(width=0.1), lookup=def_lookup, dim=emb_dim,
                     biases_init=Constant(0.), emb_dim=emb_dim, vocab=vocab)
 
             self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
-
                 dropout=combiner_dropout, dropout_type=combiner_dropout_type,
                 def_word_gating=combiner_gating,
-
                 shortcut_unk_and_excluded=combiner_shortcut, num_input_words=num_input_words, exclude_top_k=exclude_top_k, vocab=vocab,
                 compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
-
 
             if self._encoder == "rnn":
                 self._rnn_fork = Linear(input_dim=translate_dim, output_dim=4 * translate_dim,
@@ -101,13 +99,14 @@ class NLISimple(Initializable):
                 pass
             else:
                 raise NotImplementedError("Not implemented encoder")
-        else:
-            self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
-                weights_init=GlorotUniform(), biases_init=Constant(0))
-            self._translation_act = Rectifier()
-            children.append(self._translation)
-            children.append(self._translation_act)
 
+            if self._translate_after_emb:
+                self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim,
+                    weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._translation_act = Rectifier()
+                children.append(self._translation)
+                children.append(self._translation_act)
+        else:
             if self._encoder == "rnn":
                 self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
@@ -123,6 +122,8 @@ class NLISimple(Initializable):
                 children.append(self._translation_act)
             else:
                 raise NotImplementedError("Not implemented encoder")
+
+
 
         self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn", conserve_memory=False)
         self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn", conserve_memory=False)
@@ -201,6 +202,18 @@ class NLISimple(Initializable):
             s2_transl = self._combiner.apply(
                 s2_emb, s2_mask,
                 def_embs, s2_def_map, word_ids=s2, train_phase=train_phase, call_name="s2")
+
+            if self._translate_after_emb:
+                # Note: for some reader/combiner it can be redundant, but let's keep it
+                # often it will not be redundant (ex: LSTMDefReader)
+                s1_transl = s1_transl.reshape((s1_transl.shape[0] * s1_transl.shape[1], s1_transl.shape[2]))
+                s2_transl = s2_transl.reshape((s2_transl.shape[0] * s2_transl.shape[1], s2_transl.shape[2]))
+                s1_transl = self._translation.apply(s1_transl)
+                s2_transl = self._translation.apply(s2_transl)
+                s1_transl = self._translation_act.apply(s1_transl)
+                s2_transl = self._translation_act.apply(s2_transl)
+                s1_transl = s1_transl.reshape((s1_emb.shape[0], s1_emb.shape[1], -1))
+                s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
         else:
             application_call.add_auxiliary_variable(
                 1*s1_emb,
@@ -209,16 +222,22 @@ class NLISimple(Initializable):
             # Translate. Crucial for recovering useful information from embeddings
             s1_emb_flatten = s1_emb.reshape((s1_emb.shape[0] * s1_emb.shape[1], s1_emb.shape[2]))
             s2_emb_flatten = s2_emb.reshape((s2_emb.shape[0] * s2_emb.shape[1], s2_emb.shape[2]))
-            s1_transl = self._translation.apply(s1_emb_flatten)
-            s2_transl = self._translation.apply(s2_emb_flatten)
-            s1_transl = self._translation_act.apply(s1_transl)
-            s2_transl = self._translation_act.apply(s2_transl)
-            s1_transl = s1_transl.reshape((s1_emb.shape[0], s1_emb.shape[1], -1))
-            s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
-            application_call.add_auxiliary_variable(
-                1*s1_transl,
-                name='s1_translated_word_embeddings')
-            assert s1_transl.ndim == 3
+
+            if self._translate_after_emb:
+                # Note: redundant for trainable (from scratch) embeddings
+                s1_transl = self._translation.apply(s1_emb_flatten)
+                s2_transl = self._translation.apply(s2_emb_flatten)
+                s1_transl = self._translation_act.apply(s1_transl)
+                s2_transl = self._translation_act.apply(s2_transl)
+                s1_transl = s1_transl.reshape((s1_emb.shape[0], s1_emb.shape[1], -1))
+                s2_transl = s2_transl.reshape((s2_emb.shape[0], s2_emb.shape[1], -1))
+                application_call.add_auxiliary_variable(
+                    1*s1_transl,
+                    name='s1_translated_word_embeddings')
+                assert s1_transl.ndim == 3
+            else:
+                s1_transl = s1_emb_flatten
+                s2_transl = s2_emb_flatten
 
         if self._encoder == "rnn":
             s1_transl = self._rnn_fork.apply(s1_transl)
