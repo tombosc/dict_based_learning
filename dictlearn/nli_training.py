@@ -80,6 +80,10 @@ from dictlearn.retrieval import Retrieval, Dictionary
 
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
+
+    if config['exclude_top_k'] > config['num_input_words']:
+        raise Exception("Some words have neither word nor def embedding")
+
     c = config
     new_training_job = False
     logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))

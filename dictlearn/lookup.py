@@ -1,10 +1,6 @@
 """
 Methods of constructing word embeddings
 
-TODO(kudkudak): Competitive multimodal might be one way. But
-also it might be useful to ecnourage learning complementary features
-Why would FC work worse? Maybe with shareable def lookup it would?
-
 Idea: Learn to pick by gating that's learnable (and would ignore unknown words)
 Idea: Then start tarining gate late?
 
@@ -22,7 +18,8 @@ import theano
 import theano.tensor as T
 
 from dictlearn.inits import GlorotUniform
-from dictlearn.util import masked_root_mean_square, apply_dropout
+from dictlearn.util import masked_root_mean_square
+from dictlearn.theano_util import apply_dropout, unk_ratio
 from dictlearn.ops import RetrievalOp
 
 import logging
@@ -73,6 +70,9 @@ class LSTMReadDefinitions(Initializable):
         # Short listing
         defs = (T.lt(defs, self._num_input_words) * defs
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)
+        application_call.add_auxiliary_variable(
+            unk_ratio(defs, def_mask, self._vocab.unk),
+            name='def_unk_ratio')
 
         embedded_def_words = self._def_lookup.apply(defs)
         def_embeddings = self._def_rnn.apply(
@@ -113,8 +113,8 @@ class MeanPoolReadDefinitions(Initializable):
         else:
             self._def_lookup = lookup
 
-        # TODO(kudkudak): Does this make sense, given that WVh = (WV)h ? I think encouraging
-        # sparsity of gating here would work way better
+        # Makes sense for shared lookup. Then we precondition embeddings.
+        # Doesn't makes otherwise (WH = W')
         self._def_translate = Linear(emb_dim, dim, name='def_translate')
         children.extend([self._def_lookup, self._def_translate])
 
@@ -212,7 +212,7 @@ class MeanPoolCombiner(Initializable):
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
         elif compose_type == 'transform_and_sum':
-            self._def_state_transform = Linear(emb_dim, dim)
+            self._def_state_transform = Linear(dim, emb_dim)
             children.append(self._def_state_transform)
         else:
             raise NotImplementedError()
@@ -283,25 +283,23 @@ class MeanPoolCombiner(Initializable):
                 # TODO: Maybe we also want to have possibility of including both (like in per_example)
                 pass # TODO: implement
             elif self._dropout_type == "per_word":
-                # Note dropout here just becomes preference for word embeddings.
-                # The higher dropout the more likely is picking word embedding
+                # Drop with dropout percentage. If dropout -> selects at random word vs df
+                mask_higher = T.ones((batch_shape[0], batch_shape[1]))
+                mask_higher = apply_dropout(mask_higher, drop_prob=self._dropout)
+                mask_higher = mask_higher.dimshuffle(0, 1, "x")
 
                 logger.info("Apply per_word dropou on dict and normal emb")
                 mask = T.ones((batch_shape[0], batch_shape[1]))
-                mask = apply_dropout(mask, drop_prob=self._dropout)
+                mask = apply_dropout(mask, drop_prob=0.5)
                 mask = mask.dimshuffle(0, 1, "x")
 
-                # Reduce variance: if def_mean is 0 let's call it uninformative
-                # is_retrieved = T.gt(T.abs_(def_mean).sum(axis=2, keepdims=True), 0)
-                # mask = mask * is_retrieved # Includes mean if: sampled AND retrieved
-
                 # Competitive
-                def_mean = mask * def_mean
-                word_embs = (1 - mask) * word_embs
+                def_mean = mask_higher * def_mean + (1 - mask_higher) * mask * def_mean
+                word_embs = word_embs * def_mean + (1 - mask_higher) * (1 - mask) * word_embs
 
                 # TODO: Smarter weighting (at least like divisor in dropout)
 
-                if not self._compose_type == "sum":
+                if not self._compose_type == "sum" and not self._compose_type == "transform_and_sum":
                     raise NotImplementedError()
 
         application_call.add_auxiliary_variable(

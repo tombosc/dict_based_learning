@@ -27,6 +27,9 @@ class GlorotUniform(NdarrayInitialization):
         pass
 
     def generate(self, rng, shape):
+        if len(shape) == 1:
+            return rng.uniform(size=shape, low=-0.00001, high=0.00001).astype(theano.config.floatX)
+
         if not len(shape) == 2:
             raise NotImplementedError("GlorotUniform doesnt work for " + str(shape) + " shape")
 

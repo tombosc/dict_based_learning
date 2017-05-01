@@ -37,6 +37,10 @@ def test_extractive_qa_model():
     for coattention in [False, True]:
         qam = ExtractiveQAModel(
             vocab=vocab, dim=10, emb_dim=10, num_input_words=10,
+            compose_type='sum',
+            use_definitions=False,
+            reuse_word_embeddings=False,
+            def_reader='LSTMReadDefinitions',
             coattention=coattention,
             weights_init=Uniform(width=0.1),
             biases_init=Uniform(width=0.1))
