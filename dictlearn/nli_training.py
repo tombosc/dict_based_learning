@@ -78,29 +78,7 @@ from dictlearn.retrieval import Retrieval, Dictionary
 #         return gradients
 
 
-
-def train_snli_model(config, save_path, params, fast_start, fuel_server):
-
-    if config['exclude_top_k'] > config['num_input_words']:
-        raise Exception("Some words have neither word nor def embedding")
-
-    c = config
-    new_training_job = False
-    logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
-    if not os.path.exists(save_path):
-        logger.info("Start a new job")
-        new_training_job = True
-        os.mkdir(save_path)
-    else:
-        logger.info("Continue an existing job")
-    with open(os.path.join(save_path, "cmd.txt"), "w") as f:
-        f.write(" ".join(sys.argv))
-    main_loop_path = os.path.join(save_path, 'main_loop.tar')
-    stream_path = os.path.join(save_path, 'stream.pkl')
-
-    # Save config to save_path
-    json.dump(config, open(os.path.join(save_path, "config.json"), "w"))
-
+def _initialize_model_and_data(c):
     # Load data
     data = SNLIData(c['data_path'], c['layout'])
 
@@ -109,7 +87,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
-        retrieval_all = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'])
         data.set_retrieval(retrieval)
     else:
         retrieval = None
@@ -133,12 +110,37 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     simple.push_initialization_config()
     if c['encoder'] == 'rnn':
         simple._rnn_encoder.weights_init = Uniform(std=0.1)
-        # simple._rnn_fork.weights_init = Uniform(std=0.1)
     simple.initialize()
 
     if c['embedding_path']:
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
+
+    return simple, data, dict
+
+def train_snli_model(config, save_path, params, fast_start, fuel_server):
+
+    if config['exclude_top_k'] > config['num_input_words']:
+        raise Exception("Some words have neither word nor def embedding")
+
+    c = config
+    new_training_job = False
+    logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
+    if not os.path.exists(save_path):
+        logger.info("Start a new job")
+        new_training_job = True
+        os.mkdir(save_path)
+    else:
+        logger.info("Continue an existing job")
+    with open(os.path.join(save_path, "cmd.txt"), "w") as f:
+        f.write(" ".join(sys.argv))
+    main_loop_path = os.path.join(save_path, 'main_loop.tar')
+    stream_path = os.path.join(save_path, 'stream.pkl')
+
+    # Save config to save_path
+    json.dump(config, open(os.path.join(save_path, "config.json"), "w"))
+
+    simple, data, used_dict = _initialize_model_and_data(c)
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
@@ -299,6 +301,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     ]
 
     # Similarity trackers for embeddings
+    retrieval_all = Retrieval(vocab=data.vocab, dictionary=used_dict,
+        exclude_top_k=None, max_def_length=c['max_def_length'])
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
         variables = VariableFilter(name=name)(cg[False])
         if len(variables):
