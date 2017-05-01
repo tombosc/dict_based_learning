@@ -5,6 +5,7 @@ qa_config_registry.set_root_config({
     # data
     'data_path' : "",
     'dict_path' : "",
+    'dict_vocab_path' : "",
     'embedding_path' : "",
     'layout' : 'standard',
     'num_input_words' : 10000,

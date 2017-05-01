@@ -200,6 +200,7 @@ def retrieve_and_pad_squad(retrieval, example):
             'contexts_def_map': contexts_def_map,
             'questions_def_map': questions_def_map}
 
+
 def retrieve_and_pad_snli(retrieval, example):
     # TODO(kudkudak): We could joint retrieve retrieve_and_pad_squad and retrieve_and_pad_snli
     # this will be done along lookup refactor
@@ -215,6 +216,7 @@ def retrieve_and_pad_snli(retrieval, example):
         - numpy.array([len(s1), 0, 0]))
     return [defs, def_mask, s1_def_map, s2_def_map]
 
+
 def digitize(vocab, source_data):
     return numpy.array([vocab.encode(words) for words in source_data])
 
@@ -228,10 +230,14 @@ class ExtractiveQAData(Data):
     @property
     def vocab(self):
         if not self._vocab:
-            with h5py.File(self.get_dataset_path('train')) as h5_file:
-                # somehow reading the data before zipping is important
-                self._vocab = Vocabulary(zip(h5_file['vocab_words'][:],
-                                             h5_file['vocab_freqs'][:]))
+            # I am switching back to reading the vocabulary from a standalone
+            # file cause it offers more flexibility.
+            # with h5py.File(self.get_dataset_path('train')) as h5_file:
+                    # somehow reading the data before zipping is important
+                    # self._vocab = Vocabulary(zip(h5_file['vocab_words'][:],
+                    #                             h5_file['vocab_freqs'][:]))
+            self._vocab = Vocabulary(
+                os.path.join(self._path, "vocab.txt"))
         return self._vocab
 
     def get_stream(self, part, batch_size=None, shuffle=False, max_length=None,
@@ -346,5 +352,3 @@ class SNLIData(Data):
         stream = Padding(stream, mask_sources=('sentence1', 'sentence2'))  # Increases amount of outputs by x2
 
         return stream
-
-

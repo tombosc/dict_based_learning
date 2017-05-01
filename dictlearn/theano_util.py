@@ -37,3 +37,7 @@ def parameter_stats(parameters, algorithm):
         vars_.append(stats)
     return vars_
 
+
+def unk_ratio(words, mask, unk):
+    num_unk = (tensor.eq(words, unk) * mask).sum()
+    return num_unk / mask.sum()
