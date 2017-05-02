@@ -354,6 +354,7 @@ class Retrieval(object):
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
 
+                    # TODO(kudkudak): actually it wont count only once each word)
                     # Debug info
                     self._debug_info['N_words'] += 1
                     self._debug_info['N_missed_words'] += (len(word_defs) == 0)
@@ -379,7 +380,7 @@ class Retrieval(object):
                 if len(word_def_indices[word]) == 0:
                     self._debug_info['N_queried_missed_words'] += 1
                     if len(self._debug_info['missed_word_sample']) == 15:
-                        self._debug_info['missed_word_sample'].pop()
+                        del self._debug_info['missed_word_sample'][numpy.random.randint(15)]
                     self._debug_info['missed_word_sample'].append(word)
                 self._debug_info['N_queried_words'] += 1
                 # End of debug info

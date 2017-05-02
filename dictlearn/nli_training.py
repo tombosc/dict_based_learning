@@ -184,6 +184,11 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
         for p, m in pop_updates]
 
+    if os.path.exists(save_path):
+       logger.warning("Manually loading BN stats :(")
+       for param, m [p for p, m in pop_updates]:
+           param.set_value(params[get_brick(param).get_hierarchical_name(param)])
+
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
             data.get_stream('train', batch_size=4)
