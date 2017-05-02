@@ -7,6 +7,8 @@ prefix = '/data/lisa/exp/bosctom/dict_based_learning/'
 
 # With dictionary
 c = lm_config_registry['root']
+c['standalone_def_lookup'] = True
+c['standalone_def_rnn'] = True
 c['data_path'] = prefix + 'data/toy_data_1'
 c['dict_path'] = prefix + 'data/toy_data_1/dict.json'
 c['batch_size'] = 16
@@ -83,6 +85,8 @@ lm_config_registry['nodict0003'] = c
 
 ### new sets of experiments:
 c = lm_config_registry['root']
+c['standalone_def_lookup'] = True
+c['standalone_def_rnn'] = True
 c['learning_rate'] = 0.0003
 c['data_path'] = prefix + 'data/toy_data_3'
 c['dict_path'] = prefix + 'data/toy_data_3/dict.json'
@@ -115,6 +119,8 @@ lm_config_registry['d_no_dict_sd'] = c
 
 # New set of exps with toy_data_2 which is bigger than 3
 c = lm_config_registry['root']
+c['standalone_def_lookup'] = True
+c['standalone_def_rnn'] = True
 c['learning_rate'] = 0.0003
 c['data_path'] = prefix + 'data/toy_data_2'
 c['dict_path'] = prefix + 'data/toy_data_2/dict.json'

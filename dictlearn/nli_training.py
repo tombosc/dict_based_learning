@@ -84,8 +84,9 @@ def _initialize_model_and_data(c):
 
     # Dict
     if c['dict_path']:
-        dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
+        dict = Dictionary(c['dict_path'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
+            try_lowercase=c['try_lowercase'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
         data.set_retrieval(retrieval)
     else:

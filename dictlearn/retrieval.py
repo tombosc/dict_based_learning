@@ -31,24 +31,38 @@ class Dictionary(object):
     the words are stored as strings.
 
     """
-    def __init__(self, path=None, try_lowercase=False):
+    def __init__(self, path=None):
+
+        if not path.endswith("json"):
+            raise Exception("Please pass path ending in .json")
+
         self._data = {}
-        self._try_lowercase = try_lowercase
+        self._meta_data = {}
         self._path = path
+        self._meta_path = path.replace(".json", "_meta.json")
         self._tmp_path = os.path.join(os.path.dirname(path),
                                          self._path + '.tmp')
+        self._meta_tmp_path = os.path.join(os.path.dirname(path),
+            self._meta_path + '.tmp')
         if self._path and os.path.exists(self._path):
             self.load()
 
     def load(self):
         with open(self._path, 'r') as src:
             self._data = json.load(src)
+        if os.path.exists(self._meta_path):
+            with open(self._meta_path, 'r') as src:
+                self._meta_data = json.load(src)
 
     def save(self):
         logger.debug("saving...")
         with open(self._tmp_path, 'w') as dst:
             json.dump(self._data, dst, indent=2)
         shutil.move(self._tmp_path, self._path)
+        logger.debug("saving meta...")
+        with open(self._meta_tmp_path, 'w') as dst:
+            json.dump(self._meta_data, dst, indent=2)
+        shutil.move(self._meta_tmp_path, self._meta_path)
         logger.debug("saved")
 
     def _wait_until_quota_reset(self):
@@ -121,7 +135,7 @@ class Dictionary(object):
         self.save()
 
     def crawl_wordnik(self, vocab, api_key, corenlp_url,
-                      call_quota=15000, crawl_also_lowercase=False):
+                      call_quota=15000, crawl_also_lowercase=False, crawl_also_lemma=False):
 
         """Download and preprocess definitions from Wordnik.
 
@@ -131,6 +145,12 @@ class Dictionary(object):
             The API key to use in communications with Wordnik.
         call_quota
             Maximum number of calls per hour.
+        crawl_also_lowercase
+            If true will add lowercase version of each word to crawl list
+        crawl_also_lemma
+            If true will also crawl lemma versions of words
+            WARNING: Lemma of Cat is Cat! So if you want to have definition of "cat"
+            you have to also pass crawl_also_lowercase!
 
         """
         corenlp = StanfordCoreNLP(corenlp_url)
@@ -145,14 +165,38 @@ class Dictionary(object):
 
         words = list(vocab.words)
 
+        # Note(kudkudak): for SNLI it adds 3k words
         if crawl_also_lowercase:
+            words_set = set(words)  # For efficiency
+
             logger.info("Adding lowercase words to crawl")
             lowercased = []
             for w in words:
-                if w.lower() not in vocab._word_to_id:
+                if w.lower() not in words_set:
                     lowercased.append(w.lower())
             logger.info("Crawling additional {} words".format(len(lowercased)))
             words.extend(sorted(lowercased))
+
+        # Note(kudkudak): for SNLI it adds 2k words, so we can expect
+        # like sabotage,sabotaging
+        # Note that lemma crawling is *after* lowercasing
+        if crawl_also_lemma:
+            words_set = set(words) # For efficiency
+
+            logger.info("Adding lemmatized vrsions to crawl")
+            lemmas = []
+            original = []
+            lemmatizer = nltk.WordNetLemmatizer()
+            for w in words:
+                for part_of_speech in ['a', 's', 'r', 'n', 'v']:
+                    lemma = lemmatizer.lemmatize(w, part_of_speech)
+                    if lemma not in words_set:
+                        lemmas.append(lemma)
+                        original.append(w)
+            logger.info("Crawling additional {} words".format(len(lemmas)))
+            for id in numpy.random.choice(len(lemmas), 100):
+                logger.info("Example:" + lemmas[id] + "," + original[id])
+                words.extend(sorted(lemmas))
 
         # Here, for now, we don't do any stemming or lemmatization.
         # Stemming is useless because the dictionary is not indexed with
@@ -171,6 +215,7 @@ class Dictionary(object):
             if self._remaining_calls < _MIN_REMAINING_CALLS:
                 self._wait_until_quota_reset()
             try:
+                # NOTE(kudkudak): We fetch all dictionaries, but retrieval can filter them based on meta info
                 definitions = self._word_api.getDefinitions(word)
             except Exception:
                 logger.error("error during fetching '{}'".format(word))
@@ -182,6 +227,7 @@ class Dictionary(object):
             if not definitions:
                 definitions = []
             self._data[word] = []
+            self._meta_data[word] = []
             for def_ in definitions:
                 try:
                     # seems like definition text can be both str and unicode
@@ -190,6 +236,8 @@ class Dictionary(object):
                         text = text.decode('utf-8')
                     tokenized_def = corenlp.tokenize(text)[0]
                     self._data[word].append(tokenized_def)
+                    # Note(kudkudak): I don't think there is much more useful meta data for us
+                    self._meta_data[word].append({"sourceDictionary": def_.sourceDictionary})
                 except Exception:
                     logger.error("error during tokenizing '{}'".format(text))
                     logger.error(traceback.format_exc())
@@ -201,16 +249,14 @@ class Dictionary(object):
         return len(self._data)
 
     def get_definitions(self, key):
-        if key not in self._data and self._try_lowercase:
-            return self._data.get(key.lower(), [])
-        else:
-            return self._data.get(key, [])
+        return self._data.get(key, [])
 
 
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000):
+                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000,
+                 lowercase_strategy="none", lemmatization_strategy="none"):
         """Retrieves the definitions.
 
         vocab
@@ -224,6 +270,24 @@ class Retrieval(object):
             words of the vocabulary (typically the most frequent ones).
         max_def_per_word
             Pick at most max_n_def definitions for each word
+        lowercase_strategy
+            If "try" will always first prioritize uppercase, then lowercase
+            If "concat" will add definitions of normal and lowercase version.
+                Model then could learn which defs to trust, I imagine
+            If "none" will do nothing
+
+            WARNING: There is perhaps unintuitive interplay with lemmatization_strategy.
+            Lemma doesn't change capitalization! So if you want to resolve Cat -> cat you need
+            to pass try_lowercase=True and lemmatization_strategy!="none"
+
+        lemmatization_strategy
+            * "none" - does nothing
+            * "try" - if query word is not in dict, it will try lemma
+            * "prioritize" - will check first lemma, then resolve to query word
+            * "force_lemma" - will use only lemma
+                will raise error if query word is in dict, while lemma is not.
+                This is useful for asserting --add_lemas from crawl_dict.py
+                did its job
         """
         self._vocab = vocab
         self._dictionary = dictionary
@@ -231,7 +295,33 @@ class Retrieval(object):
         self._exclude_top_k = exclude_top_k
         self._max_def_per_word = max_def_per_word
 
-        # Preprocess all the definitions to see token ids instead of chars
+        if lowercase_strategy not in {"none", "try", "concat"}:
+            raise NotImplementedError("Not implemented " + lowercase_strategy)
+
+        self._lowercase_strategy = lowercase_strategy
+
+        if lemmatization_strategy not in {"none", "try", "prioritize", "force_lemma"}:
+            raise NotImplementedError("Not implemented " + lemmatization_strategy)
+
+        self._lemmatization_strategy = lemmatization_strategy
+        self._lemmatizer = nltk.WordNetLemmatizer()
+
+    def _resolve_word(self, word):
+        word_defs = [] # First that resolves returns
+
+        if self._lemmatization_strategy == "prioritize" or self._lemmatizer == "force_lemma":
+            word_defs = self._dictionary.get_definitions(self._lemmatizer.lemmatize(word))
+
+        # TODO(kudkudak): Lemmas might be a miss for some words. Do we care?
+        # probably not so much because otherwise we would just pass empty list
+        # so it has to help anyway
+        if not word_defs:
+            word_defs = self._dictionary.get_definitions(word)
+
+        if not word_defs and self._lemmatization_strategy == "try":
+            word_defs = self._dictionary.get_definitions(self._lemmatizer.lemmatize(word))
+
+        return word_defs
 
     def retrieve(self, batch):
         """Retrieves all definitions for a batch of words sequences.
@@ -263,9 +353,20 @@ class Retrieval(object):
 
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
-                    word_defs = self._dictionary.get_definitions(word)
+                    if self._lowercase_strategy == "none":
+                        word_defs = self._resolve_word(word)
+                    elif self._lowercase_strategy == "try":
+                        word_defs = self._resolve_word(word)
+                        if not word_defs:
+                            word_defs = self._resolve_word(word.lower())
+                    elif self._lowercase_strategy == "concat":
+                        word_defs = self._resolve_word(word)
+                        if word != word.lower():
+                            word_defs += self._resolve_word(word.lower())
+                    else:
+                        raise NotImplementedError()
+
                     if not word_defs:
-                        # No defition for this word
                         continue
 
                     if self._max_def_per_word < len(word_defs):

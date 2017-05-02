@@ -40,7 +40,7 @@ def main(config_registry, training_func):
     # Modify the configuration with the command line arguments
     config = config_registry[args.config]
     for key in config:
-        if getattr(args, key) is not None:
+        if key in args and getattr(args, key) is not None:
             config[key] = getattr(args, key)
     pprint.pprint(config)
 
