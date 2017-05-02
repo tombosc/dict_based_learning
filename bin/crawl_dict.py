@@ -24,6 +24,10 @@ def main():
                         help="Just lowercase as the definition")
     parser.add_argument("--add-lemma-defs", action="store_true",
                         help="Add definitions from lemmas")
+    parser.add_argument("--add-lower-defs", action="store_true",
+        help="Add definitions from lowercase")
+    parser.add_argument("--add-dictname-to-defs", action="store_true",
+        help="Adds dictionary name to definition")
     parser.add_argument("--identity", action="store_true",
                         help="Identity mapping dictionary")
     parser.add_argument("--spelling", action="store_true",
@@ -52,6 +56,10 @@ def main():
                 popen.kill()
     elif args.add_lemma_defs:
         dict_.add_from_lemma_definitions(vocab)
+    elif args.add_lower_defs:
+        dict_.add_from_lowercase_definitions(vocab)
+    elif args.add_dict_name_def:
+        dict_.add_dictname_to_defs(vocab)
     elif args.just_lemmas:
         dict_.crawl_lemmas(vocab)
     elif args.just_lowercase:

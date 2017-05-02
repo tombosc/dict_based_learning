@@ -6,7 +6,6 @@ snli_config_registry = ConfigRegistry()
 snli_config_registry.set_root_config({
     'data_path':  '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/',
     'layout': 'snli',
-    'try_lowercase': True,
 
     # Lookup params
     'translate_dim': 300,

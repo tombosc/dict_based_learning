@@ -79,6 +79,7 @@ class Dictionary(object):
     def setup_identity_mapping(self, vocab):
         for word in vocab.words:
             self._data[word] = [[word]]
+            self._meta_data[word] = {"sourceDictionary": "identity"}
         self.save()
 
     def setup_spelling(self, vocab):
@@ -87,7 +88,24 @@ class Dictionary(object):
             if len(def_) > 10:
                 def_ = u"{}-{}".format(def_[:5], def_[-5:])
             self._data[word] = [list(def_)]
+            self._meta_data[def_] = {"sourceDictionary": "spelling"}
         self.save()
+
+
+    def add_from_lowercase_definitions(self, vocab):
+        """Add definitions of lowercase word to each word (concat)
+        """
+        for word in vocab.words:
+            word_lower = word.lower()
+            if word != word_lower:
+                lower_defs = self._data.get(word_lower)
+                # This can be quite slow. But this code will not be used
+                # very often.
+                for def_ in lower_defs:
+                    if not def_ in self._data[word]:
+                        self._data[word].append(def_)
+        self.save()
+
 
     def add_from_lemma_definitions(self, vocab):
         """Add lemma definitions for non-lemmas.
@@ -112,6 +130,12 @@ class Dictionary(object):
                 logger.error("lemmatizer crashed on {}".format(word))
         self.save()
 
+    def add_dictname_to_defs(self, vocab):
+        """Add dict name in front of each def"""
+        # TODO(kudkudak): I will implement it after we have attention on defs +
+        # we do shortlisting based on dict defs
+        raise NotImplementedError()
+
     def crawl_lemmas(self, vocab):
         """Add Wordnet lemmas as definitions."""
         lemmatizer = nltk.WordNetLemmatizer()
@@ -132,6 +156,7 @@ class Dictionary(object):
         """Add Wordnet lemmas as definitions."""
         for word in vocab.words:
             self._data[word] = [[word.lower()]]
+            self._meta_data[word.lower()] = {"sourceDictionary": "lowercase"}
         self.save()
 
     def crawl_wordnik(self, vocab, api_key, corenlp_url,
@@ -227,7 +252,6 @@ class Dictionary(object):
             if not definitions:
                 definitions = []
             self._data[word] = []
-            self._meta_data[word] = []
             for def_ in definitions:
                 try:
                     # seems like definition text can be both str and unicode
@@ -237,7 +261,9 @@ class Dictionary(object):
                     tokenized_def = corenlp.tokenize(text)[0]
                     self._data[word].append(tokenized_def)
                     # Note(kudkudak): I don't think there is much more useful meta data for us
-                    self._meta_data[word].append({"sourceDictionary": def_.sourceDictionary})
+                    # Note(kudkudak): This might seem strange, but I am afraid this is most robust (least bug prone)
+                    # way of storing meta data that doens't require rewriting dict storage format
+                    self._meta_data[" ".join(tokenized_def)] = {"sourceDictionary": def_.sourceDictionary}
                 except Exception:
                     logger.error("error during tokenizing '{}'".format(text))
                     logger.error(traceback.format_exc())
@@ -255,8 +281,7 @@ class Dictionary(object):
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000,
-                 lowercase_strategy="none", lemmatization_strategy="none"):
+                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000):
         """Retrieves the definitions.
 
         vocab
@@ -270,24 +295,6 @@ class Retrieval(object):
             words of the vocabulary (typically the most frequent ones).
         max_def_per_word
             Pick at most max_n_def definitions for each word
-        lowercase_strategy
-            If "try" will always first prioritize uppercase, then lowercase
-            If "concat" will add definitions of normal and lowercase version.
-                Model then could learn which defs to trust, I imagine
-            If "none" will do nothing
-
-            WARNING: There is perhaps unintuitive interplay with lemmatization_strategy.
-            Lemma doesn't change capitalization! So if you want to resolve Cat -> cat you need
-            to pass try_lowercase=True and lemmatization_strategy!="none"
-
-        lemmatization_strategy
-            * "none" - does nothing
-            * "try" - if query word is not in dict, it will try lemma
-            * "prioritize" - will check first lemma, then resolve to query word
-            * "force_lemma" - will use only lemma
-                will raise error if query word is in dict, while lemma is not.
-                This is useful for asserting --add_lemas from crawl_dict.py
-                did its job
         """
         self._vocab = vocab
         self._dictionary = dictionary
@@ -295,33 +302,21 @@ class Retrieval(object):
         self._exclude_top_k = exclude_top_k
         self._max_def_per_word = max_def_per_word
 
-        if lowercase_strategy not in {"none", "try", "concat"}:
-            raise NotImplementedError("Not implemented " + lowercase_strategy)
+        # Note: there are 2 types of quantities we track
+        # - absolute quantities (e.g. N_words)
+        # - freq-dep quantities (e.g. N_queried_words)
+        self._debug_info = {
+            "missed_word_sample": [],
 
-        self._lowercase_strategy = lowercase_strategy
+            "N_words": 0,
+            "N_missed_words": 0,
 
-        if lemmatization_strategy not in {"none", "try", "prioritize", "force_lemma"}:
-            raise NotImplementedError("Not implemented " + lemmatization_strategy)
+            "N_def": 0,
+            "N_dropped_def": 0,
 
-        self._lemmatization_strategy = lemmatization_strategy
-        self._lemmatizer = nltk.WordNetLemmatizer()
-
-    def _resolve_word(self, word):
-        word_defs = [] # First that resolves returns
-
-        if self._lemmatization_strategy == "prioritize" or self._lemmatizer == "force_lemma":
-            word_defs = self._dictionary.get_definitions(self._lemmatizer.lemmatize(word))
-
-        # TODO(kudkudak): Lemmas might be a miss for some words. Do we care?
-        # probably not so much because otherwise we would just pass empty list
-        # so it has to help anyway
-        if not word_defs:
-            word_defs = self._dictionary.get_definitions(word)
-
-        if not word_defs and self._lemmatization_strategy == "try":
-            word_defs = self._dictionary.get_definitions(self._lemmatizer.lemmatize(word))
-
-        return word_defs
+            "N_queried_words": 0,
+            "N_queried_missed_words": 0,
+        }
 
     def retrieve(self, batch):
         """Retrieves all definitions for a batch of words sequences.
@@ -353,18 +348,12 @@ class Retrieval(object):
 
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
-                    if self._lowercase_strategy == "none":
-                        word_defs = self._resolve_word(word)
-                    elif self._lowercase_strategy == "try":
-                        word_defs = self._resolve_word(word)
-                        if not word_defs:
-                            word_defs = self._resolve_word(word.lower())
-                    elif self._lowercase_strategy == "concat":
-                        word_defs = self._resolve_word(word)
-                        if word != word.lower():
-                            word_defs += self._resolve_word(word.lower())
-                    else:
-                        raise NotImplementedError()
+                    word_defs = self._dictionary.get_definitions(word)
+
+                    # Debug info
+                    self._debug_info['N_words'] += 1
+                    self._debug_info['N_missed_words'] += (len(word_defs) == 0)
+                    # End of debug info
 
                     if not word_defs:
                         continue
@@ -374,14 +363,27 @@ class Retrieval(object):
                         word_defs = [word_defs[i] for i in word_defs_ids]
 
                     for i, def_ in enumerate(word_defs):
+                        self._debug_info['N_def'] += 1
                         if len(def_) > self._max_def_length:
+                            self._debug_info['N_dropped_def'] += 1
                             continue
+
                         final_def_ = [self._vocab.bod]
                         for token in def_:
                             final_def_.append(self._vocab.word_to_id(token))
                         final_def_.append(self._vocab.eod)
                         word_def_indices[word].append(len(definitions))
                         definitions.append(final_def_)
+
+                # Debug info
+                if len(word_def_indices[word]) == 0:
+                    self._debug_info['N_queried_missed_words'] += 1
+                    if len(self._debug_info['missed_word_sample']) == 15:
+                        self._debug_info['missed_word_sample'].pop()
+                    self._debug_info['missed_word_sample'].append(word)
+                self._debug_info['N_queried_words'] += 1
+                # End of debug info
+
                 for def_index in word_def_indices[word]:
                     def_map.append((seq_pos, word_pos, def_index))
 
