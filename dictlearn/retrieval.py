@@ -188,9 +188,6 @@ class Dictionary(object):
             original = []
             lemmatizer = nltk.WordNetLemmatizer()
             for w in words:
-                # Note(kudkudak): more words don't hurt too much.
-                # so making sure here we really have lemma of word
-                # even if it was capitalized in sentence
                 for part_of_speech in ['a', 's', 'r', 'n', 'v']:
                     lemma = lemmatizer.lemmatize(w, part_of_speech)
                     if lemma not in words_set:
@@ -259,7 +256,7 @@ class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
                  max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000,
-                 try_lowercase=False, lemmatization_strategy="none"):
+                 lowercase_strategy="none", lemmatization_strategy="none"):
         """Retrieves the definitions.
 
         vocab
@@ -273,8 +270,11 @@ class Retrieval(object):
             words of the vocabulary (typically the most frequent ones).
         max_def_per_word
             Pick at most max_n_def definitions for each word
-        try_lowercase
-            If True will always first prioritize uppercase, then lowercase.
+        lowercase_strategy
+            If "try" will always first prioritize uppercase, then lowercase
+            If "concat" will add definitions of normal and lowercase version.
+                Model then could learn which defs to trust, I imagine
+            If "none" will do nothing
 
             WARNING: There is perhaps unintuitive interplay with lemmatization_strategy.
             Lemma doesn't change capitalization! So if you want to resolve Cat -> cat you need
@@ -294,8 +294,34 @@ class Retrieval(object):
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
         self._max_def_per_word = max_def_per_word
-        self._try_lowercase = try_lowercase
+
+        if lowercase_strategy not in {"none", "try", "concat"}:
+            raise NotImplementedError("Not implemented " + lowercase_strategy)
+
+        self._lowercase_strategy = lowercase_strategy
+
+        if lemmatization_strategy not in {"none", "try", "prioritize", "force_lemma"}:
+            raise NotImplementedError("Not implemented " + lemmatization_strategy)
+
         self._lemmatization_strategy = lemmatization_strategy
+        self._lemmatizer = nltk.WordNetLemmatizer()
+
+    def _resolve_word(self, word):
+        word_defs = [] # First that resolves returns
+
+        if self._lemmatization_strategy == "prioritize" or self._lemmatizer == "force_lemma":
+            word_defs = self._dictionary.get_definitions(self._lemmatizer.lemmatize(word))
+
+        # TODO(kudkudak): Lemmas might be a miss for some words. Do we care?
+        # probably not so much because otherwise we would just pass empty list
+        # so it has to help anyway
+        if not word_defs:
+            word_defs = self._dictionary.get_definitions(word)
+
+        if not word_defs and self._lemmatization_strategy == "try":
+            word_defs = self._dictionary.get_definitions(self._lemmatizer.lemmatize(word))
+
+        return word_defs
 
     def retrieve(self, batch):
         """Retrieves all definitions for a batch of words sequences.
@@ -327,13 +353,21 @@ class Retrieval(object):
 
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
-                    word_defs = self._dictionary.get_definitions(word)
-                    if not word_defs:
-                        if self._try_lowercase:
-                            word_defs = self._dictionary.get_definitions(word.lower())
-
+                    if self._lowercase_strategy == "none":
+                        word_defs = self._resolve_word(word)
+                    elif self._lowercase_strategy == "try":
+                        word_defs = self._resolve_word(word)
                         if not word_defs:
-                            continue
+                            word_defs = self._resolve_word(word.lower())
+                    elif self._lowercase_strategy == "concat":
+                        word_defs = self._resolve_word(word)
+                        if word != word.lower():
+                            word_defs += self._resolve_word(word.lower())
+                    else:
+                        raise NotImplementedError()
+
+                    if not word_defs:
+                        continue
 
                     if self._max_def_per_word < len(word_defs):
                         word_defs_ids = numpy.random.choice(range(len(word_defs)), self._max_def_per_word, replace=False)
