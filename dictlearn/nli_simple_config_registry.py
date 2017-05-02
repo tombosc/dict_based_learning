@@ -80,8 +80,6 @@ c['num_input_words'] = 5000
 c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict_mnli'] = c
 
-
-
 # Looking up words from test/dev as well
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/'

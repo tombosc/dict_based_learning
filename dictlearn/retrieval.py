@@ -107,7 +107,7 @@ class Dictionary(object):
         self.save()
 
 
-    def add_from_lemma_definitions(self, vocab):
+    def add_from_lemma_definitions(self, vocab, try_lower=False):
         """Add lemma definitions for non-lemmas.
 
         This code covers the following scenario: supposed a dictionary is crawled,
@@ -116,18 +116,22 @@ class Dictionary(object):
         """
         lemmatizer = nltk.WordNetLemmatizer()
         for word in vocab.words:
-            try:
-                for part_of_speech in ['a', 's', 'r', 'n', 'v']:
-                    lemma = lemmatizer.lemmatize(word, part_of_speech)
-                    lemma_defs = self._data.get(lemma)
-                    if lemma != word and lemma_defs:
-                        # This can be quite slow. But this code will not be used
-                        # very often.
-                        for def_ in lemma_defs:
-                            if not def_ in self._data[word]:
-                                self._data[word].append(def_)
-            except:
-                logger.error("lemmatizer crashed on {}".format(word))
+
+            word_list = [word, word.lower()] if try_lower else [word]
+
+            for word_to_lemma in word_list:
+                try:
+                    for part_of_speech in ['a', 's', 'r', 'n', 'v']:
+                        lemma = lemmatizer.lemmatize(word_to_lemma, part_of_speech)
+                        lemma_defs = self._data.get(lemma)
+                        if lemma != word and lemma_defs:
+                            # This can be quite slow. But this code will not be used
+                            # very often.
+                            for def_ in lemma_defs:
+                                if not def_ in self._data[word]:
+                                    self._data[word].append(def_)
+                except:
+                    logger.error("lemmatizer crashed on {}".format(word))
         self.save()
 
     def add_dictname_to_defs(self, vocab):
