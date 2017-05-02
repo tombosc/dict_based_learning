@@ -2,7 +2,7 @@
 set -x
 
 export PYTHONUNBUFFERED=1
-export THEANO_FLAGS="device=gpu,compiledir=/workspace/.theano"
+export THEANO_FLAGS="device=cuda,compiledir=/workspace/.theano"
 export PYTHONPATH=/workspace/Theano:/workspace/blocks:/workspace/fuel:/workspace/dict_based_learning
 export NLTK_DATA=/workspace/nltk_data
 
