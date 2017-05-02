@@ -139,6 +139,7 @@ class RetrievalPrintStats(SimpleExtension):
         record_tuples.append(("retrieval_mis_query_ratio", d['N_queried_missed_words']
                                                            /  max(1, float(d['N_queried_words']))))
         record_tuples.append(("retrieval_drop_def_ratio", d['N_dropped_def'] /  max(1, float(d['N_def']))))
+        record_tuples.append(("retrieval_missed_word_sample", d['missed_word_sample']))
         logging.info("Retrieval missed words sample: \n" + ",".join(d['missed_word_sample']))
         self.add_records(self.main_loop.log, record_tuples)
 
