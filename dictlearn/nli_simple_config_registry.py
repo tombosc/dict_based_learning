@@ -6,7 +6,6 @@ snli_config_registry = ConfigRegistry()
 snli_config_registry.set_root_config({
     'data_path':  '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/',
     'layout': 'snli',
-    'try_lowercase': True,
 
     # Lookup params
     'translate_dim': 300,
@@ -80,8 +79,6 @@ c['embedding_path'] = ''
 c['num_input_words'] = 5000
 c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict_mnli'] = c
-
-
 
 # Looking up words from test/dev as well
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'

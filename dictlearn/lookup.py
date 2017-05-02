@@ -131,6 +131,9 @@ class MeanPoolReadDefinitions(Initializable):
         defs = (T.lt(defs, self._num_input_words) * defs
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)
         defs_emb = self._def_lookup.apply(defs)
+        application_call.add_auxiliary_variable(
+            unk_ratio(defs, def_mask, self._vocab.unk),
+            name='def_unk_ratio')
 
         if self._translate:
             # Translate. Crucial for recovering useful information from embeddings
