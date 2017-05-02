@@ -108,6 +108,41 @@ def evaluate_similarity(w, X, y):
     return scipy.stats.spearmanr(scores, y).correlation
 
 
+class RetrievalPrintStats(SimpleExtension):
+    """
+    Prints statistics about Retrieval object
+    """
+
+    def __init__(self, retrieval, **kwargs):
+        self._retrieval = retrieval
+        super(RetrievalPrintStats, self).__init__(**kwargs)
+
+    def __getstate__(self):
+        dict_ = dict(self.__dict__)
+        if '_retrieval' in dict_:
+            del dict_['_retrieval']
+        return dict_
+
+    def add_records(self, log, record_tuples):
+        """Helper function to add monitoring records to the log."""
+        for name, value in record_tuples:
+            if not name:
+                raise ValueError("monitor variable without name")
+            log.current_row[name] = value
+
+    def do(self, *args, **kwargs):
+        d = self._retrieval._debug_info
+        record_tuples = []
+        record_tuples.append(("retrieval_mis_ratio", d['N_missed_words'] / max(1, float(d['N_words']))))
+        record_tuples.append(("retrieval_N_words", d['N_words']))
+        record_tuples.append(("retrieval_N_queried_words", d['N_queried_words']))
+        record_tuples.append(("retrieval_mis_query_ratio", d['N_queried_missed_words']
+                                                           /  max(1, float(d['N_queried_words']))))
+        record_tuples.append(("retrieval_drop_def_ratio", d['N_dropped_def'] /  max(1, float(d['N_def']))))
+        record_tuples.append(("retrieval_missed_word_sample", d['missed_word_sample']))
+        logging.info("Retrieval missed words sample: \n" + ",".join(d['missed_word_sample']))
+        self.add_records(self.main_loop.log, record_tuples)
+
 class SimilarityWordEmbeddingEval(SimpleExtension):
     """
     Parameters
@@ -140,7 +175,7 @@ class SimilarityWordEmbeddingEval(SimpleExtension):
                 data.y[0]))
 
         logger.info("Checking embedder for " + prefix)
-        logger.info(embedder(["love"])) # Test embedder
+        logger.info(embedder(["love"])[0, 0:5]) # Test embedder
 
         self._tasks = tasks
 

@@ -31,24 +31,38 @@ class Dictionary(object):
     the words are stored as strings.
 
     """
-    def __init__(self, path=None, try_lowercase=False):
+    def __init__(self, path=None):
+
+        if not path.endswith("json"):
+            raise Exception("Please pass path ending in .json")
+
         self._data = {}
-        self._try_lowercase = try_lowercase
+        self._meta_data = {}
         self._path = path
+        self._meta_path = path.replace(".json", "_meta.json")
         self._tmp_path = os.path.join(os.path.dirname(path),
                                          self._path + '.tmp')
+        self._meta_tmp_path = os.path.join(os.path.dirname(path),
+            self._meta_path + '.tmp')
         if self._path and os.path.exists(self._path):
             self.load()
 
     def load(self):
         with open(self._path, 'r') as src:
             self._data = json.load(src)
+        if os.path.exists(self._meta_path):
+            with open(self._meta_path, 'r') as src:
+                self._meta_data = json.load(src)
 
     def save(self):
         logger.debug("saving...")
         with open(self._tmp_path, 'w') as dst:
             json.dump(self._data, dst, indent=2)
         shutil.move(self._tmp_path, self._path)
+        logger.debug("saving meta...")
+        with open(self._meta_tmp_path, 'w') as dst:
+            json.dump(self._meta_data, dst, indent=2)
+        shutil.move(self._meta_tmp_path, self._meta_path)
         logger.debug("saved")
 
     def _wait_until_quota_reset(self):
@@ -65,6 +79,7 @@ class Dictionary(object):
     def setup_identity_mapping(self, vocab):
         for word in vocab.words:
             self._data[word] = [[word]]
+            self._meta_data[word] = {"sourceDictionary": "identity"}
         self.save()
 
     def setup_spelling(self, vocab):
@@ -73,9 +88,26 @@ class Dictionary(object):
             if len(def_) > 10:
                 def_ = u"{}-{}".format(def_[:5], def_[-5:])
             self._data[word] = [list(def_)]
+            self._meta_data[def_] = {"sourceDictionary": "spelling"}
         self.save()
 
-    def add_from_lemma_definitions(self, vocab):
+
+    def add_from_lowercase_definitions(self, vocab):
+        """Add definitions of lowercase word to each word (concat)
+        """
+        for word in vocab.words:
+            word_lower = word.lower()
+            if word != word_lower:
+                lower_defs = self._data.get(word_lower)
+                # This can be quite slow. But this code will not be used
+                # very often.
+                for def_ in lower_defs:
+                    if not def_ in self._data[word]:
+                        self._data[word].append(def_)
+        self.save()
+
+
+    def add_from_lemma_definitions(self, vocab, try_lower=False):
         """Add lemma definitions for non-lemmas.
 
         This code covers the following scenario: supposed a dictionary is crawled,
@@ -84,19 +116,29 @@ class Dictionary(object):
         """
         lemmatizer = nltk.WordNetLemmatizer()
         for word in vocab.words:
-            try:
-                for part_of_speech in ['a', 's', 'r', 'n', 'v']:
-                    lemma = lemmatizer.lemmatize(word, part_of_speech)
-                    lemma_defs = self._data.get(lemma)
-                    if lemma != word and lemma_defs:
-                        # This can be quite slow. But this code will not be used
-                        # very often.
-                        for def_ in lemma_defs:
-                            if not def_ in self._data[word]:
-                                self._data[word].append(def_)
-            except:
-                logger.error("lemmatizer crashed on {}".format(word))
+
+            word_list = [word, word.lower()] if try_lower else [word]
+
+            for word_to_lemma in word_list:
+                try:
+                    for part_of_speech in ['a', 's', 'r', 'n', 'v']:
+                        lemma = lemmatizer.lemmatize(word_to_lemma, part_of_speech)
+                        lemma_defs = self._data.get(lemma)
+                        if lemma != word and lemma_defs:
+                            # This can be quite slow. But this code will not be used
+                            # very often.
+                            for def_ in lemma_defs:
+                                if not def_ in self._data[word]:
+                                    self._data[word].append(def_)
+                except:
+                    logger.error("lemmatizer crashed on {}".format(word))
         self.save()
+
+    def add_dictname_to_defs(self, vocab):
+        """Add dict name in front of each def"""
+        # TODO(kudkudak): I will implement it after we have attention on defs +
+        # we do shortlisting based on dict defs
+        raise NotImplementedError()
 
     def crawl_lemmas(self, vocab):
         """Add Wordnet lemmas as definitions."""
@@ -118,10 +160,11 @@ class Dictionary(object):
         """Add Wordnet lemmas as definitions."""
         for word in vocab.words:
             self._data[word] = [[word.lower()]]
+            self._meta_data[word.lower()] = {"sourceDictionary": "lowercase"}
         self.save()
 
     def crawl_wordnik(self, vocab, api_key, corenlp_url,
-                      call_quota=15000, crawl_also_lowercase=False):
+                      call_quota=15000, crawl_also_lowercase=False, crawl_also_lemma=False):
 
         """Download and preprocess definitions from Wordnik.
 
@@ -131,6 +174,12 @@ class Dictionary(object):
             The API key to use in communications with Wordnik.
         call_quota
             Maximum number of calls per hour.
+        crawl_also_lowercase
+            If true will add lowercase version of each word to crawl list
+        crawl_also_lemma
+            If true will also crawl lemma versions of words
+            WARNING: Lemma of Cat is Cat! So if you want to have definition of "cat"
+            you have to also pass crawl_also_lowercase!
 
         """
         corenlp = StanfordCoreNLP(corenlp_url)
@@ -145,14 +194,38 @@ class Dictionary(object):
 
         words = list(vocab.words)
 
+        # Note(kudkudak): for SNLI it adds 3k words
         if crawl_also_lowercase:
+            words_set = set(words)  # For efficiency
+
             logger.info("Adding lowercase words to crawl")
             lowercased = []
             for w in words:
-                if w.lower() not in vocab._word_to_id:
+                if w.lower() not in words_set:
                     lowercased.append(w.lower())
             logger.info("Crawling additional {} words".format(len(lowercased)))
             words.extend(sorted(lowercased))
+
+        # Note(kudkudak): for SNLI it adds 2k words, so we can expect
+        # like sabotage,sabotaging
+        # Note that lemma crawling is *after* lowercasing
+        if crawl_also_lemma:
+            words_set = set(words) # For efficiency
+
+            logger.info("Adding lemmatized vrsions to crawl")
+            lemmas = []
+            original = []
+            lemmatizer = nltk.WordNetLemmatizer()
+            for w in words:
+                for part_of_speech in ['a', 's', 'r', 'n', 'v']:
+                    lemma = lemmatizer.lemmatize(w, part_of_speech)
+                    if lemma not in words_set:
+                        lemmas.append(lemma)
+                        original.append(w)
+            logger.info("Crawling additional {} words".format(len(lemmas)))
+            for id in numpy.random.choice(len(lemmas), 100):
+                logger.info("Example:" + lemmas[id] + "," + original[id])
+                words.extend(sorted(lemmas))
 
         # Here, for now, we don't do any stemming or lemmatization.
         # Stemming is useless because the dictionary is not indexed with
@@ -171,6 +244,7 @@ class Dictionary(object):
             if self._remaining_calls < _MIN_REMAINING_CALLS:
                 self._wait_until_quota_reset()
             try:
+                # NOTE(kudkudak): We fetch all dictionaries, but retrieval can filter them based on meta info
                 definitions = self._word_api.getDefinitions(word)
             except Exception:
                 logger.error("error during fetching '{}'".format(word))
@@ -192,6 +266,10 @@ class Dictionary(object):
                         text = text.decode('utf-8')
                     tokenized_def = corenlp.tokenize(text)[0]
                     self._data[word].append(tokenized_def)
+                    # Note(kudkudak): I don't think there is much more useful meta data for us
+                    # Note(kudkudak): This might seem strange, but I am afraid this is most robust (least bug prone)
+                    # way of storing meta data that doens't require rewriting dict storage format
+                    self._meta_data[" ".join(tokenized_def)] = {"sourceDictionary": def_.sourceDictionary}
                 except Exception:
                     logger.error("error during tokenizing '{}'".format(text))
                     logger.error(traceback.format_exc())
@@ -203,10 +281,7 @@ class Dictionary(object):
         return len(self._data)
 
     def get_definitions(self, key):
-        if key not in self._data and self._try_lowercase:
-            return self._data.get(key.lower(), [])
-        else:
-            return self._data.get(key, [])
+        return self._data.get(key, [])
 
 
 class Retrieval(object):
@@ -233,7 +308,21 @@ class Retrieval(object):
         self._exclude_top_k = exclude_top_k
         self._max_def_per_word = max_def_per_word
 
-        # Preprocess all the definitions to see token ids instead of chars
+        # Note: there are 2 types of quantities we track
+        # - absolute quantities (e.g. N_words)
+        # - freq-dep quantities (e.g. N_queried_words)
+        self._debug_info = {
+            "missed_word_sample": [],
+
+            "N_words": 0,
+            "N_missed_words": 0,
+
+            "N_def": 0,
+            "N_dropped_def": 0,
+
+            "N_queried_words": 0,
+            "N_queried_missed_words": 0,
+        }
 
     def retrieve(self, batch):
         """Retrieves all definitions for a batch of words sequences.
@@ -266,24 +355,44 @@ class Retrieval(object):
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
+
+                    # Debug info
+                    self._debug_info['N_words'] += 1
+                    self._debug_info['N_missed_words'] += (len(word_defs) == 0)
+                    # End of debug info
+
                     if not word_defs:
-                        # No defition for this word
                         continue
 
-                    if self._max_def_per_word < len(word_defs):
-                        word_defs_ids = numpy.random.choice(range(len(word_defs)), self._max_def_per_word, replace=False)
-                        word_defs = [word_defs[i] for i in word_defs_ids]
-
                     for i, def_ in enumerate(word_defs):
+                        self._debug_info['N_def'] += 1
                         if len(def_) > self._max_def_length:
+                            self._debug_info['N_dropped_def'] += 1
                             continue
+
                         final_def_ = [self._vocab.bod]
                         for token in def_:
                             final_def_.append(self._vocab.word_to_id(token))
                         final_def_.append(self._vocab.eod)
                         word_def_indices[word].append(len(definitions))
                         definitions.append(final_def_)
-                for def_index in word_def_indices[word]:
+
+                # Debug info
+                if len(word_def_indices[word]) == 0:
+                    self._debug_info['N_queried_missed_words'] += 1
+                    if len(self._debug_info['missed_word_sample']) == 15:
+                        self._debug_info['missed_word_sample'].pop()
+                    self._debug_info['missed_word_sample'].append(word)
+                self._debug_info['N_queried_words'] += 1
+                # End of debug info
+
+                if self._max_def_per_word < len(word_def_indices[word]):
+                    word_defs = numpy.random.choice(word_def_indices[word],
+                        self._max_def_per_word, replace=False)
+                else:
+                    word_defs = word_def_indices[word]
+
+                for def_index in word_defs:
                     def_map.append((seq_pos, word_pos, def_index))
 
         return definitions, def_map

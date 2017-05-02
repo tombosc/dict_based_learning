@@ -50,7 +50,7 @@ from fuel.streams import ServerDataStream
 
 from dictlearn.util import configure_logger
 from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWordEmbeddingEval, construct_embedder, \
-    construct_dict_embedder
+    construct_dict_embedder, RetrievalPrintStats
 from dictlearn.data import SNLIData
 from dictlearn.nli_simple_model import NLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -84,7 +84,7 @@ def _initialize_model_and_data(c):
 
     # Dict
     if c['dict_path']:
-        dict = Dictionary(c['dict_path'], try_lowercase=c['try_lowercase'])
+        dict = Dictionary(c['dict_path'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
         data.set_retrieval(retrieval)
@@ -117,7 +117,7 @@ def _initialize_model_and_data(c):
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
-    return simple, data, dict
+    return simple, data, dict, retrieval
 
 def train_snli_model(config, save_path, params, fast_start, fuel_server):
 
@@ -141,7 +141,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     # Save config to save_path
     json.dump(config, open(os.path.join(save_path, "config.json"), "w"))
 
-    simple, data, used_dict = _initialize_model_and_data(c)
+    simple, data, used_dict, used_retrieval = _initialize_model_and_data(c)
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
@@ -220,14 +220,21 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                     width=120))
     logger.info("# of parameters {}".format(
         sum([np.prod(parameters[key].get_value().shape) for key in sorted(train_params_keys)])))
-    logger.info("Parameter norms" + "\n" +
-                pprint.pformat(
-                    [(key, np.linalg.norm(parameters[key].get_value().reshape(-1, )).mean())
-                        for key in sorted(train_params_keys)],
-                    width=120))
+    # logger.info("Parameter norms" + "\n" +
+    #             pprint.pformat(
+    #                 [(key, np.linalg.norm(parameters[key].get_value().reshape(-1, )).mean())
+    #                     for key in sorted(train_params_keys)],
+    #                 width=120))
 
     train_monitored_vars = [final_cost] + cg[True].outputs
     monitored_vars = cg[False].outputs
+
+    try:
+        logger.info("Adding unk ratio tracking")
+        train_monitored_vars.append(VariableFilter(name='def_unk_ratio')(cg[True])[0])
+        monitored_vars.append(VariableFilter(name='def_unk_ratio')(cg[False])[0])
+    except:
+        logger.warning("Didnt find def_unk_ratio in cg")
 
     try:
         logger.info("Adding dict lookup norm tracking")
@@ -285,6 +292,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             before_training=fuel_server),
         Timing(every_n_batches=c['mon_freq_train']),
         ProgressBar(),
+        RetrievalPrintStats(retrieval=used_retrieval, every_n_batches=c['mon_freq_valid'],
+                        before_training=not fast_start),
         Timestamp(),
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
