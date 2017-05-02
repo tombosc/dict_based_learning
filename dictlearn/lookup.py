@@ -204,22 +204,22 @@ class MeanPoolCombiner(Initializable):
             self._def_state_compose = MLP(activations=[None],
                 dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
-        elif compose_type == "gated_sum":
-
+        if compose_type == "gated_sum" or compose_type == "gated_transform_and_sum":
             if dropout_type == "per_word" or dropout_type == "per_example":
                 raise RuntimeError("I dont think this combination makes much sense")
 
-            self._compose_gate_mlp = Linear(2 * emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
+            self._compose_gate_mlp = Linear(2 * emb_dim, emb_dim,
+                                            weights_init=GlorotUniform(),
+                                            biases_init=Constant(0),
+                                            name='gate_linear')
             self._compose_gate_act = Logistic()
             children.extend([self._compose_gate_mlp, self._compose_gate_act])
-        elif compose_type == 'sum':
+        if compose_type == 'sum':
             if not emb_dim == dim:
                 raise ValueError("Embedding has different dim! Cannot use compose_type='sum'")
-        elif compose_type == 'transform_and_sum':
-            self._def_state_transform = Linear(dim, emb_dim)
+        if compose_type == 'transform_and_sum' or compose_type == "gated_transform_and_sum":
+            self._def_state_transform = Linear(dim, emb_dim, name='state_transform')
             children.append(self._def_state_transform)
-        else:
-            raise NotImplementedError()
 
         super(MeanPoolCombiner, self).__init__(children=children, **kwargs)
 
