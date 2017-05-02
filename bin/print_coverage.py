@@ -25,7 +25,7 @@ def main():
         print(i, coverage[i] * 100)
 
     if args.dict and args.top_k:
-        print("Analysing coverage of dict")
+        print("Analysing coverage of dict of text")
         dict_ = Dictionary(args.dict)
         n_covered_by_dict = 0
         n_covered_by_dict_by_lowercasing = 0
@@ -36,8 +36,14 @@ def main():
                 n_covered_by_dict_by_lowercasing += freqs[i]
         print("Dictionary has {} entries".format(dict_.num_entries()))
         print("Dictionary fraction {} of total occurences".format(n_covered_by_dict / total))
-        print("Dictionary covers {}% of total occurences not covered by word emb".format(100 * n_covered_by_dict / (total * (1 - coverage[args.top_k-1]))))
-        print("Querying dict with lowercased words covers {}% of total occurences not covered by word emb".format(100 * n_covered_by_dict_by_lowercasing / (total * (1 - coverage[args.top_k-1]))))
+        print("Dictionary covers {}% of total occurences not covered by word emb".
+            format(100 * n_covered_by_dict / (total * (1 - coverage[args.top_k-1]))))
+        print("Querying dict with lowercased words covers {}% of total occurences not covered by word emb".
+            format(100 * n_covered_by_dict_by_lowercasing / (total * (1 - coverage[args.top_k-1]))))
+
+        # Estimating how many UNKs will there be in dict entries
+        print("Analysing coverage of dict definitions by passed vocab")
+        # TODO
 
     elif args.embedding and args.top_k:
 
