@@ -175,7 +175,7 @@ class SimilarityWordEmbeddingEval(SimpleExtension):
                 data.y[0]))
 
         logger.info("Checking embedder for " + prefix)
-        logger.info(embedder(["love"])[0:5]) # Test embedder
+        logger.info(embedder(["love"])[0, 0:5]) # Test embedder
 
         self._tasks = tasks
 
