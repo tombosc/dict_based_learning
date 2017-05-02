@@ -362,10 +362,6 @@ class Retrieval(object):
                     if not word_defs:
                         continue
 
-                    if self._max_def_per_word < len(word_defs):
-                        word_defs_ids = numpy.random.choice(range(len(word_defs)), self._max_def_per_word, replace=False)
-                        word_defs = [word_defs[i] for i in word_defs_ids]
-
                     for i, def_ in enumerate(word_defs):
                         self._debug_info['N_def'] += 1
                         if len(def_) > self._max_def_length:
@@ -388,7 +384,13 @@ class Retrieval(object):
                 self._debug_info['N_queried_words'] += 1
                 # End of debug info
 
-                for def_index in word_def_indices[word]:
+                if self._max_def_per_word < len(word_def_indices[word]):
+                    word_defs = numpy.random.choice(word_def_indices[word],
+                        self._max_def_per_word, replace=False)
+                else:
+                    word_defs = word_def_indices[word]
+
+                for def_index in word_defs:
                     def_map.append((seq_pos, word_pos, def_index))
 
         return definitions, def_map
