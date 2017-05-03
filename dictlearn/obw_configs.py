@@ -6,7 +6,6 @@ lm_config_registry = ConfigRegistry()
 lm_config_registry.set_root_config({
     # data
     'data_path': prefix + 'data/onebillionword/',
-    'layout': 'standard',
     'dict_path' : "",
     'layout' : 'standard',
     'num_input_words' : 10000,
@@ -19,14 +18,17 @@ lm_config_registry.set_root_config({
     'top_k_words' : -1,
 
     # model
+    'emb_dim' : 500,
     'dim' : 500,
     'compose_type' : 'sum',
-    'standalone_def_rnn' : False,
-    'standalone_def_lookup': False,
     'disregard_word_embeddings' : False,
     'learning_rate' : 0.001,
     'momentum' : 0.9,
     'grad_clip_threshold' : 5.0,
+    # model: def_reader
+    'def_reader': 'LSTMReadDefinitions',
+    'standalone_def_rnn' : False,
+    'standalone_def_lookup': False,
 
     # monitoring and checkpointing
     'mon_freq_train' : 100,
@@ -67,11 +69,11 @@ c['learning_rate'] = 0.0003
 # Stuff to tune:
 c['standalone_def_lookup'] = False
 c['standalone_def_rnn'] = False
-c['compose_type'] = 'linear_and_sum'
+c['compose_type'] = 'transform_and_sum'
 lm_config_registry['obw_10k_dict1'] = c
 
 c['standalone_def_rnn'] = True
-c['compose_type'] = 'linear_and_sum'
+c['compose_type'] = 'transform_and_sum'
 lm_config_registry['obw_10k_dict2'] = c
 
 c['standalone_def_rnn'] = False
@@ -82,4 +84,6 @@ c['standalone_def_rnn'] = True
 c['compose_type'] = 'sum'
 lm_config_registry['obw_10k_dict4'] = c
 
-
+c = lm_config_registry['obw_base_10k_slower']
+c['num_input_words'] = 30000
+lm_config_registry['obw_base_10k_slower_30kI'] = c
