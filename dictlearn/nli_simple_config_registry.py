@@ -19,10 +19,12 @@ snli_config_registry.set_root_config({
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
     'max_def_length': 50,
+    'with_too_long_defs': 'drop',
     'train_emb': 1, # Remove by default embeddings. Our goal ATM is to beat random init
     "combiner_dropout": 0.0,
     "combiner_dropout_type": "per_unit",
     "combiner_gating": "none",
+    "combiner_reader_translate": True,
     "combiner_shortcut": False,
     'reader_type': 'rnn',
     'share_def_lookup': False,
@@ -58,7 +60,7 @@ snli_config_registry['baseline_mnli'] = c
 
 c = snli_config_registry['root']
 c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy'
+c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/glove.840B.300d.npy'
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
 snli_config_registry['baseline_mnli_glove'] = c
 

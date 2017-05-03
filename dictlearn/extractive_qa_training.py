@@ -42,7 +42,8 @@ from dictlearn.util import (
 from dictlearn.theano_util import parameter_stats, unk_ratio
 from dictlearn.data import ExtractiveQAData
 from dictlearn.extensions import (
-    DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer)
+    DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer,
+    RetrievalPrintStats)
 from dictlearn.extractive_qa_model import ExtractiveQAModel
 from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -219,6 +220,9 @@ def _train_extractive_qa_impl(new_training_job, config, save_path,
             after_epoch=True,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
+        #RetrievalPrintStats(
+        #    retrieval=data._retrieval, every_n_batches=c['mon_freq_train'],
+        #    before_training=not fast_start),
         Printing(after_epoch=True,
                  every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])

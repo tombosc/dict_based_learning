@@ -95,15 +95,31 @@ class Dictionary(object):
     def add_from_lowercase_definitions(self, vocab):
         """Add definitions of lowercase word to each word (concat)
         """
+        added = 0
+        no_def = 0
         for word in vocab.words:
             word_lower = word.lower()
             if word != word_lower:
                 lower_defs = self._data.get(word_lower)
                 # This can be quite slow. But this code will not be used
                 # very often.
-                for def_ in lower_defs:
-                    if not def_ in self._data[word]:
-                        self._data[word].append(def_)
+
+                if not lower_defs:
+                    if lower_defs is None:
+                        # This can happen when API just dies (then vocab has, dict doesnt)
+                        logger.error("None def for " + word)
+                        continue
+                    no_def += 1
+                    logger.warning("No defs for " + str(word_lower) + "," + str(word))
+                else:
+                    # Note: often empty, like Zeus -> zeus
+                    for def_ in lower_defs:
+                        if not def_ in self._data[word]:
+                            added += 1
+                            self._data[word].append(def_)
+
+        logger.info("No def for {}".format(no_def))
+        logger.info("Added {} new defs in add_from_lowercase_definitions".format(added))
         self.save()
 
 
@@ -115,6 +131,7 @@ class Dictionary(object):
 
         """
         lemmatizer = nltk.WordNetLemmatizer()
+        added = 0
         for word in vocab.words:
 
             word_list = [word, word.lower()] if try_lower else [word]
@@ -129,9 +146,11 @@ class Dictionary(object):
                             # very often.
                             for def_ in lemma_defs:
                                 if not def_ in self._data[word]:
+                                    added += 1
                                     self._data[word].append(def_)
                 except:
                     logger.error("lemmatizer crashed on {}".format(word))
+        logger.info("Added {} new defs in add_from_lemma_definitions".format(added))
         self.save()
 
     def add_dictname_to_defs(self, vocab):
@@ -287,7 +306,9 @@ class Dictionary(object):
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000):
+                 max_def_length=1000, exclude_top_k=None,
+                 with_too_long_defs='drop',
+                 max_def_per_word=1000000):
         """Retrieves the definitions.
 
         vocab
@@ -307,6 +328,12 @@ class Retrieval(object):
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
         self._max_def_per_word = max_def_per_word
+        # TODO(kudkudak): To follow conventions - def dropping etc should also be performed in crawl_dict.py
+
+        if with_too_long_defs not in {"drop", "crop"}:
+            raise NotImplementedError("Not implemented " + with_too_long_defs)
+
+        self._with_too_long_defs = with_too_long_defs
 
         # Note: there are 2 types of quantities we track
         # - absolute quantities (e.g. N_words)
@@ -356,6 +383,7 @@ class Retrieval(object):
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
 
+                    # TODO(kudkudak): actually it wont count only once each word)
                     # Debug info
                     self._debug_info['N_words'] += 1
                     self._debug_info['N_missed_words'] += (len(word_defs) == 0)
@@ -366,9 +394,15 @@ class Retrieval(object):
 
                     for i, def_ in enumerate(word_defs):
                         self._debug_info['N_def'] += 1
-                        if len(def_) > self._max_def_length:
-                            self._debug_info['N_dropped_def'] += 1
-                            continue
+
+                        if  self._with_too_long_defs == 'drop':
+                            if len(def_) > self._max_def_length:
+                                self._debug_info['N_dropped_def'] += 1
+                                continue
+                        elif self._with_too_long_defs == 'crop':
+                            def_ = def_[0:self._max_def_length]
+                        else:
+                            raise NotImplementedError()
 
                         final_def_ = [self._vocab.bod]
                         for token in def_:
@@ -380,9 +414,10 @@ class Retrieval(object):
                 # Debug info
                 if len(word_def_indices[word]) == 0:
                     self._debug_info['N_queried_missed_words'] += 1
-                    if len(self._debug_info['missed_word_sample']) == 15:
-                        self._debug_info['missed_word_sample'].pop()
-                    self._debug_info['missed_word_sample'].append(word)
+                    if len(self._debug_info['missed_word_sample']) == 10000:
+                        self._debug_info['missed_word_sample'][numpy.random.randint(10000)] = word
+                    else:
+                        self._debug_info['missed_word_sample'].append(word)
                 self._debug_info['N_queried_words'] += 1
                 # End of debug info
 

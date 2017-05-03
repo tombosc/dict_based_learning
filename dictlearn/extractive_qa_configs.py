@@ -67,3 +67,11 @@ c['max_def_length'] = 30
 c['exclude_top_k'] = 10000
 c['dict_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch/dict.json'
 qa_config_registry['squad3'] = c
+
+c = qa_config_registry['squad3']
+c['num_input_words'] = 3000
+c['exclude_top_k'] = 3000
+c['emb_dim'] = 300
+c['reuse_word_embeddings'] = True
+c['compose_type'] = 'transform_and_sum'
+qa_config_registry['squad4'] = c

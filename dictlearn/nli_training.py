@@ -86,6 +86,7 @@ def _initialize_model_and_data(c):
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
         retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
+            with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
         data.set_retrieval(retrieval)
     else:
@@ -105,6 +106,7 @@ def _initialize_model_and_data(c):
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
+        combiner_reader_translate=c['combiner_reader_translate'],
 
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
@@ -167,11 +169,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         cg[train_phase] = ComputationGraph([cost, error_rate])
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
-    if params:
-        logger.debug("Load parameters from {}".format(params))
-        with open(params) as src:
-            cg[True].set_parameter_values(load_parameters(src))
-
     # Weight decay (TODO: Make it less bug prone)
     weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp],
         roles=[WEIGHT])(cg[True].variables)
@@ -183,6 +180,22 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     pop_updates = get_batch_normalization_updates(cg[True])
     extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
         for p, m in pop_updates]
+
+    if params:
+        logger.debug("Load parameters from {}".format(params))
+        with open(params) as src:
+            loaded_params = load_parameters(src)
+            cg[True].set_parameter_values(loaded_params)
+            for param, m in pop_updates:
+                param.set_value(loaded_params[get_brick(param).get_hierarchical_name(param)])
+
+    if os.path.exists(os.path.join(save_path, "main_loop.tar")):
+       logger.warning("Manually loading BN stats :(")
+       with open(os.path.join(save_path, "main_loop.tar")) as src:
+           loaded_params = load_parameters(src)
+
+       for param, m in pop_updates:
+           param.set_value(loaded_params[get_brick(param).get_hierarchical_name(param)])
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
