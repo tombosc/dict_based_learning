@@ -36,14 +36,17 @@ class LSTMReadDefinitions(Initializable):
         If non zero will (a bit confusing name) restrict dynamically vocab.
         WARNING: it assumes word ids are monotonical with frequency!
 
-    dim : int
-        Dimensionality of the def rnn.
-
     emb_dim : int
         Dimensionality of word embeddings
 
+    dim : int
+        Dimensionality of the def rnn.
+
+    lookup: None or LookupTable
+
+    fork_and_rnn: None or tuple (Linear, RNN)
     """
-    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, fork_and_rnn=None, **kwargs):
         self._num_input_words = num_input_words
         self._vocab = vocab
 
@@ -54,8 +57,12 @@ class LSTMReadDefinitions(Initializable):
         else:
             self._def_lookup = lookup
 
-        self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
-        self._def_rnn = LSTM(dim, name='def_rnn')
+        if fork_and_rnn is None:
+            self._def_fork = Linear(emb_dim, 4 * dim, name='def_fork')
+            self._def_rnn = LSTM(dim, name='def_rnn')
+        else:
+            self._def_fork, self._def_rnn = fork_and_rnn
+
         children.extend([self._def_lookup, self._def_fork, self._def_rnn])
 
         super(LSTMReadDefinitions, self).__init__(children=children, **kwargs)
