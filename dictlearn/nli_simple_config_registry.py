@@ -23,6 +23,7 @@ snli_config_registry.set_root_config({
     "combiner_dropout": 0.0,
     "combiner_dropout_type": "per_unit",
     "combiner_gating": "none",
+    "combiner_reader_translate": True,
     "combiner_shortcut": False,
     'reader_type': 'rnn',
     'share_def_lookup': False,

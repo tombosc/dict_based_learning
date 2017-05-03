@@ -105,6 +105,7 @@ def _initialize_model_and_data(c):
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
+        combiner_reader_translate=c['combiner_reader_translate'],
 
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )

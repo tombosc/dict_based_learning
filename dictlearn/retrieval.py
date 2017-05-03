@@ -304,7 +304,8 @@ class Dictionary(object):
 class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
-                 max_def_length=1000, exclude_top_k=None, max_def_per_word=1000000):
+                 max_def_length=1000, exclude_top_k=None,
+                 max_def_per_word=1000000):
         """Retrieves the definitions.
 
         vocab

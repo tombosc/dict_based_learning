@@ -39,6 +39,7 @@ def main():
                 n_covered_by_dict += freqs[i]
             elif dict_.get_definitions(words[i].lower()):
                 n_covered_by_dict_by_lowercasing += freqs[i]
+
         print("Dictionary has {} entries".format(dict_.num_entries()))
         print("Dictionary fraction {} of total occurences".format(n_covered_by_dict / total))
         print("Dictionary covers additional {}% of total occurences not covered by word emb".

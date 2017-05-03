@@ -39,6 +39,7 @@ class NLISimple(Initializable):
             retrieval=None, reader_type="rnn", compose_type="sum",
             disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
             combiner_dropout_type="regular", share_def_lookup=False, exclude_top_k=-1,
+            combiner_reader_translate=True,
             combiner_gating="none",
             combiner_shortcut=False,
             # Others
@@ -74,10 +75,13 @@ class NLISimple(Initializable):
 
             if reader_type== "rnn":
                 self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_words,
-                    weights_init=Uniform(width=0.1),
+                    weights_init=Uniform(width=0.1), translate=combiner_reader_translate,
                     biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
             elif reader_type == "mean":
+                if combiner_reader_translate:
+                    logger.warning("Translate in MeanPoolReadDefinitions is redundant")
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_words,
+                    translate=combiner_reader_translate,
                     weights_init=Uniform(width=0.1), lookup=def_lookup, dim=emb_dim,
                     biases_init=Constant(0.), emb_dim=emb_dim, vocab=vocab)
 
