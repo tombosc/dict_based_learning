@@ -60,7 +60,7 @@ snli_config_registry['baseline_mnli'] = c
 
 c = snli_config_registry['root']
 c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy'
+c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/glove.840B.300d.npy'
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
 snli_config_registry['baseline_mnli_glove'] = c
 
