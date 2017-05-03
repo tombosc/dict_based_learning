@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -x
 
+export
+
 export PYTHONUNBUFFERED=1
 export THEANO_FLAGS="device=cuda,compiledir=/workspace/.theano"
 export PYTHONPATH=/workspace/Theano:/workspace/blocks:/workspace/fuel:/workspace/dict_based_learning
