@@ -220,9 +220,9 @@ def _train_extractive_qa_impl(new_training_job, config, save_path,
             after_epoch=True,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
-        RetrievalPrintStats(
-            retrieval=data._retrieval, every_n_batches=c['mon_freq_train'],
-            before_training=not fast_start),
+        #RetrievalPrintStats(
+        #    retrieval=data._retrieval, every_n_batches=c['mon_freq_train'],
+        #    before_training=not fast_start),
         Printing(after_epoch=True,
                  every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
