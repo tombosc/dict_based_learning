@@ -305,6 +305,7 @@ class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
                  max_def_length=1000, exclude_top_k=None,
+                 with_too_long_defs='drop',
                  max_def_per_word=1000000):
         """Retrieves the definitions.
 
@@ -325,6 +326,12 @@ class Retrieval(object):
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
         self._max_def_per_word = max_def_per_word
+        # TODO(kudkudak): To follow conventions - def dropping etc should also be performed in crawl_dict.py
+
+        if with_too_long_defs not in {"drop", "crop"}:
+            raise NotImplementedError("Not implemented " + with_too_long_defs)
+
+        self._with_too_long_defs = with_too_long_defs
 
         # Note: there are 2 types of quantities we track
         # - absolute quantities (e.g. N_words)
@@ -385,9 +392,15 @@ class Retrieval(object):
 
                     for i, def_ in enumerate(word_defs):
                         self._debug_info['N_def'] += 1
-                        if len(def_) > self._max_def_length:
-                            self._debug_info['N_dropped_def'] += 1
-                            continue
+
+                        if  self._with_too_long_defs == 'drop':
+                            if len(def_) > self._max_def_length:
+                                self._debug_info['N_dropped_def'] += 1
+                                continue
+                        elif self._with_too_long_defs == 'crop':
+                            def_ = def_[0:self._max_def_length]
+                        else:
+                            raise NotImplementedError()
 
                         final_def_ = [self._vocab.bod]
                         for token in def_:
