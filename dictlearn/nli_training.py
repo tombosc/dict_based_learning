@@ -167,11 +167,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         cg[train_phase] = ComputationGraph([cost, error_rate])
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
-    if params:
-        logger.debug("Load parameters from {}".format(params))
-        with open(params) as src:
-            cg[True].set_parameter_values(load_parameters(src))
-
     # Weight decay (TODO: Make it less bug prone)
     weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp],
         roles=[WEIGHT])(cg[True].variables)
@@ -184,10 +179,21 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
         for p, m in pop_updates]
 
-    if os.path.exists(save_path):
+    if params:
+        logger.debug("Load parameters from {}".format(params))
+        with open(params) as src:
+            loaded_params = load_parameters(src)
+            cg[True].set_parameter_values(loaded_params)
+            for param, m in pop_updates:
+                param.set_value(loaded_params[get_brick(param).get_hierarchical_name(param)])
+
+    if os.path.exists(os.path.join(save_path, "main_loop.tar")):
        logger.warning("Manually loading BN stats :(")
-       for param, m [p for p, m in pop_updates]:
-           param.set_value(params[get_brick(param).get_hierarchical_name(param)])
+       with open(os.path.join(save_path, "main_loop.tar")) as src:
+           loaded_params = load_parameters(src)
+
+       for param, m in pop_updates:
+           param.set_value(loaded_params[get_brick(param).get_hierarchical_name(param)])
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
