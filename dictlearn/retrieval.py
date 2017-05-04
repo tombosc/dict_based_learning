@@ -236,6 +236,9 @@ class Dictionary(object):
             original = []
             lemmatizer = nltk.WordNetLemmatizer()
             for w in words:
+                if isinstance(w, str):
+                    w = w.decode('utf-8')
+
                 for part_of_speech in ['a', 's', 'r', 'n', 'v']:
                     lemma = lemmatizer.lemmatize(w, part_of_speech)
                     if lemma not in words_set:
@@ -252,6 +255,8 @@ class Dictionary(object):
         # fully trusted when it comes to unknown words.
         for word in words:
             if word in self._data:
+                if isinstance(word, str):
+                    word = word.decode('utf-8')
                 logger.debug("a known word {}, skip".format(word))
                 continue
 

@@ -34,9 +34,9 @@ def main():
                         help="Identity mapping dictionary")
     parser.add_argument("--spelling", action="store_true",
                         help="Spelling dictionary")
-    parser.add_argument("--crawl-also-lowercase", default=False,
+    parser.add_argument("--crawl-also-lowercase", default=0, type=int,
         help="If true will crawl also lower-cased version")
-    parser.add_argument("--crawl-also-lemma", default=False,
+    parser.add_argument("--crawl-also-lemma", default=0, type=int,
         help="If true will crawl also lemma version")
     parser.add_argument("vocab", help="Vocabulary path")
     parser.add_argument("dict", help="Destination path for the dictionary")

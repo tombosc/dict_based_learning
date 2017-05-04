@@ -62,16 +62,30 @@ c = qa_config_registry['squad_glove']
 from1to2(c)
 qa_config_registry['squad_glove2'] = c
 
+def from2to3(c):
+    c['max_def_length'] = 30
+    c['exclude_top_k'] = 10000
+    c['dict_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch/dict2.json'
+
 c = qa_config_registry['squad2']
-c['max_def_length'] = 30
-c['exclude_top_k'] = 10000
-c['dict_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch/dict.json'
+from2to3(c)
 qa_config_registry['squad3'] = c
 
+c = qa_config_registry['squad_glove2']
+from2to3(c)
+qa_config_registry['squad_glove3'] = c
+
+def from3to4(c):
+    c['num_input_words'] = 3000
+    c['exclude_top_k'] = 3000
+    c['emb_dim'] = 300
+    c['reuse_word_embeddings'] = True
+    c['compose_type'] = 'transform_and_sum'
+
 c = qa_config_registry['squad3']
-c['num_input_words'] = 3000
-c['exclude_top_k'] = 3000
-c['emb_dim'] = 300
-c['reuse_word_embeddings'] = True
-c['compose_type'] = 'transform_and_sum'
+from3to4(c)
 qa_config_registry['squad4'] = c
+
+c = qa_config_registry['squad_glove3']
+from3to4(c)
+qa_config_registry['squad_glove4'] = c

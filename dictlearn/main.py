@@ -12,10 +12,10 @@ def add_config_arguments(config, parser):
     for key, value in config.items():
         if isinstance(value, bool):
             parser.add_argument(
-                "--" + key, dest=key, default=value, action="store_true",
+                "--" + key, dest=key, default=None, action="store_true",
                 help="Enable a setting from the configuration")
             parser.add_argument(
-                "--no_" + key, dest=key, default=value, action="store_false",
+                "--no_" + key, dest=key, default=None, action="store_false",
                 help="Disable a setting from the configuration")
         else:
             parser.add_argument(
