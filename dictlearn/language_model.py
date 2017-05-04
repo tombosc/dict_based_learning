@@ -128,7 +128,7 @@ class LanguageModel(Initializable):
         """
         if self._retrieval:
             defs, def_mask, def_map = self._retrieve(words)
-            def_embeddings = self._def_reader.apply(application_call, defs, def_mask)
+            def_embeddings = self._def_reader.apply(defs, def_mask)
 
             # TODO(tombosc): are the following ~15 lines useful?
             # Reorder and copy embeddings so that the embeddings of all the definitions
@@ -175,7 +175,7 @@ class LanguageModel(Initializable):
             masked_root_mean_square(word_embs, mask), name='word_emb_RMS')
 
         if self._retrieval:
-            rnn_inputs = self._combiner.apply(application_call, word_embs, mask, def_embeddings)
+            rnn_inputs = self._combiner.apply(word_embs, mask, def_embeddings, def_map)
             #TODO: deal with other args of combiner.apply
             #if self._compose_type == 'sum':
             #    rnn_inputs += def_mean
