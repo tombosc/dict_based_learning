@@ -191,7 +191,7 @@ class MeanPoolCombiner(Initializable):
         self._word_dropout_weighting = word_dropout_weighting
         self._def_word_gating = def_word_gating
 
-        if def_word_gating not in {"none", "multiplicative"}:
+        if def_word_gating not in {"none", "word_emb", "self_attention"}:
             raise NotImplementedError()
 
         if word_dropout_weighting not in {"no_weighting"}:
@@ -202,7 +202,7 @@ class MeanPoolCombiner(Initializable):
 
         children = []
 
-        if self._def_word_gating== "multiplicative":
+        if self._def_word_gating== "word_emb" or self._def_word_gating=="self_attention":
             self._gate_mlp = Linear(emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
             self._gate_act = Logistic()
             children.extend([self._gate_mlp, self._gate_act])
@@ -237,6 +237,7 @@ class MeanPoolCombiner(Initializable):
         batch_shape = word_embs.shape
 
         # def_map is (seq_pos, word_pos, def_index)
+        # def_embeddings is (id, emb_dim)
 
         # Mean-pooling of definitions
         def_sum = T.zeros((batch_shape[0] * batch_shape[1], def_embeddings.shape[1]))
@@ -246,7 +247,20 @@ class MeanPoolCombiner(Initializable):
         if self._def_word_gating == "none":
             def_sum = T.inc_subtensor(def_sum[flat_indices],
                 def_embeddings[def_map[:, 2]])
-        elif self._def_word_gating == "multiplicative":
+        elif self._def_word_gating == "self_attention":
+            # NOTE(kudkudak): I assume this is able to filter out for instance defs
+            # with a lot of UNKs
+            gates = def_embeddings[def_map[:, 2]]
+            gates = self._gate_mlp.apply(gates)
+            gates = self._gate_act.apply(gates)
+            #
+            # application_call.add_auxiliary_variable(
+            #     masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
+            #     name=call_name + '_gate_rootmean2')
+
+            def_sum = T.inc_subtensor(def_sum[flat_indices],
+                gates * def_embeddings[def_map[:, 2]])
+        elif self._def_word_gating == "word_emb":
             gates = word_embs.reshape((batch_shape[0] * batch_shape[1], -1))
             gates = self._gate_mlp.apply(gates)
             gates = self._gate_act.apply(gates)
