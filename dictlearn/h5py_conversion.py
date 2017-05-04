@@ -11,7 +11,7 @@ import numpy as np
 from os import path
 from fuel.datasets.hdf5 import H5PYDataset
 
-from dictlearn.corenlp import StanfordCoreNLP, tokenize
+from dictlearn.corenlp import StanfordCoreNLP
 
 logger = logging.getLogger()
 
@@ -224,6 +224,7 @@ def snli_to_h5py_dataset(snli_path, dst_path, lowercase=False):
         for s in tqdm.tqdm(d['sentence1_binary_parse'], total=len(d))]
     d['sentence2_tokenized'] = [[w.lower() if lowercase else w for w in extract_tokens_from_binary_parse(s)]
         for s in tqdm.tqdm(d['sentence2_binary_parse'], total=len(d))]
+
     d['gold_label_int'] = [SNLI_LABEL2INT[x] for x in d['gold_label']]
 
     # Get all words

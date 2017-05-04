@@ -19,7 +19,7 @@ def main():
     parser.add_argument("--type", choices=("text", "squad", "snli"), default='text',
                         help="What kind of data should be converted")
     parser.add_argument("data", help="The data to convert")
-    parser.add_argument("--lowercase", default=False)
+    parser.add_argument("--lowercase", action="store_true")
     parser.add_argument("h5", help="Destination")
     args = parser.parse_args()
 
