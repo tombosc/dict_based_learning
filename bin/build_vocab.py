@@ -4,6 +4,7 @@ import h5py
 import argparse
 import logging
 from six import text_type
+import json
 
 from dictlearn.vocab import Vocabulary
 
@@ -28,6 +29,12 @@ def main():
                     print("Missing text field from " + f_name)
 
                 text.extend(h5_file['text'][:])
+        elif f_name.endswith('.json'):
+            logging.info("Will build the vocabulary from definitions in a dictionary")
+            dict_ = json.load(open(f_name, "r"))
+            for list_defs in dict_.values():
+                for def_ in list_defs:
+                    text.extend(def_)
         else:
             with open(f_name) as file_:
                 def data():
