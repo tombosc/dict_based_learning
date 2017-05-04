@@ -26,7 +26,7 @@ lm_config_registry.set_root_config({
     'momentum' : 0.9,
     'grad_clip_threshold' : 5.0,
     # model: def_reader
-    'def_reader': 'LSTMReadDefinitions',
+    'def_reader': 'LSTM',
     'standalone_def_rnn' : False,
     'standalone_def_lookup': False,
 
@@ -64,7 +64,7 @@ c['batch_size'] = 32
 c['batch_size_valid'] = 32
 c['max_def_per_word'] = 3
 c['max_def_length'] = 100
-c['dict_path'] = prefix + 'data/dict_all.json'
+c['dict_path'] = prefix + 'data/dict_snli.json'
 c['learning_rate'] = 0.0003 
 # Stuff to tune:
 c['standalone_def_lookup'] = False
@@ -87,3 +87,36 @@ lm_config_registry['obw_10k_dict4'] = c
 c = lm_config_registry['obw_base_10k_slower']
 c['num_input_words'] = 30000
 lm_config_registry['obw_base_10k_slower_30kI'] = c
+
+# Want to try a new dictionary
+# doesn't contain everything cause it crashed as well
+c = lm_config_registry['obw_10k_dict3']
+c['dict_path'] = prefix + 'data/dict_obw.json'
+lm_config_registry['obw_10k_dict3_n'] = c
+
+# what happens with mean reader
+c = lm_config_registry['obw_10k_dict3']
+c['def_reader'] = 'mean'
+c['dict_path'] = prefix + 'data/dict_obw.json'
+lm_config_registry['obw_10k_dict_mean'] = c
+
+c = lm_config_registry['obw_10k_dict3_n']
+# This run aims to see what happens with a basic combiner but more defs.
+# I suspect this is worse than 3
+c['max_def_per_word'] = 10
+# Only keep small defs: faster and changes nothing as ~99% of dicts are < 50 in
+# length
+c['max_def_length'] = 50 
+lm_config_registry['obw_10k_dict3_n2'] = c
+
+c = lm_config_registry['obw_10k_dict1']
+c['learning_rate'] = 0.002
+lm_config_registry['obw_10k_dict1_fast'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['learning_rate'] = 0.002
+lm_config_registry['obw_base_10k_fast'] = c
+
+c = lm_config_registry['obw_10k_dict1_fast']
+c['standalone_def_rnn'] = True
+lm_config_registry['obw_10k_dict2_fast'] = c

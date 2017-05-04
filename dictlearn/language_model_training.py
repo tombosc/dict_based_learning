@@ -59,6 +59,7 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
 
     lm = LanguageModel(c['emb_dim'], c['dim'], c['num_input_words'],
                        c['num_output_words'], data.vocab, retrieval,
+                       c['def_reader'],
                        c['standalone_def_lookup'],
                        c['standalone_def_rnn'],
                        c['disregard_word_embeddings'],
@@ -164,10 +165,10 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
-    #if retrieval:
-    #    extensions.append(RetrievalPrintStats(retrieval=retrieval,
-    #                          every_n_batches=c['mon_freq_valid'],
-    #                          before_training=not fast_start))
+    if retrieval:
+        extensions.append(RetrievalPrintStats(retrieval=retrieval,
+                              every_n_batches=c['mon_freq_valid'],
+                              before_training=not fast_start))
 
     logger.info("monitored variables during training:" + "\n" +
                 pprint.pformat(train_monitored_vars, width=120))
