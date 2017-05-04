@@ -14,6 +14,7 @@ qa_config_registry.set_root_config({
     'batch_size_valid' : 32,
     'max_def_length' : 1000,
     'exclude_top_k' : 0,
+    'def_word_gating' : "none",
     'compose_type' : "sum",
     'reuse_word_embeddings' : False,
     'def_reader' : 'LSTMReadDefinitions',

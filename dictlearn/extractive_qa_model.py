@@ -46,8 +46,8 @@ class ExtractiveQAModel(Initializable):
 
     """
     def __init__(self, dim, emb_dim, coattention, num_input_words, vocab,
-                 use_definitions, compose_type, def_reader,
-                 reuse_word_embeddings, **kwargs):
+                 use_definitions, def_word_gating, compose_type,
+                 def_reader, reuse_word_embeddings, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
@@ -87,7 +87,8 @@ class ExtractiveQAModel(Initializable):
                 def_reader_kwargs.update(dict(normalize=True, translate=False))
             self._def_reader = def_reader_class(**def_reader_kwargs)
             self._combiner = MeanPoolCombiner(
-                dim=dim, emb_dim=emb_dim, compose_type=compose_type)
+                dim=dim, emb_dim=emb_dim,
+                def_word_gating=def_word_gating, compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
         super(ExtractiveQAModel, self).__init__(children=children, **kwargs)
