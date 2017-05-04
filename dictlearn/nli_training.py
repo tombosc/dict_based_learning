@@ -306,7 +306,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         Timing(every_n_batches=c['mon_freq_train']),
         ProgressBar(),
         RetrievalPrintStats(retrieval=used_retrieval, every_n_batches=c['mon_freq_valid'],
-                        before_training=not fast_start),
+            before_training=not fast_start),
         Timestamp(),
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
@@ -373,8 +373,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     for p, m in pop_updates:
         model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
 
-    if c['embedding_path']:
-        assert np.all(simple.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
+    # if c['embedding_path']:
+        # assert np.all(simple.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
 
     main_loop = MainLoop(
         algorithm,

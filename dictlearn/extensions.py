@@ -132,18 +132,19 @@ class RetrievalPrintStats(SimpleExtension):
             log.current_row[name] = value
 
     def do(self, *args, **kwargs):
-        d = self._retrieval._debug_info
-        record_tuples = []
-        record_tuples.append(("retrieval_mis_ratio", d['N_missed_words'] / max(1, float(d['N_words']))))
-        record_tuples.append(("retrieval_N_words", d['N_words']))
-        record_tuples.append(("retrieval_N_queried_words", d['N_queried_words']))
-        record_tuples.append(("retrieval_mis_query_ratio", d['N_queried_missed_words']
-                                                           /  max(1, float(d['N_queried_words']))))
-        record_tuples.append(("retrieval_drop_def_ratio", d['N_dropped_def'] /  max(1, float(d['N_def']))))
-        if len(d['missed_word_sample']) >= 20:
-            record_tuples.append(("retrieval_missed_word_sample",
-                numpy.random.choice(d['missed_word_sample'], 20, replace=False)))
-        self.add_records(self.main_loop.log, record_tuples)
+        if self._retrieval is not None:
+            d = self._retrieval._debug_info
+            record_tuples = []
+            record_tuples.append(("retrieval_mis_ratio", d['N_missed_words'] / max(1, float(d['N_words']))))
+            record_tuples.append(("retrieval_N_words", d['N_words']))
+            record_tuples.append(("retrieval_N_queried_words", d['N_queried_words']))
+            record_tuples.append(("retrieval_mis_query_ratio", d['N_queried_missed_words']
+                                                               /  max(1, float(d['N_queried_words']))))
+            record_tuples.append(("retrieval_drop_def_ratio", d['N_dropped_def'] /  max(1, float(d['N_def']))))
+            if len(d['missed_word_sample']) >= 20:
+                record_tuples.append(("retrieval_missed_word_sample",
+                    numpy.random.choice(d['missed_word_sample'], 20, replace=False)))
+            self.add_records(self.main_loop.log, record_tuples)
 
 class SimilarityWordEmbeddingEval(SimpleExtension):
     """
