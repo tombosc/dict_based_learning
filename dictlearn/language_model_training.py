@@ -31,7 +31,8 @@ from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.theano_util import parameter_stats
 from dictlearn.data import LanguageModellingData
 from dictlearn.extensions import (
-    DumpTensorflowSummaries, StartFuelServer)
+    DumpTensorflowSummaries, StartFuelServer, RetrievalPrintStats)
+
 from dictlearn.language_model import LanguageModel
 from dictlearn.retrieval import Retrieval, Dictionary
 
@@ -56,8 +57,8 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
                               c['max_def_length'], c['exclude_top_k'])
 
-    lm = LanguageModel(c['dim'], c['num_input_words'], c['num_output_words'],
-                       data.vocab, retrieval,
+    lm = LanguageModel(c['emb_dim'], c['dim'], c['num_input_words'],
+                       c['num_output_words'], data.vocab, retrieval,
                        c['standalone_def_lookup'],
                        c['standalone_def_rnn'],
                        c['disregard_word_embeddings'],
@@ -84,12 +85,9 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         with open(params) as src:
             cg.set_parameter_values(load_parameters(src))
 
-
     length = rename(words.shape[1], 'length')
-    last_correct, = VariableFilter(name='last_correct')(cg)
-    last_correct_acc = rename(last_correct.mean(), 'last_correct_acc')
     perplexity, = VariableFilter(name='perplexity')(cg)
-    monitored_vars = [length, cost, last_correct_acc, perplexity]
+    monitored_vars = [length, cost, perplexity]
     if c['dict_path']:
         num_definitions, = VariableFilter(name='num_definitions')(cg)
         max_definition_length, = VariableFilter(name='max_definition_length')(cg)
@@ -115,27 +113,9 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     if c['grad_clip_threshold']:
         train_monitored_vars.append(algorithm.total_gradient_norm)
 
-    if c['dict_path']:
-        def_mean_rootmean2, = VariableFilter(name='def_mean_rootmean2')(cg)
-        merged_input_rootmean2, = VariableFilter(name='merged_input_rootmean2')(cg)
-        train_monitored_vars.extend([def_mean_rootmean2, merged_input_rootmean2])
-    rnn_input_rootmean2, = VariableFilter(name='rnn_input_rootmean2')(cg)
-    train_monitored_vars.append(rnn_input_rootmean2)
-
-    if 0:
-        input_gates, = VariableFilter(bricks=[lm._main_rnn], name='input_gates')(cg)
-        forget_gates, = VariableFilter(bricks=[lm._main_rnn], name='forget_gates')(cg)
-        output_gates, = VariableFilter(bricks=[lm._main_rnn], name='output_gates')(cg)
-        train_monitored_vars.append(
-            rename(masked_root_mean_square(input_gates, words_mask.T), 'input_gate_root_mean2'))
-        train_monitored_vars.append(
-            rename(masked_root_mean_square(forget_gates, words_mask.T), 'forget_gate_root_mean2'))
-        train_monitored_vars.append(
-            rename(masked_root_mean_square(output_gates, words_mask.T), 'output_gate_root_mean2'))
-    if 1:
-        main_rnn_states = VariableFilter(applications=[lm._main_rnn.apply], name='states')(cg)[-1]
-        train_monitored_vars.append(
-            rename(masked_root_mean_square(main_rnn_states, words_mask.T), 'main_rnn_states_root_mean2'))
+    word_emb_RMS, = VariableFilter(name='word_emb_RMS')(cg)
+    main_rnn_in_RMS, = VariableFilter(name='main_rnn_in_RMS')(cg)
+    train_monitored_vars.extend([word_emb_RMS, main_rnn_in_RMS])
 
     if c['monitor_parameters']:
         train_monitored_vars.extend(parameter_stats(parameters, algorithm))
@@ -147,6 +127,8 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     training_stream = data.get_stream(
         'train', batch_size=c['batch_size'], max_length=c['max_length'],
         seed=stream_seed)
+    valid_stream = data.get_stream('valid', batch_size=c['batch_size_valid'],
+                                max_length=c['max_length'], seed=stream_seed)
     original_training_stream = training_stream
     if fuel_server:
         # the port will be configured by the StartFuelServer extension
@@ -166,7 +148,7 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
             every_n_batches=c['mon_freq_train']),
         DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=c['batch_size_valid']),
+            valid_stream,
             prefix="valid").set_conditions(
                 before_first_epoch=not fast_start,
                 every_n_batches=c['mon_freq_valid']),
@@ -182,6 +164,16 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
     ]
+    #if retrieval:
+    #    extensions.append(RetrievalPrintStats(retrieval=retrieval,
+    #                          every_n_batches=c['mon_freq_valid'],
+    #                          before_training=not fast_start))
+
+    logger.info("monitored variables during training:" + "\n" +
+                pprint.pformat(train_monitored_vars, width=120))
+    logger.info("monitored variables during valid:" + "\n" +
+                pprint.pformat(monitored_vars, width=120))
+
 
     main_loop = MainLoop(
         algorithm,

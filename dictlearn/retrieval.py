@@ -279,6 +279,8 @@ class Dictionary(object):
                 try:
                     # seems like definition text can be both str and unicode
                     text = def_.text
+                    if def_.text is None:
+                        continue
                     if isinstance(text, str):
                         text = text.decode('utf-8')
                     tokenized_def = corenlp.tokenize(text)[0]

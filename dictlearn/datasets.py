@@ -18,6 +18,9 @@ from fuel.transformers import Transformer
 
 
 class PicklableFile(object):
+    """
+    Iterable file handler. WARNING: empty line raise EOF
+    """
 
     def __init__(self, *args, **kwargs):
         self._args = args
@@ -25,18 +28,21 @@ class PicklableFile(object):
         self._file = open(*args, **kwargs)
 
     def __getstate__(self):
-        state = self.__dict__
-        state['_pos'] = self._file.tell()
-        del state['_file']
+        state = dict(self.__dict__)
+        if hasattr(self, '_file'):
+            state['_pos'] = self._file.tell()
+            del state['_file']
         return state
 
     def __setstate__(self, state):
         state['_file'] = open(*state['_args'], **state['_kwargs'])
-        state['_file'].seek(state['_pos'])
-        del state['_pos']
+        if hasattr(self, '_pos'):
+            state['_file'].seek(state['_pos'])
+            del state['_pos']
         self.__dict__.update(state)
 
     def read(self, *args):
+        #TODO(tombosc): remove: useless?
         return self._file.read(*args)
 
     def __iter__(self):
@@ -46,11 +52,17 @@ class PicklableFile(object):
         # note, that we can't use next(self._file) because this
         # will trigger the use of a lookahead buffer, and
         # self._file.tell() will become unreliable
-        return self._file.readline()
+        l = self._file.readline()
+        if l == "":
+            raise StopIteration
+        return l
 
 
 class TextDataset(Dataset):
-    """Provides basic access to lines of a text file."""
+    """
+    Provides basic access to lines of a text file.
+    WARNING: text file shouldn't have any empty lines
+    """
     provides_sources = ('words',)
     example_iteration_scheme = None
 
