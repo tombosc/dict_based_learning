@@ -250,18 +250,18 @@ class MeanPoolCombiner(Initializable):
             def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         elif self._def_word_gating == "self_attention":
             gates = def_embeddings[def_map[:, 2]]
-            gates = self._gate_mlp.apply(gates)
-            gates = self._gate_act.apply(gates)
+            gates = self._gate_mlp.apply(gates)[:, 0]
+            application_call.add_auxiliary_variable(gates, name='def_gates')
 
             # Dima: this is numerically unstable. But maybe it can work.
             # If it can work, we can avoid too much coding.
-            def_normalization = T.zeros_like(def_sum)
+            def_normalization = T.zeros_like(def_lens)
             def_normalization = T.inc_subtensor(
                 def_normalization[flat_indices], T.exp(gates))
             gates = T.exp(gates) / def_normalization[flat_indices]
 
             def_mean = T.inc_subtensor(def_sum[flat_indices],
-                gates * def_embeddings[def_map[:, 2]])
+                gates[:, None] * def_embeddings[def_map[:, 2]])
         elif self._def_word_gating == "word_emb":
             gates = word_embs.reshape((batch_shape[0] * batch_shape[1], -1))
             gates = self._gate_mlp.apply(gates)

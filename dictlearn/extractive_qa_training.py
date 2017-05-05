@@ -133,6 +133,12 @@ def _train_extractive_qa_impl(new_training_job, config, save_path,
         max_definition_length = rename(qam.input_vars['defs'].shape[1],
                                        'max_definition_length')
         monitored_vars.extend([def_unk_ratio, num_definitions, max_definition_length])
+        if c['def_word_gating'] == 'self_attention':
+            def_gates = VariableFilter(name='def_gates')(cg)
+            def_gates_min = tensor.minimum(*[x.min() for x in def_gates])
+            def_gates_max = tensor.maximum(*[x.max() for x in def_gates])
+            monitored_vars.extend([rename(def_gates_min, 'def_gates_min'),
+                                   rename(def_gates_max, 'def_gates_max')])
 
     parameters = cg.get_parameter_dict()
     logger.info("Cost parameters" + "\n" +
