@@ -34,6 +34,7 @@ from blocks.serialization import load_parameters
 from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.extensions.predicates import OnLogRecord
 
+import fuel
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import (
@@ -58,9 +59,12 @@ def _initialize_data_and_model(config):
     if c['dict_path']:
         dict_vocab = data.vocab
         if c['dict_vocab_path']:
-            dict_vocab = Vocabulary(c['dict_vocab_path'])
-        data._retrieval = Retrieval(dict_vocab, Dictionary(c['dict_path']),
-                                    c['max_def_length'], c['exclude_top_k'])
+            dict_vocab = Vocabulary(
+                os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
+        data._retrieval = Retrieval(
+            dict_vocab, Dictionary(
+                os.path.join(fuel.config.data_path[0], c['dict_path'])),
+            c['max_def_length'], c['exclude_top_k'])
     qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
                             data.vocab,
                             use_definitions=bool(c['dict_path']),
@@ -73,29 +77,14 @@ def _initialize_data_and_model(config):
     qam.initialize()
     logger.debug("Model created")
     if c['embedding_path']:
-        qam.set_embeddings(numpy.load(c['embedding_path']))
+        qam.set_embeddings(numpy.load(
+            os.path.join(fuel.config.data_path[0], c['embedding_path'])))
     logger.debug("Embeddings loaded")
     return data, qam
 
 
-def train_extractive_qa(config, save_path, *args, **kwargs):
-    new_training_job = False
-    if not os.path.exists(save_path):
-        new_training_job = True
-        os.mkdir(save_path)
-
-    run_with_redirection(os.path.join(save_path, 'stdout.txt'),
-                         os.path.join(save_path, 'stderr.txt'),
-                        _train_extractive_qa_impl)(
-        new_training_job, config, save_path, *args, **kwargs)
-
-def _train_extractive_qa_impl(new_training_job, config, save_path,
+def train_extractive_qa(new_training_job, config, save_path,
                               params, fast_start, fuel_server):
-    if new_training_job:
-        logger.info("Start a new job")
-    else:
-        logger.info("Continue an existing job")
-
     root_path = os.path.join(save_path, 'training_state')
     extension = '.tar'
     tar_path = root_path + extension
@@ -133,18 +122,26 @@ def _train_extractive_qa_impl(new_training_job, config, save_path,
         max_definition_length = rename(qam.input_vars['defs'].shape[1],
                                        'max_definition_length')
         monitored_vars.extend([def_unk_ratio, num_definitions, max_definition_length])
+        if c['def_word_gating'] == 'self_attention':
+            def_gates = VariableFilter(name='def_gates')(cg)
+            def_gates_min = tensor.minimum(*[x.min() for x in def_gates])
+            def_gates_max = tensor.maximum(*[x.max() for x in def_gates])
+            monitored_vars.extend([rename(def_gates_min, 'def_gates_min'),
+                                   rename(def_gates_max, 'def_gates_max')])
 
     parameters = cg.get_parameter_dict()
-    logger.info("Cost parameters" + "\n" +
-                pprint.pformat(
-                    [(key, parameters[key].get_value().shape)
-                     for key in sorted(parameters.keys())],
-                    width=120))
     trained_parameters = parameters.values()
     if c['embedding_path']:
         logger.debug("Exclude  word embeddings from the trained parameters")
         trained_parameters = [p for p in trained_parameters
                               if not p == qam.embeddings_var()]
+    logger.info("Cost parameters" + "\n" +
+                pprint.pformat(
+                    [" ".join((
+                       key, str(parameters[key].get_value().shape),
+                       'trained' if parameters[key] in trained_parameters else 'frozen'))
+                     for key in sorted(parameters.keys())],
+                    width=120))
 
     rules = []
     if c['grad_clip_threshold']:
