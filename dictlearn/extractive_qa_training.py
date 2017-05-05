@@ -34,6 +34,7 @@ from blocks.serialization import load_parameters
 from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.extensions.predicates import OnLogRecord
 
+import fuel
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import (
@@ -58,9 +59,12 @@ def _initialize_data_and_model(config):
     if c['dict_path']:
         dict_vocab = data.vocab
         if c['dict_vocab_path']:
-            dict_vocab = Vocabulary(c['dict_vocab_path'])
-        data._retrieval = Retrieval(dict_vocab, Dictionary(c['dict_path']),
-                                    c['max_def_length'], c['exclude_top_k'])
+            dict_vocab = Vocabulary(
+                os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
+        data._retrieval = Retrieval(
+            dict_vocab, Dictionary(
+                os.path.join(fuel.config.data_path[0], c['dict_path'])),
+            c['max_def_length'], c['exclude_top_k'])
     qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
                             data.vocab,
                             use_definitions=bool(c['dict_path']),
@@ -73,7 +77,8 @@ def _initialize_data_and_model(config):
     qam.initialize()
     logger.debug("Model created")
     if c['embedding_path']:
-        qam.set_embeddings(numpy.load(c['embedding_path']))
+        qam.set_embeddings(numpy.load(
+            os.path.join(fuel.config.data_path[0], c['embedding_path'])))
     logger.debug("Embeddings loaded")
     return data, qam
 

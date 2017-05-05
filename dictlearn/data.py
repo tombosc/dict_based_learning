@@ -97,7 +97,7 @@ class Data(object):
 
     """
     def __init__(self, path, layout):
-        self._path = path
+        self._path = os.path.join(fuel.config.data_path[0], path)
         self._layout = layout
         if not self._layout in ['standard', 'lambada', 'squad', 'snli', 'mnli']:
             raise "layout {} is not supported".format(self._layout)
