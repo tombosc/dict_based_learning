@@ -78,24 +78,8 @@ def _initialize_data_and_model(config):
     return data, qam
 
 
-def train_extractive_qa(config, save_path, *args, **kwargs):
-    new_training_job = False
-    if not os.path.exists(save_path):
-        new_training_job = True
-        os.mkdir(save_path)
-
-    run_with_redirection(os.path.join(save_path, 'stdout.txt'),
-                         os.path.join(save_path, 'stderr.txt'),
-                        _train_extractive_qa_impl)(
-        new_training_job, config, save_path, *args, **kwargs)
-
-def _train_extractive_qa_impl(new_training_job, config, save_path,
+def train_extractive_qa(new_training_job, config, save_path,
                               params, fast_start, fuel_server):
-    if new_training_job:
-        logger.info("Start a new job")
-    else:
-        logger.info("Continue an existing job")
-
     root_path = os.path.join(save_path, 'training_state')
     extension = '.tar'
     tar_path = root_path + extension
