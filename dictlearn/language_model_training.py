@@ -19,9 +19,12 @@ from blocks.graph import ComputationGraph
 from blocks.model import Model
 from blocks.filter import VariableFilter
 from blocks.extensions import FinishAfter, Timing, Printing
+from blocks.extensions.training import TrackTheBest
 from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
+from blocks.extensions.predicates import OnLogRecord
+
 from blocks.main_loop import MainLoop
 from blocks.serialization import load_parameters
 
@@ -39,14 +42,8 @@ from dictlearn.retrieval import Retrieval, Dictionary
 logger = logging.getLogger()
 
 
-def train_language_model(config, save_path, params, fast_start, fuel_server):
-    new_training_job = False
-    if not os.path.exists(save_path):
-        logger.info("Start a new job")
-        new_training_job = True
-        os.mkdir(save_path)
-    else:
-        logger.info("Continue an existing job")
+def train_language_model(new_training_job, config, save_path, params,
+                         fast_start, fuel_server):
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
@@ -55,7 +52,8 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
     retrieval = None
     if c['dict_path']:
         retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
-                              c['max_def_length'], c['exclude_top_k'])
+                              c['max_def_length'], c['exclude_top_k'],
+                              max_def_per_word=c['max_def_per_word'])
 
     lm = LanguageModel(c['emb_dim'], c['dim'], c['num_input_words'],
                        c['num_output_words'], data.vocab, retrieval,
@@ -137,39 +135,52 @@ def train_language_model(config, save_path, params, fast_start, fuel_server):
             sources=training_stream.sources,
             produces_examples=training_stream.produces_examples)
 
+    validation = DataStreamMonitoring(
+        monitored_vars,
+        valid_stream,
+        prefix="valid").set_conditions(
+            before_first_epoch=not fast_start,
+            every_n_batches=c['mon_freq_valid'])
+    track_the_best = TrackTheBest(
+            validation.record_name(perplexity),
+            choose_best=min).set_conditions(
+            before_training=True,
+            after_epoch=True,
+            every_n_batches=c['mon_freq_valid'])
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
         StartFuelServer(original_training_stream,
                         stream_path,
                         before_training=fuel_server),
-        Timing(every_n_batches=c['mon_freq_train']),
+        Timing(every_n_batches=c['mon_freq_train'])]
+    if retrieval: 
+        extensions.append(RetrievalPrintStats(retrieval=retrieval,
+                          every_n_batches=c['mon_freq_valid'],
+                          before_training=not fast_start))
+
+    extensions.extend([
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
             every_n_batches=c['mon_freq_train']),
-        DataStreamMonitoring(
-            monitored_vars,
-            valid_stream,
-            prefix="valid").set_conditions(
-                before_first_epoch=not fast_start,
-                every_n_batches=c['mon_freq_valid']),
+        validation,
+        track_the_best,
         Checkpoint(main_loop_path,
                    save_separately=['iteration_state'],
                    before_training=not fast_start,
                    every_n_batches=c['save_freq_batches'],
-                   after_training=not fast_start),
+                   after_training=not fast_start)
+            .add_condition(
+                ['after_batch', 'after_epoch'],
+                 OnLogRecord(track_the_best.notification_name),
+                 (save_path + "_best.tar",)),
         DumpTensorflowSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
-    ]
-    if retrieval:
-        extensions.append(RetrievalPrintStats(retrieval=retrieval,
-                              every_n_batches=c['mon_freq_valid'],
-                              before_training=not fast_start))
-
+        ])
     logger.info("monitored variables during training:" + "\n" +
                 pprint.pformat(train_monitored_vars, width=120))
     logger.info("monitored variables during valid:" + "\n" +
