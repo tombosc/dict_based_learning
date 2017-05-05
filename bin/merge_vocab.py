@@ -42,11 +42,10 @@ def main():
     target_coverage_def = np.sum(vocab_def.frequencies) * args.target_coverage_def
     current_vocab = set([])
 
-
     # Of course I could use binsearch
     for id in range(vocab_def.size() / args.step_size):
         for id2 in range(args.step_size):
-            current_vocab.add(vocab_def.id_to_word(id*args.step_size + id2))
+            current_vocab.add(vocab_def.id_to_word(id * args.step_size + id2))
 
         current_vocab_mod = set(current_vocab)
 
@@ -93,41 +92,6 @@ def main():
     vocab_result = Vocabulary.build(list(current_vocab), sort_by='lexicographical')
     vocab_result.save(args.target)
 
-    # while current_coverage_def < target_coverage_def or \
-        # current_coverage_text < target_coverage_text:
-        #
-        # if current_coverage_def < target_coverage_def:
-        #     # Rewind until id_def is unique
-        #     while vocab_def.id_to_word(id_def) in current_vocab:
-        #         id_def += 1
-        #         if id_def >= vocab_def.size():
-        #             raise Exception("Perhaps try lower target coverage")
-        #
-        #     w = vocab_def.id_to_word(id_def)
-        #     current_vocab.add(w)
-        #     current_coverage_def += vocab_def.frequencies[id_def]
-        #     current_coverage_text += vocab_text.frequencies[vocab_text.word_to_id(w)]
-        #
-        # if current_coverage_text < target_coverage_text:
-        #     # Rewind until id_text is unique
-        #     while vocab_text.id_to_word(id_text) in current_vocab:
-        #         id_text += 1
-        #         if id_text >= vocab_text.size():
-        #             raise Exception("Perhaps try lower target coverage")
-        #
-        #     w = vocab_text.id_to_word(id_text)
-        #     current_vocab.add(w)
-        #     current_coverage_def += vocab_def.frequencies[vocab_def.word_to_id(w)]
-        #     current_coverage_text += vocab_text.frequencies[id_text]
-        #
-        # print("After adding {} words I covered {} of def and {} of text occurences".format(
-        #     len(current_vocab), current_coverage_def / float(np.sum(vocab_def.frequencies))
-        #     , current_coverage_text / float(np.sum(vocab_text.frequencies))
-        # ))
-
-    # TODO: Sanity check that vocab indeed satisifes the printed out
-
 
 if __name__ == "__main__":
     main()
-
