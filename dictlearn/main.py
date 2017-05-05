@@ -46,7 +46,6 @@ def main(config_registry, training_func):
     for key in config:
         if key in args and getattr(args, key) is not None:
             config[key] = getattr(args, key)
-    pprint.pprint(config)
 
     new_training_job = False
     if not os.path.exists(args.save_path):
