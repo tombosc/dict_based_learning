@@ -254,9 +254,10 @@ class Dictionary(object):
         # lemmas, not stems. Lemmatizers, on the other hand, can not be
         # fully trusted when it comes to unknown words.
         for word in words:
+            if isinstance(word, str):
+                word = word.decode('utf-8')
+
             if word in self._data:
-                if isinstance(word, str):
-                    word = word.decode('utf-8')
                 logger.debug(u"a known word {}, skip".format(word))
                 continue
 
@@ -268,10 +269,12 @@ class Dictionary(object):
             if self._remaining_calls < _MIN_REMAINING_CALLS:
                 self._wait_until_quota_reset()
             try:
+                if isinstance(word, str):
+                    word = word.decode('utf-8')
                 # NOTE(kudkudak): We fetch all dictionaries, but retrieval can filter them based on meta info
                 definitions = self._word_api.getDefinitions(word)
             except Exception:
-                logger.error("error during fetching '{}'".format(word))
+                logger.error(u"error during fetching '{}'".format(word))
                 logger.error(traceback.format_exc())
                 continue
             self._remaining_calls -= 1
@@ -297,7 +300,7 @@ class Dictionary(object):
                 except Exception:
                     logger.error("error during tokenizing '{}'".format(text))
                     logger.error(traceback.format_exc())
-            logger.debug("definitions for '{}' fetched {} remaining".format(word, self._remaining_calls))
+            logger.debug(u"definitions for '{}' fetched {} remaining".format(word, self._remaining_calls))
         self.save()
         self._last_saved = 0
 
