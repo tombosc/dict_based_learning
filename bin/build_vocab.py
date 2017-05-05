@@ -1,4 +1,11 @@
 #!/usr/bin/env python
+"""
+Builds vocab from either h5/txt or dict.
+
+Call as:
+python bin/build_vocab.py $DATA_DIR/snli/dict_all_3_05_lowercase_lemma.json
+    $DATA_DIR/snli/dict_all_3_05_lowercase_lemma_vocab.txt
+"""
 
 import h5py
 import argparse

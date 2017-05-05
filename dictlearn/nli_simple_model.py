@@ -33,7 +33,8 @@ class NLISimple(Initializable):
     Simple model based on https://github.com/Smerity/keras_snl
     """
 
-    def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1, dropout=0.2, encoder="sum",
+    def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1,
+            num_input_def_words=-1, dropout=0.2, encoder="sum",
             n_layers=3, translate_after_emb=True,
             # Dict lookup kwargs
             retrieval=None, reader_type="rnn", compose_type="sum",
@@ -50,6 +51,7 @@ class NLISimple(Initializable):
         self._dropout = dropout
         self._retrieval = retrieval
         self._only_def = disregard_word_embeddings
+        self._num_input_def_words = num_input_def_words
         self._translate_after_emb = translate_after_emb
 
         if reader_type not in {"rnn", "mean"}:
@@ -74,13 +76,13 @@ class NLISimple(Initializable):
                 def_lookup = None
 
             if reader_type== "rnn":
-                self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_words,
+                self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_def_words,
                     weights_init=Uniform(width=0.1), translate=combiner_reader_translate,
                     biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 if combiner_reader_translate:
                     logger.warning("Translate in MeanPoolReadDefinitions is redundant")
-                self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_words,
+                self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_def_words,
                     translate=combiner_reader_translate,
                     weights_init=Uniform(width=0.1), lookup=def_lookup, dim=emb_dim,
                     biases_init=Constant(0.), emb_dim=emb_dim, vocab=vocab)

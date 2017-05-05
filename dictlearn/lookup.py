@@ -47,6 +47,13 @@ class LSTMReadDefinitions(Initializable):
     fork_and_rnn: None or tuple (Linear, RNN)
     """
     def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, fork_and_rnn=None, **kwargs):
+
+        if num_input_words > 0:
+            logger.info("Restricting def vocab to " + str(num_input_words))
+            self._num_input_words = num_input_words
+        else:
+            self._num_input_words = vocab.size()
+
         self._num_input_words = num_input_words
         self._vocab = vocab
 
@@ -108,6 +115,13 @@ class MeanPoolReadDefinitions(Initializable):
     """
     def __init__(self, num_input_words, emb_dim, dim, vocab,
                  lookup=None, translate=True, normalize=True, **kwargs):
+
+        if num_input_words > 0:
+            logger.info("Restricting def vocab to " + str(num_input_words))
+            self._num_input_words = num_input_words
+        else:
+            self._num_input_words = vocab.size()
+
         self._num_input_words = num_input_words
         self._vocab = vocab
         self._translate = translate

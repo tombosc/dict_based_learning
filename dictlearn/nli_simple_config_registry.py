@@ -31,6 +31,8 @@ snli_config_registry.set_root_config({
     'combiner_bn': False,
 
     'num_input_words': 0, # Will take vocab size
+    'num_input_def_words': 0, # Will take vocab size
+
     "encoder": "sum",
     "dropout": 0.3,
     'batch_size': 512,
@@ -81,7 +83,8 @@ c['max_def_per_word'] = 20 # Allows to have strict calculation on memory consump
 c['combiner_dropout'] = 0.0
 c['train_emb'] = 1
 c['embedding_path'] = ''
-c['num_input_words'] = 5000
+c['num_input_words'] = 3000
+c['num_input_def_words'] = 3000
 c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict_mnli'] = c
 
@@ -95,7 +98,8 @@ c['max_def_per_word'] = 20
 c['combiner_dropout'] = 0.0
 c['train_emb'] = 1
 c['embedding_path'] = ''
-c['num_input_words'] = 5000
+c['num_input_words'] = 3000
+c['num_input_def_words'] = 3000
 c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict'] = c
 
