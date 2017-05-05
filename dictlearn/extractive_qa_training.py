@@ -64,6 +64,7 @@ def _initialize_data_and_model(config):
     qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
                             data.vocab,
                             use_definitions=bool(c['dict_path']),
+                            def_word_gating=c['def_word_gating'],
                             compose_type=c['compose_type'],
                             reuse_word_embeddings=c['reuse_word_embeddings'],
                             def_reader=c['def_reader'],

@@ -36,7 +36,7 @@ class PicklableFile(object):
 
     def __setstate__(self, state):
         state['_file'] = open(*state['_args'], **state['_kwargs'])
-        if hasattr(self, '_pos'):
+        if '_pos' in state:
             state['_file'].seek(state['_pos'])
             del state['_pos']
         self.__dict__.update(state)

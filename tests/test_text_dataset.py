@@ -7,10 +7,20 @@ from tests.util import (
 
 def test_text_dataset():
     with temporary_content_path(TEST_TEXT) as path:
-        dataset = TextDataset(path)
+        dataset = TextDataset(path, 100)
         stream = dataset.get_example_stream()
         it = stream.get_epoch_iterator()
-        assert next(it) == (['abc', 'abc', 'def'],)
-        it = cPickle.loads(cPickle.dumps(it))
-        assert next(it) == (['def', 'def', 'xyz'],)
-        assert next(it) == (['xyz'],)
+
+        d = next(it)
+        assert d == (['abc', 'abc', 'def'],)
+        pickled_it = cPickle.dumps(it)
+
+        d = next(it)
+        assert d == (['def', 'def', 'xyz'],)
+
+        it = cPickle.loads(pickled_it)
+        d = next(it)
+        assert d == (['def', 'def', 'xyz'],)
+
+        d = next(it)
+        assert d == (['xyz'],)
