@@ -56,12 +56,14 @@ snli_config_registry['baseline_glove'] = c
 
 c = snli_config_registry['root']
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+c['layout'] = 'mnli'
 snli_config_registry['baseline_mnli'] = c
 
 c = snli_config_registry['root']
 c['train_emb'] = 0 # Following Squad convention
 c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/glove.840B.300d.npy'
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+c['layout'] = 'mnli'
 snli_config_registry['baseline_mnli_glove'] = c
 
 ### Small dict ###
@@ -71,6 +73,7 @@ snli_config_registry['baseline_mnli_glove'] = c
 # Looking up words from test/dev as well
 c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/dict_all_with_lowercase.json'
 c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+c['layout'] = 'mnli'
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
@@ -103,4 +106,5 @@ snli_config_registry['rnn_small_dict'] = c
 
 c = snli_config_registry['sum_small_dict_mnli']
 c['reader_type'] = 'rnn'
+c['layout'] = 'mnli'
 snli_config_registry['rnn_small_dict_mnli'] = c
