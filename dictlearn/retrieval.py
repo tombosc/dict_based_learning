@@ -257,7 +257,7 @@ class Dictionary(object):
             if word in self._data:
                 if isinstance(word, str):
                     word = word.decode('utf-8')
-                logger.debug("a known word {}, skip".format(word))
+                logger.debug(u"a known word {}, skip".format(word))
                 continue
 
             if self._last_saved >= _SAVE_EVERY_CALLS:

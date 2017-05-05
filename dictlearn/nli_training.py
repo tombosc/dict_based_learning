@@ -15,6 +15,11 @@ from blocks.bricks.cost import MisclassificationRate
 from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
+from blocks.extensions.training import TrackTheBest
+from dictlearn.extensions import (
+    DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer,
+    RetrievalPrintStats)
+from blocks.extensions.predicates import OnLogRecord
 from blocks.serialization import load_parameters
 from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
 
@@ -107,6 +112,7 @@ def _initialize_model_and_data(c):
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
         combiner_reader_translate=c['combiner_reader_translate'],
+        num_input_def_word=c['num_input_def_words'],
 
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
@@ -138,6 +144,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     with open(os.path.join(save_path, "cmd.txt"), "w") as f:
         f.write(" ".join(sys.argv))
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
+    main_loop_best_val_path = os.path.join(save_path, 'main_loop_best_val.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     # Save config to save_path
@@ -166,6 +173,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             s2_def_map=s2_def_map, train_phase=train_phase)
         cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
         error_rate = MisclassificationRate().apply(y.flatten(), pred)
+        # NOTE: Please don't change outputs of cg
         cg[train_phase] = ComputationGraph([cost, error_rate])
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
@@ -207,7 +215,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         s2_mask.tag.test_value = test_value_data[3]
         y.tag.test_value = test_value_data[4]
 
-    # TODO: Support freezing all but dict
     # Freeze embeddings
     if not c['train_emb']:
         frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]
@@ -233,14 +240,12 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
                     width=120))
     logger.info("# of parameters {}".format(
         sum([np.prod(parameters[key].get_value().shape) for key in sorted(train_params_keys)])))
-    # logger.info("Parameter norms" + "\n" +
-    #             pprint.pformat(
-    #                 [(key, np.linalg.norm(parameters[key].get_value().reshape(-1, )).mean())
-    #                     for key in sorted(train_params_keys)],
-    #                 width=120))
+
+    ### Monitored args ###
 
     train_monitored_vars = [final_cost] + cg[True].outputs
     monitored_vars = cg[False].outputs
+    val_acc = monitored_vars[1]
 
     try:
         logger.info("Adding unk ratio tracking")
@@ -295,6 +300,8 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     else:
         training_stream = regular_training_stream
 
+    ### Build extensions ###
+
     extensions = [
         Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job),
@@ -311,29 +318,32 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
             every_n_batches=c['mon_freq_train']),
-        # TODO: Add measure on test and track best
     ]
 
     if c['layout'] == 'snli':
-        valid_streams = ['valid']
+        validation = DataStreamMonitoring(
+            monitored_vars,
+            data.get_stream('valid', batch_size=c['batch_size']),
+            prefix='valid').set_conditions(
+            before_training=not fast_start,
+            every_n_batches=c['mon_freq_valid']),
+        extensions.append(validation)
     elif c['layout'] == 'mnli':
-        valid_streams = ['valid_matched', 'valid_mismatched']
+        validation = DataStreamMonitoring(
+            monitored_vars,
+            data.get_stream('valid_matched', batch_size=c['batch_size']),
+            prefix='valid_matched').set_conditions(
+            before_training=not fast_start,
+            every_n_batches=c['mon_freq_valid']),
+        validation_mismatched = DataStreamMonitoring(
+            monitored_vars,
+            data.get_stream('valid_mismatched', batch_size=c['batch_size']),
+            prefix='valid_mismatched').set_conditions(
+            before_training=not fast_start,
+            every_n_batches=c['mon_freq_valid']),
+        extensions.extend([validation, validation_mismatched])
     else:
         raise NotImplementedError()
-
-    for stream_name in valid_streams:
-        extensions.append(DataStreamMonitoring(
-            monitored_vars,
-            data.get_stream(stream_name, batch_size=c['batch_size']),
-            prefix=stream_name).set_conditions(
-            before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid']),)
-
-    extensions.append(Checkpoint(main_loop_path, # TODO: Save best on valid
-            parameters=cg[True].parameters + [p for p, m in pop_updates],
-            before_training=not fast_start,
-            every_n_batches=c['save_freq_batches'],
-            after_training=not fast_start))
 
     # Similarity trackers for embeddings
     retrieval_all = Retrieval(vocab=data.vocab, dictionary=used_dict,
@@ -366,10 +376,33 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         save_path,
         every_n_batches=c['mon_freq_train'],
         after_training=True),
+        DumpTensorflowSummaries(
+            save_path,
+            after_epoch=True,
+            every_n_batches=c['mon_freq_train'],
+            after_training=True),
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])])
 
+    track_the_best = TrackTheBest(
+        validation.record_name(val_acc),
+        choose_best=max).set_conditions(
+            before_training=True,
+            after_epoch=True,
+            every_n_batches=c['mon_freq_valid'])
+    extensions.append(track_the_best)
+    extensions.append(Checkpoint(main_loop_path,
+        parameters=cg[True].parameters + [p for p, m in pop_updates],
+        before_training=not fast_start,
+        every_n_batches=c['save_freq_batches'],
+        after_training=not fast_start).add_condition(
+        ['after_batch', 'after_epoch'],
+        OnLogRecord(track_the_best.notification_name),
+        (main_loop_best_val_path,)))
+
     logger.info(extensions)
+
+    ### Run training ###
 
     if "VISDOM_SERVER" in os.environ:
         print("Running visdom server")
@@ -383,9 +416,6 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
     model = Model(cost)
     for p, m in pop_updates:
         model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
-
-    # if c['embedding_path']:
-        # assert np.all(simple.get_embeddings_lookups()[0].parameters[0].get_value(0)[123] == embeddings[123])
 
     main_loop = MainLoop(
         algorithm,
