@@ -125,16 +125,18 @@ def train_extractive_qa(new_training_job, config, save_path,
                                    rename(def_gates_max, 'def_gates_max')])
 
     parameters = cg.get_parameter_dict()
-    logger.info("Cost parameters" + "\n" +
-                pprint.pformat(
-                    [(key, parameters[key].get_value().shape)
-                     for key in sorted(parameters.keys())],
-                    width=120))
     trained_parameters = parameters.values()
     if c['embedding_path']:
         logger.debug("Exclude  word embeddings from the trained parameters")
         trained_parameters = [p for p in trained_parameters
                               if not p == qam.embeddings_var()]
+    logger.info("Cost parameters" + "\n" +
+                pprint.pformat(
+                    [" ".join((
+                       key, str(parameters[key].get_value().shape),
+                       'trained' if parameters[key] in trained_parameters else 'frozen'))
+                     for key in sorted(parameters.keys())],
+                    width=120))
 
     rules = []
     if c['grad_clip_threshold']:
