@@ -120,3 +120,13 @@ lm_config_registry['obw_base_10k_fast'] = c
 c = lm_config_registry['obw_10k_dict1_fast']
 c['standalone_def_rnn'] = True
 lm_config_registry['obw_10k_dict2_fast'] = c
+
+# test : sort by cov then len
+c = lm_config_registry['obw_10k_dict_mean']
+c['max_def_per_word'] = 1 
+c['dict_path'] = prefix + 'data/dict_obw_reordered1.json'
+lm_config_registry['obw_10k_dict_mean_re1'] = c
+
+# test: sort by len then cov
+c['dict_path'] = prefix + 'data/dict_obw_reordered2.json'
+lm_config_registry['obw_10k_dict_mean_re2'] = c
