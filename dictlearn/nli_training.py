@@ -311,18 +311,29 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
             every_n_batches=c['mon_freq_train']),
-        DataStreamMonitoring(
+        # TODO: Add measure on test and track best
+    ]
+
+    if c['layout'] == 'snli':
+        valid_streams = ['valid']
+    elif c['layout'] == 'mnli':
+        valid_streams = ['valid_matched', 'valid_mismatched']
+    else:
+        raise NotImplementedError()
+
+    for stream_name in valid_streams:
+        extensions.append(DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=c['batch_size']),
-            prefix="valid").set_conditions(
+            data.get_stream(stream_name, batch_size=c['batch_size']),
+            prefix=stream_name).set_conditions(
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid']),
-        Checkpoint(main_loop_path,
+            every_n_batches=c['mon_freq_valid']),)
+
+    extensions.append(Checkpoint(main_loop_path, # TODO: Save best on valid
             parameters=cg[True].parameters + [p for p, m in pop_updates],
             before_training=not fast_start,
             every_n_batches=c['save_freq_batches'],
-            after_training=not fast_start)
-    ]
+            after_training=not fast_start))
 
     # Similarity trackers for embeddings
     retrieval_all = Retrieval(vocab=data.vocab, dictionary=used_dict,

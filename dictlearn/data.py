@@ -97,9 +97,9 @@ class Data(object):
 
     """
     def __init__(self, path, layout):
-        self._path = path
+        self._path = os.path.join(fuel.config.data_path[0], path)
         self._layout = layout
-        if not self._layout in ['standard', 'lambada', 'squad', 'snli']:
+        if not self._layout in ['standard', 'lambada', 'squad', 'snli', 'mnli']:
             raise "layout {} is not supported".format(self._layout)
 
         self._vocab = None
@@ -125,6 +125,10 @@ class Data(object):
             part_map = {'train' : 'train.h5',
                         'valid' : 'valid.h5',
                         'test': 'test.h5'}
+        elif self._layout == 'mnli':
+            part_map = {'train': 'train.h5',
+                'valid_matched': 'valid_matched.h5',
+                'valid_mismatched': 'valid_mismatched.h5'}
         else:
             raise NotImplementedError('Not implemented layout ' + self._layout)
         return os.path.join(self._path, part_map[part])
@@ -136,7 +140,7 @@ class Data(object):
                 self._dataset_cache[part] = H5PYDataset(part_path, ('train',))
             elif self._layout == 'squad':
                 self._dataset_cache[part] = SQuADDataset(part_path, ('all',))
-            elif self._layout == 'snli':
+            elif self._layout == 'snli' or self._layout == 'mnli':
                 self._dataset_cache[part] = H5PYDataset(h5py.File(part_path, "r"), \
                     ('all',), sources=('sentence1', 'sentence2', 'label',), load_in_memory=True)
             else:

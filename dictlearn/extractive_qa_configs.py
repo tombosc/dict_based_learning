@@ -14,6 +14,7 @@ qa_config_registry.set_root_config({
     'batch_size_valid' : 32,
     'max_def_length' : 1000,
     'exclude_top_k' : 0,
+    'def_word_gating' : "none",
     'compose_type' : "sum",
     'reuse_word_embeddings' : False,
     'def_reader' : 'LSTMReadDefinitions',
@@ -36,16 +37,16 @@ qa_config_registry.set_root_config({
 })
 
 c = qa_config_registry['root']
-c['data_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch'
+c['data_path'] = 'squad/squad_from_scratch'
 c['layout'] = 'squad'
 c['mon_freq_train'] = 100
 c['grad_clip_threshold'] = 50.
 qa_config_registry['squad'] = c
 
 c = qa_config_registry['squad']
-c['data_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_glove'
+c['data_path'] = 'squad/squad_glove'
 c['emb_dim'] = 300
-c['embedding_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_glove/glove_w_specials.npy'
+c['embedding_path'] = 'squad/squad_glove/glove_w_specials.npy'
 c['num_input_words'] = 0
 qa_config_registry['squad_glove'] = c
 
@@ -65,7 +66,7 @@ qa_config_registry['squad_glove2'] = c
 def from2to3(c):
     c['max_def_length'] = 30
     c['exclude_top_k'] = 10000
-    c['dict_path'] = '/data/lisatmp4/bahdanau/data/squad/squad_from_scratch/dict2.json'
+    c['dict_path'] = 'squad/squad_from_scratch/dict2.json'
 
 c = qa_config_registry['squad2']
 from2to3(c)

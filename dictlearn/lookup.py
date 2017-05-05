@@ -203,7 +203,7 @@ class MeanPoolCombiner(Initializable):
         children = []
 
         if self._def_word_gating== "word_emb" or self._def_word_gating=="self_attention":
-            self._gate_mlp = Linear(emb_dim, emb_dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
+            self._gate_mlp = Linear(dim, dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
             self._gate_act = Logistic()
             children.extend([self._gate_mlp, self._gate_act])
 
@@ -235,31 +235,33 @@ class MeanPoolCombiner(Initializable):
               word_embs, words_mask,
               def_embeddings, def_map, train_phase=False, word_ids=False, call_name=""):
         batch_shape = word_embs.shape
+        flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1] # Index of word in flat
 
         # def_map is (seq_pos, word_pos, def_index)
         # def_embeddings is (id, emb_dim)
 
-        # Mean-pooling of definitions
         def_sum = T.zeros((batch_shape[0] * batch_shape[1], def_embeddings.shape[1]))
         def_lens = T.zeros_like(def_sum[:, 0])
-        flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1] # Index of word in flat
+        def_lens = T.inc_subtensor(def_lens[flat_indices], 1)
 
         if self._def_word_gating == "none":
             def_sum = T.inc_subtensor(def_sum[flat_indices],
                 def_embeddings[def_map[:, 2]])
+            def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         elif self._def_word_gating == "self_attention":
-            # NOTE(kudkudak): I assume this is able to filter out for instance defs
-            # with a lot of UNKs
             gates = def_embeddings[def_map[:, 2]]
-            gates = self._gate_mlp.apply(gates)
-            gates = self._gate_act.apply(gates)
-            #
-            # application_call.add_auxiliary_variable(
-            #     masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
-            #     name=call_name + '_gate_rootmean2')
+            gates = self._gate_mlp.apply(gates)[:, 0]
+            application_call.add_auxiliary_variable(gates, name='def_gates')
 
-            def_sum = T.inc_subtensor(def_sum[flat_indices],
-                gates * def_embeddings[def_map[:, 2]])
+            # Dima: this is numerically unstable. But maybe it can work.
+            # If it can work, we can avoid too much coding.
+            def_normalization = T.zeros_like(def_lens)
+            def_normalization = T.inc_subtensor(
+                def_normalization[flat_indices], T.exp(gates))
+            gates = T.exp(gates) / def_normalization[flat_indices]
+
+            def_mean = T.inc_subtensor(def_sum[flat_indices],
+                gates[:, None] * def_embeddings[def_map[:, 2]])
         elif self._def_word_gating == "word_emb":
             gates = word_embs.reshape((batch_shape[0] * batch_shape[1], -1))
             gates = self._gate_mlp.apply(gates)
@@ -271,11 +273,9 @@ class MeanPoolCombiner(Initializable):
 
             def_sum = T.inc_subtensor(def_sum[flat_indices],
                 gates[flat_indices] * def_embeddings[def_map[:, 2]])
+            def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         else:
             raise NotImplementedError()
-
-        def_lens = T.inc_subtensor(def_lens[flat_indices], 1)
-        def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
 
         application_call.add_auxiliary_variable(

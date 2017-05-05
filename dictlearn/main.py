@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import pprint
 import argparse
 
@@ -6,6 +7,9 @@ import logging
 logging.basicConfig(
     level='DEBUG',
     format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+from dictlearn.util import run_with_redirection
 
 
 def add_config_arguments(config, parser):
@@ -42,12 +46,24 @@ def main(config_registry, training_func):
     for key in config:
         if key in args and getattr(args, key) is not None:
             config[key] = getattr(args, key)
-    pprint.pprint(config)
 
-    # For now this script just runs the language model training.
-    # More stuff to come.
-    training_func(config, args.save_path,
-                  args.params, args.fast_start, args.fuel_server)
+    new_training_job = False
+    if not os.path.exists(args.save_path):
+        new_training_job = True
+        os.mkdir(args.save_path)
+
+    def call_training_func():
+        pprint.pprint(config)
+        if new_training_job:
+            logger.info("Start a new job")
+        else:
+            logger.info("Continue an existing job")
+        training_func(new_training_job, config, args.save_path,
+                      args.params, args.fast_start, args.fuel_server)
+    run_with_redirection(
+        os.path.join(args.save_path, 'stdout.txt'),
+        os.path.join(args.save_path, 'stderr.txt'),
+        call_training_func)()
 
 
 def main_evaluate(config_registry, evaluate_func):
