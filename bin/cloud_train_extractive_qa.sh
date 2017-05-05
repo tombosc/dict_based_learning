@@ -10,4 +10,4 @@ export PATH=$PATH:/workspace/dict_based_learning/bin
 
 JOBID=${MARATHON_APP_ID:1}
 
-/workspace/dict_based_learning/bin/train_extractive_qa.py $@
+/workspace/dict_based_learning/bin/train_extractive_qa.py $@ 2>$JOBID.txt 1>&2
