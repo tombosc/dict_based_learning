@@ -17,11 +17,10 @@ from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
 from blocks.extensions.training import TrackTheBest
 from dictlearn.extensions import (
-    DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer,
-    RetrievalPrintStats)
+    DumpTensorflowSummaries)
 from blocks.extensions.predicates import OnLogRecord
 from blocks.serialization import load_parameters
-from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
+from blocks.initialization import Constant, Uniform
 
 from dictlearn.vocab import Vocabulary
 from dictlearn.inits import GlorotUniform
@@ -56,32 +55,10 @@ from fuel.streams import ServerDataStream
 
 from dictlearn.util import configure_logger
 from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWordEmbeddingEval, construct_embedder, \
-    construct_dict_embedder, RetrievalPrintStats
+    construct_dict_embedder, RetrievalPrintStats, PrintMessage
 from dictlearn.data import SNLIData
 from dictlearn.nli_simple_model import NLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
-
-
-# class WeightedGradientDescent(GradientDescent):
-#     """
-#     Wraps GradientDescent adding shareable weights for updates
-#     """
-#     def __init__(self, parameters, **kwargs):
-#
-#         self._weight_dict = {}
-#         for p in parameters:
-#             self._weight_dict[p.name] = T.sharedvar()
-#
-#         super(WeightedGradientDescent, self).__init__(parameters=parameters, **kwargs)
-#
-#     def get_weight_dict(self):
-#         pass
-#
-#     def _compute_gradients(self, known_grads, consider_constant):
-#         gradients = super(WeightedGradientDescent, self).\
-#             _compute_gradients(known_grads=known_grads, consider_constant=consider_constant)
-#
-#         return gradients
 
 
 def _initialize_model_and_data(c):
@@ -100,6 +77,7 @@ def _initialize_model_and_data(c):
         retrieval = Retrieval(vocab=retrieval_vocab, dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
+
         data.set_retrieval(retrieval)
     else:
         retrieval = None
@@ -107,20 +85,20 @@ def _initialize_model_and_data(c):
 
     # Initialize
     simple = NLISimple(
-        # Common arguments
+        # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
         num_input_words=c['num_input_words'], mlp_dim=c['mlp_dim'],
 
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
         reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
-
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
-        combiner_reader_translate=c['combiner_reader_translate'],
+        combiner_reader_translate=c['combiner_reader_translate'], def_dim=c['def_dim'],
         num_input_def_words=c['num_input_def_words'],
 
+        # Init
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
     simple.push_initialization_config()
@@ -136,7 +114,6 @@ def _initialize_model_and_data(c):
 
 
 def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server):
-
     if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
         raise Exception("Some words have neither word nor def embedding")
 
@@ -162,6 +139,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
 
     if c['dict_path']:
+        assert os.path.exists(c['dict_path'])
         s1_def_map, s2_def_map = T.lmatrix('sentence1_def_map'), T.lmatrix('sentence2_def_map')
         def_mask = T.fmatrix("def_mask")
         defs = T.lmatrix("defs")
@@ -204,12 +182,12 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
                 param.set_value(loaded_params[get_brick(param).get_hierarchical_name(param)])
 
     if os.path.exists(os.path.join(save_path, "main_loop.tar")):
-       logger.warning("Manually loading BN stats :(")
-       with open(os.path.join(save_path, "main_loop.tar")) as src:
-           loaded_params = load_parameters(src)
+        logger.warning("Manually loading BN stats :(")
+        with open(os.path.join(save_path, "main_loop.tar")) as src:
+            loaded_params = load_parameters(src)
 
-       for param, m in pop_updates:
-           param.set_value(loaded_params[get_brick(param).get_hierarchical_name(param)])
+        for param, m in pop_updates:
+            param.set_value(loaded_params[get_brick(param).get_hierarchical_name(param)])
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
@@ -248,40 +226,19 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         sum([np.prod(parameters[key].get_value().shape) for key in sorted(train_params_keys)])))
 
     ### Monitored args ###
-
     train_monitored_vars = [final_cost] + cg[True].outputs
     monitored_vars = cg[False].outputs
     val_acc = monitored_vars[1]
-
-    try:
-        logger.info("Adding unk ratio tracking")
-        train_monitored_vars.append(VariableFilter(name='def_unk_ratio')(cg[True])[0])
-        monitored_vars.append(VariableFilter(name='def_unk_ratio')(cg[False])[0])
-    except:
-        logger.warning("Didnt find def_unk_ratio in cg")
-
-    try:
-        logger.info("Adding dict lookup norm tracking")
-        train_monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[True])[0])
-        train_monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[True])[0])
-        monitored_vars.append(VariableFilter(name="s1_merged_input_rootmean2")(cg[False])[0])
-        monitored_vars.append(VariableFilter(name="s1_def_mean_rootmean2")(cg[False])[0])
-    except:
-        pass
-
-    try:
-        logger.info("Adding gating tracking")
-        train_monitored_vars.append(VariableFilter(name="s1_gate_rootmean2")(cg[True])[0])
-        monitored_vars.append(VariableFilter(name="s1_gate_rootmean2")(cg[False])[0])
-    except:
-        pass
-
-    try:
-        logger.info("Adding gating tracking")
-        train_monitored_vars.append(VariableFilter(name="s1_compose_gate_rootmean2")(cg[True])[0])
-        monitored_vars.append(VariableFilter(name="s1_compose_gate_rootmean2")(cg[False])[0])
-    except:
-        pass
+    to_monitor_names = ['def_unk_ratio', 's1_merged_input_rootmean2', 's1_def_mean_rootmean2',
+        's1_gate_rootmean2', 's1_compose_gate_rootmean2']
+    for k in to_monitor_names:
+        train_v, valid_v = VariableFilter(name=k)(cg[True]), VariableFilter(name=k)(cg[False])
+        if len(train_v):
+            logger.info("Adding {} tracking".format(k))
+            train_monitored_vars.append(train_v[0])
+            monitored_vars.append(valid_v[0])
+        else:
+            logger.warning("Didnt find {} in cg".format(k))
 
     if c['monitor_parameters']:
         for name in train_params_keys:
@@ -352,8 +309,13 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         raise NotImplementedError()
 
     # Similarity trackers for embeddings
-    retrieval_all = Retrieval(vocab=data.vocab, dictionary=used_dict,
-        exclude_top_k=None, max_def_length=c['max_def_length'])
+    if len(c['vocab_def']):
+        retrieval_vocab = Vocabulary(c['vocab_def'])
+    else:
+        retrieval_vocab = data.vocab
+    retrieval_all = Retrieval(vocab=retrieval_vocab, dictionary=used_dict, max_def_length=c['max_def_length'],
+        exclude_top_k=None, max_def_per_word=c['max_def_per_word'])
+
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
         variables = VariableFilter(name=name)(cg[False])
         if len(variables):
@@ -388,14 +350,15 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
             every_n_batches=c['mon_freq_train'],
             after_training=True),
         Printing(every_n_batches=c['mon_freq_train']),
+        PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])])
 
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
         choose_best=min).set_conditions(
-            before_training=True,
-            after_epoch=True,
-            every_n_batches=c['mon_freq_valid'])
+        before_training=True,
+        after_epoch=True,
+        every_n_batches=c['mon_freq_valid'])
     extensions.append(track_the_best)
     extensions.append(Checkpoint(main_loop_path,
         parameters=cg[True].parameters + [p for p, m in pop_updates],

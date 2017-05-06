@@ -11,12 +11,13 @@ snli_config_registry.set_root_config({
     'translate_dim': 300,
     'max_def_per_word': 100000,
     'mlp_dim': 600,
-    'emb_dim': 300,
+    'emb_dim': 300, # Used for def and word lookup
     'dict_path': '',
 
     # Remove by default embeddings. Our goal ATM is to beat random init
     'embedding_path': '', #/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy',
     'vocab_def': '',
+    'def_dim': 300, # LSTM reader hidden state or translate in MeanPool
     'compose_type': '',
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
@@ -105,6 +106,10 @@ c['num_input_words'] = 3000
 c['num_input_def_words'] = 3000
 c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict'] = c
+
+### Small dict v.2 ###
+
+# TODO: Write down current best model as of 6.05
 
 ### RNN + Small dict ###
 c = snli_config_registry['sum_small_dict']

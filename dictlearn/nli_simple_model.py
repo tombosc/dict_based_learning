@@ -37,7 +37,7 @@ class NLISimple(Initializable):
             num_input_def_words=-1, dropout=0.2, encoder="sum",
             n_layers=3, translate_after_emb=True,
             # Dict lookup kwargs
-            retrieval=None, reader_type="rnn", compose_type="sum",
+            retrieval=None, reader_type="rnn", compose_type="sum", def_dim=300,
             disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
             combiner_dropout_type="regular", share_def_lookup=False, exclude_top_k=-1,
             combiner_reader_translate=True,
@@ -78,7 +78,7 @@ class NLISimple(Initializable):
             if reader_type== "rnn":
                 self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_def_words,
                     weights_init=Uniform(width=0.1), translate=combiner_reader_translate,
-                    biases_init=Constant(0.), dim=translate_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
+                    biases_init=Constant(0.), dim=def_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 if combiner_reader_translate:
                     logger.warning("Translate in MeanPoolReadDefinitions is redundant")
@@ -87,7 +87,7 @@ class NLISimple(Initializable):
                     weights_init=Uniform(width=0.1), lookup=def_lookup, dim=emb_dim,
                     biases_init=Constant(0.), emb_dim=emb_dim, vocab=vocab)
 
-            self._combiner = MeanPoolCombiner(dim=translate_dim, emb_dim=emb_dim,
+            self._combiner = MeanPoolCombiner(dim=def_dim, emb_dim=emb_dim,
                 dropout=combiner_dropout, dropout_type=combiner_dropout_type,
                 def_word_gating=combiner_gating,
                 shortcut_unk_and_excluded=combiner_shortcut, num_input_words=num_input_words, exclude_top_k=exclude_top_k, vocab=vocab,
@@ -95,7 +95,7 @@ class NLISimple(Initializable):
             children.extend([self._def_reader, self._combiner])
 
             if self._encoder == "rnn":
-                self._rnn_fork = Linear(input_dim=translate_dim, output_dim=4 * translate_dim,
+                self._rnn_fork = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
                 # TODO(kudkudak): Better LSTM weight init
                 self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.1))

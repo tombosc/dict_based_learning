@@ -136,8 +136,18 @@ class MeanPoolReadDefinitions(Initializable):
 
         # Makes sense for shared lookup. Then we precondition embeddings.
         # Doesn't makes otherwise (WH = W')
-        self._def_translate = Linear(emb_dim, dim, name='def_translate')
-        children.extend([self._def_lookup, self._def_translate])
+        # TODO(kudkudak): Refactor redundant translate parameter
+        if self._translate:
+            if emb_dim == dim:
+                raise Exception("Redundant layer")
+
+            self._def_translate = Linear(emb_dim, dim, name='def_translate')
+            children.extend([self._def_translate])
+        else:
+            if emb_dim != dim:
+                raise Exception("Please pass translate=True if emb_dim != dim")
+
+        children.append(self._def_lookup)
 
         super(MeanPoolReadDefinitions, self).__init__(children=children, **kwargs)
 
@@ -151,12 +161,15 @@ class MeanPoolReadDefinitions(Initializable):
         # Short listing
         defs = (T.lt(defs, self._num_input_words) * defs
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)
+        # Memory bottleneck:
+        # For instance (16101,52,300) ~= 32GB.
         defs_emb = self._def_lookup.apply(defs)
         application_call.add_auxiliary_variable(
             unk_ratio(defs, def_mask, self._vocab.unk),
             name='def_unk_ratio')
 
         if self._translate:
+            logger.info("Translating in MeanPoolReadDefinitions")
             # Translate. Crucial for recovering useful information from embeddings
             defs_emb = self._def_translate.apply(defs_emb)
 
@@ -173,12 +186,14 @@ class MeanPoolCombiner(Initializable):
     Parameters
     ----------
     dim: int
+        Dimensionality of def embedding
 
     dropout_type: str
 
     dropout: float, defaut: 0.0
 
     emb_dim: int
+        Dimensionality of word embeddings, as well as final output
 
     compose_type : str
         If 'sum', the definition and word embeddings are averaged
@@ -195,6 +210,7 @@ class MeanPoolCombiner(Initializable):
             shortcut_unk_and_excluded=False,
             num_input_words=-1, exclude_top_k=-1, vocab=None,
             **kwargs):
+
         self._dropout = dropout
         self._num_input_words = num_input_words
         self._exclude_top_K = exclude_top_k
@@ -205,7 +221,7 @@ class MeanPoolCombiner(Initializable):
         self._word_dropout_weighting = word_dropout_weighting
         self._def_word_gating = def_word_gating
 
-        if def_word_gating not in {"none", "word_emb", "self_attention"}:
+        if def_word_gating not in {"none", "self_attention"}:
             raise NotImplementedError()
 
         if word_dropout_weighting not in {"no_weighting"}:
@@ -216,14 +232,14 @@ class MeanPoolCombiner(Initializable):
 
         children = []
 
-        if self._def_word_gating== "word_emb" or self._def_word_gating=="self_attention":
+        if self._def_word_gating=="self_attention":
             self._gate_mlp = Linear(dim, dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
             self._gate_act = Logistic()
             children.extend([self._gate_mlp, self._gate_act])
 
         if compose_type == 'fully_connected_linear':
             self._def_state_compose = MLP(activations=[None],
-                dims=[emb_dim + dim, dim], weights_init=GlorotUniform(), biases_init=Constant(0))
+                dims=[emb_dim + dim, emb_dim], weights_init=GlorotUniform(), biases_init=Constant(0))
             children.append(self._def_state_compose)
         if compose_type == "gated_sum" or compose_type == "gated_transform_and_sum":
             if dropout_type == "per_word" or dropout_type == "per_example":
@@ -276,18 +292,6 @@ class MeanPoolCombiner(Initializable):
 
             def_mean = T.inc_subtensor(def_sum[flat_indices],
                 gates[:, None] * def_embeddings[def_map[:, 2]])
-        elif self._def_word_gating == "word_emb":
-            gates = word_embs.reshape((batch_shape[0] * batch_shape[1], -1))
-            gates = self._gate_mlp.apply(gates)
-            gates = self._gate_act.apply(gates)
-
-            application_call.add_auxiliary_variable(
-                masked_root_mean_square(gates.reshape((batch_shape[0], batch_shape[1], -1)), words_mask),
-                    name=call_name + '_gate_rootmean2')
-
-            def_sum = T.inc_subtensor(def_sum[flat_indices],
-                gates[flat_indices] * def_embeddings[def_map[:, 2]])
-            def_mean = def_sum / T.maximum(def_lens[:, None], 1)
         else:
             raise NotImplementedError()
         def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
@@ -322,6 +326,8 @@ class MeanPoolCombiner(Initializable):
                 # TODO: Maybe we also want to have possibility of including both (like in per_example)
                 pass # TODO: implement
             elif self._dropout_type == "per_word":
+                # TODO(kudkudak): This dropout doesn't really work for me
+
                 # Drop with dropout percentage. If dropout -> selects at random word vs df
                 mask_higher = T.ones((batch_shape[0], batch_shape[1]))
                 mask_higher = apply_dropout(mask_higher, drop_prob=self._dropout)
