@@ -315,12 +315,13 @@ class Retrieval(object):
 
     def __init__(self, vocab, dictionary,
                  max_def_length=1000, exclude_top_k=None,
-                 with_too_long_defs='drop',
+                 with_too_long_defs='drop', def_vocab=None,
                  max_def_per_word=1000000):
         """Retrieves the definitions.
-
         vocab
-            The vocabulary.
+            The vocabulary for text
+        def_vocab
+            The vocabulary for definitions
         dictionary
             The dictionary of the definitions.
         max_def_length
@@ -332,9 +333,19 @@ class Retrieval(object):
             Pick at most max_n_def definitions for each word
         """
         self._vocab = vocab
+        if def_vocab is None:
+            self._def_vocab = self._vocab
+        else:
+            self._def_vocab = def_vocab
         self._dictionary = dictionary
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
+
+        if all(numpy.array(self._vocab._id_to_freq) == 1) and exclude_top_k > 0:
+            # Also note that after merging doing exclude_top_k on freqs in merged def/text is perhaps
+            # confusing
+            raise Exception("Cannot perform exclude_top_k based on vocabulary without frequency information.")
+
         self._max_def_per_word = max_def_per_word
         # TODO(kudkudak): To follow conventions - def dropping etc should also be performed in crawl_dict.py
 
@@ -412,10 +423,10 @@ class Retrieval(object):
                         else:
                             raise NotImplementedError()
 
-                        final_def_ = [self._vocab.bod]
+                        final_def_ = [self._def_vocab.bod]
                         for token in def_:
-                            final_def_.append(self._vocab.word_to_id(token))
-                        final_def_.append(self._vocab.eod)
+                            final_def_.append(self._def_vocab.word_to_id(token))
+                        final_def_.append(self._def_vocab.eod)
                         word_def_indices[word].append(len(definitions))
                         definitions.append(final_def_)
 
@@ -463,4 +474,4 @@ class Retrieval(object):
         doesn't mean a thing, call me.
 
         """
-        return [self._vocab.bod, self._vocab.eod]
+        return [self._def_vocab.bod, self._def_vocab.eod]
