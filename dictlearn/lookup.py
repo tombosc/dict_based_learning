@@ -54,7 +54,6 @@ class LSTMReadDefinitions(Initializable):
         else:
             self._num_input_words = vocab.size()
 
-        self._num_input_words = num_input_words
         self._vocab = vocab
 
         children = []
@@ -122,7 +121,6 @@ class MeanPoolReadDefinitions(Initializable):
         else:
             self._num_input_words = vocab.size()
 
-        self._num_input_words = num_input_words
         self._vocab = vocab
         self._translate = translate
         self._normalize = normalize
