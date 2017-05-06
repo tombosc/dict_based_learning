@@ -96,13 +96,13 @@ class Data(object):
     TODO: refactor, only leave the caching logic.
 
     """
-    def __init__(self, path, layout):
+    def __init__(self, path, layout, vocab=None):
         self._path = os.path.join(fuel.config.data_path[0], path)
         self._layout = layout
         if not self._layout in ['standard', 'lambada', 'squad', 'snli', 'mnli']:
             raise "layout {} is not supported".format(self._layout)
 
-        self._vocab = None
+        self._vocab = vocab
         self._dataset_cache = {}
 
     @property
@@ -332,10 +332,9 @@ class SNLIData(Data):
     @property
     def vocab(self):
         if not self._vocab:
+            print("Loading default vocab")
             self._vocab = Vocabulary(
                 os.path.join(self._path, "vocab.txt"))
-
-
         return self._vocab
 
     def get_stream(self, part, batch_size, seed=None, raw_text=False):

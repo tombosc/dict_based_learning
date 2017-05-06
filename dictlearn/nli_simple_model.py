@@ -36,11 +36,12 @@ class NLISimple(Initializable):
     def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1,
             num_input_def_words=-1, dropout=0.2, encoder="sum",
             n_layers=3, translate_after_emb=True,
+
             # Dict lookup kwargs
             retrieval=None, reader_type="rnn", compose_type="sum", def_dim=300,
             disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
             combiner_dropout_type="regular", share_def_lookup=False, exclude_top_k=-1,
-            combiner_reader_translate=True,
+            combiner_reader_translate=True, def_vocab=None,
             combiner_gating="none",
             combiner_shortcut=False,
             # Others
@@ -61,6 +62,7 @@ class NLISimple(Initializable):
             logger.info("Restricting vocab to " + str(num_input_words))
             self._num_input_words = num_input_words
         else:
+            logger.info("Vocab set to " + str(vocab.size()))
             self._num_input_words = vocab.size()
 
         children = []
@@ -78,14 +80,14 @@ class NLISimple(Initializable):
             if reader_type== "rnn":
                 self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_def_words,
                     weights_init=Uniform(width=0.1), translate=combiner_reader_translate,
-                    biases_init=Constant(0.), dim=def_dim, emb_dim=emb_dim, vocab=vocab, lookup=def_lookup)
+                    biases_init=Constant(0.), dim=def_dim, emb_dim=emb_dim, vocab=def_vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 if combiner_reader_translate:
                     logger.warning("Translate in MeanPoolReadDefinitions is redundant")
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_def_words,
                     translate=combiner_reader_translate,
                     weights_init=Uniform(width=0.1), lookup=def_lookup, dim=emb_dim,
-                    biases_init=Constant(0.), emb_dim=emb_dim, vocab=vocab)
+                    biases_init=Constant(0.), emb_dim=emb_dim, vocab=def_vocab)
 
             self._combiner = MeanPoolCombiner(dim=def_dim, emb_dim=emb_dim,
                 dropout=combiner_dropout, dropout_type=combiner_dropout_type,

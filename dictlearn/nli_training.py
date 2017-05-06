@@ -62,8 +62,14 @@ from dictlearn.retrieval import Retrieval, Dictionary
 
 
 def _initialize_model_and_data(c):
+
+    if c['vocab']:
+        vocab = Vocabulary(c['vocab'])
+    else:
+        vocab = None
+
     # Load data
-    data = SNLIData(c['data_path'], c['layout'])
+    data = SNLIData(path=c['data_path'], layout=c['layout'], vocab=vocab)
 
     # Dict
     if c['dict_path']:
@@ -92,6 +98,7 @@ def _initialize_model_and_data(c):
         # Dict lookup kwargs (will get refactored)
         translate_dim=c['translate_dim'], retrieval=retrieval, compose_type=c['compose_type'],
         reader_type=c['reader_type'], disregard_word_embeddings=c['disregard_word_embeddings'],
+        def_vocab=retrieval_vocab,
         combiner_dropout=c['combiner_dropout'], share_def_lookup=c['share_def_lookup'],
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
