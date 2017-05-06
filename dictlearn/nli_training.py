@@ -137,7 +137,7 @@ def _initialize_model_and_data(c):
 
 def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server):
 
-    if config['exclude_top_k'] > config['num_input_words']:
+    if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
         raise Exception("Some words have neither word nor def embedding")
 
     c = config
@@ -392,7 +392,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
-        choose_best=max).set_conditions(
+        choose_best=min).set_conditions(
             before_training=True,
             after_epoch=True,
             every_n_batches=c['mon_freq_valid'])
