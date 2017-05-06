@@ -80,7 +80,7 @@ def _initialize_model_and_data(c):
         else:
             retrieval_vocab = data.vocab
 
-        retrieval = Retrieval(vocab=data.vocab, def_vocab=retrieval_vocab,
+        retrieval = Retrieval(vocab_text=data.vocab, def_vocab=retrieval_vocab,
             dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
@@ -323,7 +323,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     else:
         retrieval_vocab = data.vocab
 
-    retrieval_all = Retrieval(vocab=retrieval_vocab, dictionary=used_dict, max_def_length=c['max_def_length'],
+    retrieval_all = Retrieval(vocab_text=retrieval_vocab, dictionary=used_dict, max_def_length=c['max_def_length'],
         exclude_top_k=0, max_def_per_word=c['max_def_per_word'])
 
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:

@@ -313,14 +313,14 @@ class Dictionary(object):
 
 class Retrieval(object):
 
-    def __init__(self, vocab, dictionary,
+    def __init__(self, vocab_text, dictionary,
                  max_def_length=1000, exclude_top_k=None,
-                 with_too_long_defs='drop', def_vocab=None,
+                 with_too_long_defs='drop', vocab_def=None,
                  max_def_per_word=1000000):
         """Retrieves the definitions.
-        vocab
+        vocab_text
             The vocabulary for text
-        def_vocab
+        vocab_def
             The vocabulary for definitions
         dictionary
             The dictionary of the definitions.
@@ -332,16 +332,16 @@ class Retrieval(object):
         max_def_per_word
             Pick at most max_n_def definitions for each word
         """
-        self._vocab = vocab
-        if def_vocab is None:
-            self._def_vocab = self._vocab
+        self._vocab_text = vocab_text
+        if vocab_def is None:
+            self._vocab_def = self._vocab_text
         else:
-            self._def_vocab = def_vocab
+            self._vocab_def = vocab_def
         self._dictionary = dictionary
         self._max_def_length = max_def_length
         self._exclude_top_k = exclude_top_k
 
-        if all(numpy.array(self._vocab._id_to_freq) == 1) and exclude_top_k > 0:
+        if all(numpy.array(self._vocab_text._id_to_freq) == 1) and exclude_top_k > 0:
             # Also note that after merging doing exclude_top_k on freqs in merged def/text is perhaps
             # confusing
             raise Exception("Cannot perform exclude_top_k based on vocabulary without frequency information.")
@@ -392,9 +392,9 @@ class Retrieval(object):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
                     word = vec2str(word)
-                word_id = self._vocab.word_to_id(word)
+                word_id = self._vocab_text.word_to_id(word)
                 if (self._exclude_top_k
-                    and word_id != self._vocab.unk
+                    and word_id != self._vocab_text.unk
                     and word_id < self._exclude_top_k):
                     continue
 
@@ -423,10 +423,10 @@ class Retrieval(object):
                         else:
                             raise NotImplementedError()
 
-                        final_def_ = [self._def_vocab.bod]
+                        final_def_ = [self._vocab_def.bod]
                         for token in def_:
-                            final_def_.append(self._def_vocab.word_to_id(token))
-                        final_def_.append(self._def_vocab.eod)
+                            final_def_.append(self._vocab_def.word_to_id(token))
+                        final_def_.append(self._vocab_def.eod)
                         word_def_indices[word].append(len(definitions))
                         definitions.append(final_def_)
 
@@ -474,4 +474,4 @@ class Retrieval(object):
         doesn't mean a thing, call me.
 
         """
-        return [self._def_vocab.bod, self._def_vocab.eod]
+        return [self._vocab_def.bod, self._vocab_def.eod]

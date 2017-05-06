@@ -16,8 +16,11 @@ snli_config_registry.set_root_config({
 
     # Remove by default embeddings. Our goal ATM is to beat random init
     'embedding_path': '', #/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy',
+
     'vocab_def': '',
+    'vocab_text': '', # If passed will be used for exclude_top_k in Retrieval only
     'vocab': '',
+
     'def_dim': 300, # LSTM reader hidden state or translate in MeanPool
     'compose_type': '',
     'disregard_word_embeddings': False,
