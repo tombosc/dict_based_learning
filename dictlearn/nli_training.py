@@ -23,6 +23,7 @@ from blocks.extensions.predicates import OnLogRecord
 from blocks.serialization import load_parameters
 from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
 
+from dictlearn.vocab import Vocabulary
 from dictlearn.inits import GlorotUniform
 
 import os
@@ -90,7 +91,13 @@ def _initialize_model_and_data(c):
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
-        retrieval = Retrieval(vocab=data.vocab, dictionary=dict, max_def_length=c['max_def_length'],
+
+        if len(c['vocab_def']):
+            retrieval_vocab = Vocabulary(c['vocab_def'])
+        else:
+            retrieval_vocab = data.vocab
+
+        retrieval = Retrieval(vocab=retrieval_vocab, dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
         data.set_retrieval(retrieval)
@@ -112,7 +119,7 @@ def _initialize_model_and_data(c):
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
         combiner_reader_translate=c['combiner_reader_translate'],
-        num_input_def_word=c['num_input_def_words'],
+        num_input_def_words=c['num_input_def_words'],
 
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
@@ -127,17 +134,16 @@ def _initialize_model_and_data(c):
 
     return simple, data, dict, retrieval
 
-def train_snli_model(config, save_path, params, fast_start, fuel_server):
+
+def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server):
 
     if config['exclude_top_k'] > config['num_input_words']:
         raise Exception("Some words have neither word nor def embedding")
 
     c = config
-    new_training_job = False
     logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
     if not os.path.exists(save_path):
         logger.info("Start a new job")
-        new_training_job = True
         os.mkdir(save_path)
     else:
         logger.info("Continue an existing job")
@@ -326,7 +332,7 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             data.get_stream('valid', batch_size=c['batch_size']),
             prefix='valid').set_conditions(
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid']),
+            every_n_batches=c['mon_freq_valid'])
         extensions.append(validation)
     elif c['layout'] == 'mnli':
         validation = DataStreamMonitoring(
@@ -334,13 +340,13 @@ def train_snli_model(config, save_path, params, fast_start, fuel_server):
             data.get_stream('valid_matched', batch_size=c['batch_size']),
             prefix='valid_matched').set_conditions(
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid']),
+            every_n_batches=c['mon_freq_valid'])
         validation_mismatched = DataStreamMonitoring(
             monitored_vars,
             data.get_stream('valid_mismatched', batch_size=c['batch_size']),
             prefix='valid_mismatched').set_conditions(
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid']),
+            every_n_batches=c['mon_freq_valid'])
         extensions.extend([validation, validation_mismatched])
     else:
         raise NotImplementedError()

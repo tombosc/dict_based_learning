@@ -334,6 +334,8 @@ class SNLIData(Data):
         if not self._vocab:
             self._vocab = Vocabulary(
                 os.path.join(self._path, "vocab.txt"))
+
+
         return self._vocab
 
     def get_stream(self, part, batch_size, seed=None, raw_text=False):

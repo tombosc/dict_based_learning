@@ -4,7 +4,7 @@ snli_config_registry = ConfigRegistry()
 
 # Each epoch has ~500k examples
 snli_config_registry.set_root_config({
-    'data_path':  '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/',
+    'data_path':  'snli/',
     'layout': 'snli',
 
     # Lookup params
@@ -13,8 +13,10 @@ snli_config_registry.set_root_config({
     'mlp_dim': 600,
     'emb_dim': 300,
     'dict_path': '',
+
     # Remove by default embeddings. Our goal ATM is to beat random init
     'embedding_path': '', #/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy',
+    'vocab_def': '',
     'compose_type': '',
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
@@ -53,28 +55,27 @@ snli_config_registry['baseline'] = c
 
 c = snli_config_registry['baseline']
 c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy'
+c['embedding_path'] = 'data/snli/glove.840B.300d.npy'
 snli_config_registry['baseline_glove'] = c
 
 c = snli_config_registry['root']
-c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+c['data_path'] = 'mnli/'
 c['layout'] = 'mnli'
 snli_config_registry['baseline_mnli'] = c
 
 c = snli_config_registry['root']
 c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/glove.840B.300d.npy'
-c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+c['embedding_path'] = 'data/mnli/glove.840B.300d.npy'
+c['data_path'] = 'mnli/'
 c['layout'] = 'mnli'
 snli_config_registry['baseline_mnli_glove'] = c
 
 ### Small dict ###
 
-# Note: requires >6GB mem, unfortunately. Keeping large batch size for now.
-
 # Looking up words from test/dev as well
-c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/dict_all_with_lowercase.json'
-c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/mnli/'
+c = snli_config_registry['root']
+c['dict_path'] = 'data/mnli/dict_all_with_lowercase.json'
+c['data_path'] = 'mnli/'
 c['layout'] = 'mnli'
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False
@@ -89,10 +90,12 @@ c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict_mnli'] = c
 
 # Looking up words from test/dev as well
-c['dict_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/dict_all.json'
-c['data_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/'
+c = snli_config_registry['root']
+c['dict_path'] = 'data/snli/dict_all.json'
+c['data_path'] = 'snli/'
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False
+c['layout'] = 'snli'
 c['reader_type'] = 'mean'
 c['max_def_per_word'] = 20
 c['combiner_dropout'] = 0.0
