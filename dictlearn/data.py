@@ -281,8 +281,9 @@ class ExtractiveQAData(Data):
         if not raw_text:
             stream = SourcewiseMapping(stream, functools.partial(digitize, self.vocab),
                                        which_sources=('contexts', 'questions'))
-        stream = Padding(stream, mask_sources=('contexts', 'questions'), mask_dtype='float32')
+        stream = Padding(stream, mask_sources=('contexts', 'questions'))
         return stream
+
 
 # TODO(kudkudak): Introduce this to Fuel
 class FixedMapping(Transformer):

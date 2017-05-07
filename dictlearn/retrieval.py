@@ -15,6 +15,8 @@ import json
 import nltk
 from wordnik import swagger, WordApi, AccountApi
 
+import fuel
+
 from dictlearn.util import vec2str
 from dictlearn.corenlp import StanfordCoreNLP
 
@@ -458,7 +460,7 @@ class Retrieval(object):
         # `defs` have variable length and have to be padded
         max_def_length = max(map(len, defs))
         def_array = numpy.zeros((len(defs), max_def_length), dtype='int64')
-        def_mask = numpy.ones_like(def_array, dtype='float32')
+        def_mask = numpy.ones_like(def_array, dtype=fuel.config.floatX)
         for i, def_ in enumerate(defs):
             def_array[i, :len(def_)] = def_
             def_mask[i, len(def_):] = 0.
