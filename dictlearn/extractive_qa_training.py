@@ -54,7 +54,11 @@ logger = logging.getLogger()
 
 def _initialize_data_and_model(config):
     c = config
-    data = ExtractiveQAData(path=c['data_path'], layout=c['layout'])
+    vocab = None
+    if c['vocab_path']:
+        vocab = Vocabulary(
+            os.path.join(fuel.config.data_path[0], c['vocab_path']))
+    data = ExtractiveQAData(path=c['data_path'], vocab=vocab, layout=c['layout'])
     # TODO: fix me, I'm so ugly
     if c['dict_path']:
         dict_vocab = data.vocab

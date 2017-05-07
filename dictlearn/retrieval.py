@@ -341,6 +341,9 @@ class Retrieval(object):
             self._vocab_def = vocab_def
         self._dictionary = dictionary
         self._max_def_length = max_def_length
+        if exclude_top_k == -1:
+            logger.debug("Exclude definition of all dictionary words")
+            exclude_top_k = vocab_text.size()
         self._exclude_top_k = exclude_top_k
 
         if all(numpy.array(self._vocab_text._id_to_freq) == 1) and exclude_top_k > 0:

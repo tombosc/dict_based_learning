@@ -107,7 +107,11 @@ class Data(object):
 
     @property
     def vocab(self):
-        raise NotImplementedError()
+        if not self._vocab:
+            print("Loading default vocab")
+            self._vocab = Vocabulary(
+                os.path.join(self._path, "vocab.txt"))
+        return self._vocab
 
     def get_dataset_path(self, part):
         if self._layout == 'standard':
@@ -152,13 +156,6 @@ class Data(object):
 
 
 class LanguageModellingData(Data):
-
-    @property
-    def vocab(self):
-        if not self._vocab:
-            self._vocab = Vocabulary(
-                os.path.join(self._path, "vocab.txt"))
-        return self._vocab
 
     def get_stream(self, part, batch_size=None, max_length=None, seed=None):
         dataset = self.get_dataset(part, max_length)
@@ -230,19 +227,6 @@ class ExtractiveQAData(Data):
     def __init__(self, retrieval=None, *args, **kwargs):
         super(ExtractiveQAData, self).__init__(*args, **kwargs)
         self._retrieval = retrieval
-
-    @property
-    def vocab(self):
-        if not self._vocab:
-            # I am switching back to reading the vocabulary from a standalone
-            # file cause it offers more flexibility.
-            # with h5py.File(self.get_dataset_path('train')) as h5_file:
-                    # somehow reading the data before zipping is important
-                    # self._vocab = Vocabulary(zip(h5_file['vocab_words'][:],
-                    #                             h5_file['vocab_freqs'][:]))
-            self._vocab = Vocabulary(
-                os.path.join(self._path, "vocab.txt"))
-        return self._vocab
 
     def get_stream(self, part, batch_size=None, shuffle=False, max_length=None,
                    raw_text=False, q_ids=False, seed=None):
@@ -329,14 +313,6 @@ class SNLIData(Data):
 
     def set_retrieval(self, retrieval):
         self._retrieval = retrieval
-
-    @property
-    def vocab(self):
-        if not self._vocab:
-            print("Loading default vocab")
-            self._vocab = Vocabulary(
-                os.path.join(self._path, "vocab.txt"))
-        return self._vocab
 
     def get_stream(self, part, batch_size, seed=None, raw_text=False):
         d = self.get_dataset(part)
