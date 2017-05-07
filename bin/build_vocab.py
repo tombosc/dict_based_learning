@@ -24,8 +24,12 @@ def main():
 
     parser = argparse.ArgumentParser("Builds a dictionary")
     parser.add_argument("--top-k", type=int, help="Top most frequent words to leave")
-    parser.add_argument("--weight-dict-entries", default=None,
-                        help="Weight dict entries according to the freqs from a vocab")
+    parser.add_argument(
+        "--weight-dict-entries", default=None,
+        help="Weight dict entries according to the freqs from a vocab.")
+    parser.add_argument(
+        "--exclude-top-k", type=int,
+        help="Ignore definitions of a number of most frequent words")
     parser.add_argument("text", help="The text to use. Pass file names separated by comma to concatenate texts")
     parser.add_argument("vocab", help="Destination")
     args = parser.parse_args()
@@ -45,6 +49,8 @@ def main():
             logging.info("Will build the vocabulary from definitions in a dictionary")
             dict_ = json.load(open(f_name, "r"))
             for word, list_defs in dict_.items():
+                if args.exclude_top_k and vocab_text.word_to_id(word) < args.exclude_top_k:
+                    continue
                 for def_ in list_defs:
                     if args.weight_dict_entries:
                         for def_word in def_:
