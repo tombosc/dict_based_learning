@@ -85,6 +85,11 @@ class Vocabulary(object):
     def id_to_word(self, cur_id):
         return self._id_to_word[cur_id]
 
+    def word_freq(self, word):
+        if not word in self._word_to_id:
+            return 0
+        return self._id_to_freq[self._word_to_id[word]]
+
     def decode(self, cur_ids):
         return ' '.join([self.id_to_word(cur_id) for cur_id in cur_ids])
 
@@ -93,13 +98,13 @@ class Vocabulary(object):
         return numpy.array(word_ids, dtype=numpy.int64)
 
     @staticmethod
-    def build(filename_or_words, top_k=None, sort_by='frequency'):
+    def build(text, top_k=None, sort_by='frequency'):
         """
         sort_by is either 'frequency' or 'lexicographical'
         """
         # For now let's use a very stupid tokenization
-        if isinstance(filename_or_words, str):
-            with open(filename_or_words) as file_:
+        if isinstance(text, str):
+            with open(text) as file_:
                 def data():
                     for line in file_:
                         for word in line.strip().split():
@@ -107,7 +112,7 @@ class Vocabulary(object):
                 counter = Counter(data())
             logger.info("Data is read")
         else:
-            counter = Counter(filename_or_words)
+            counter = Counter(text)
             for word in list(counter.keys()):
                 if ' ' in word:
                     logger.error("can't have tokens with spaces, skip {}".format(word))
