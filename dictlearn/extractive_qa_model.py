@@ -157,7 +157,7 @@ class ExtractiveQAModel(Initializable):
         # should be (batch size, context length, question_length)
         affinity = tensor.batched_dot(context_enc, flip12(question_enc))
         affinity_mask = contexts_mask[:, :, None] * questions_mask[:, None, :]
-        affinity = affinity * affinity_mask - 1000 * (1 - affinity_mask)
+        affinity = affinity * affinity_mask - 1000.0 * (1 - affinity_mask)
         # soft-aligns every position in the context to positions in the question
         d2q_att_weights = self._softmax.apply(affinity, extra_ndim=1)
         application_call.add_auxiliary_variable(
