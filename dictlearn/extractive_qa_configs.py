@@ -66,7 +66,7 @@ qa_config_registry['squad_glove2'] = c
 def from2to3(c):
     c['max_def_length'] = 30
     c['exclude_top_k'] = 10000
-    c['dict_path'] = 'squad/squad_from_scratch/dict2.json'
+    c['dict_path'] = 'squad/squad_from_scratch/dict.json'
 
 c = qa_config_registry['squad2']
 from2to3(c)
@@ -82,6 +82,7 @@ def from3to4(c):
     c['emb_dim'] = 300
     c['reuse_word_embeddings'] = True
     c['compose_type'] = 'transform_and_sum'
+    c['dict_path'] = 'squad/squad_from_scratch/dict2.json'
 
 c = qa_config_registry['squad3']
 from3to4(c)
