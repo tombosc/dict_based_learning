@@ -26,7 +26,7 @@ def add_config_arguments(config, parser):
             # let's assume all the lists in our configurations will be
             # lists of ints
             if isinstance(value, list):
-                convertor = lambda s: map(int, s.split())
+                convertor = lambda s: map(int, s.split(','))
             parser.add_argument(
                 "--" + key, type=convertor,
                 help="A setting from the configuration")
