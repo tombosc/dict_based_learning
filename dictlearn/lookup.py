@@ -246,7 +246,7 @@ class MeanPoolCombiner(Initializable):
             if dropout_type == "per_word" or dropout_type == "per_example":
                 raise RuntimeError("I dont think this combination makes much sense")
 
-            self._compose_gate_mlp = Linear(2 * emb_dim, emb_dim,
+            self._compose_gate_mlp = Linear(dim + emb_dim, emb_dim,
                                             weights_init=GlorotUniform(),
                                             biases_init=Constant(0),
                                             name='gate_linear')

@@ -22,8 +22,13 @@ def add_config_arguments(config, parser):
                 "--no_" + key, dest=key, default=None, action="store_false",
                 help="Disable a setting from the configuration")
         else:
+            convertor = type(value)
+            # let's assume all the lists in our configurations will be
+            # lists of ints
+            if isinstance(value, list):
+                convertor = lambda s: map(int, s.split(','))
             parser.add_argument(
-                "--" + key, type=type(value),
+                "--" + key, type=convertor,
                 help="A setting from the configuration")
 
 

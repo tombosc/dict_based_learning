@@ -89,7 +89,8 @@ def main():
         , current_coverage_text / float(np.sum(vocab_text.frequencies))
     ))
 
-    vocab_result = Vocabulary.build(list(current_vocab), sort_by='lexicographical')
+    vocab_result = Vocabulary.build(
+        {word: vocab_text.word_freq(word) for word in current_vocab})
     vocab_result.save(args.target)
 
 

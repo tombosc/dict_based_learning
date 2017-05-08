@@ -19,11 +19,14 @@ from theano import tensor
 from nltk.tokenize.moses import MosesDetokenizer
 
 from blocks.initialization import Uniform, Constant
+from blocks.bricks.recurrent import Bidirectional
+from blocks.bricks.simple import Rectifier
 from blocks.algorithms import (
     Adam, GradientDescent, Adam, StepClipping, CompositeRule)
-from blocks.graph import ComputationGraph
+from blocks.graph import ComputationGraph, apply_dropout
 from blocks.model import Model
 from blocks.filter import VariableFilter
+from blocks.roles import OUTPUT
 from blocks.extensions import FinishAfter, Timing, Printing
 from blocks.extensions.training import TrackTheBest
 from blocks.extensions.saveload import Checkpoint
@@ -54,7 +57,11 @@ logger = logging.getLogger()
 
 def _initialize_data_and_model(config):
     c = config
-    data = ExtractiveQAData(path=c['data_path'], layout=c['layout'])
+    vocab = None
+    if c['vocab_path']:
+        vocab = Vocabulary(
+            os.path.join(fuel.config.data_path[0], c['vocab_path']))
+    data = ExtractiveQAData(path=c['data_path'], vocab=vocab, layout=c['layout'])
     # TODO: fix me, I'm so ugly
     if c['dict_path']:
         dict_vocab = data.vocab
@@ -65,15 +72,17 @@ def _initialize_data_and_model(config):
             dict_vocab, Dictionary(
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
             c['max_def_length'], c['exclude_top_k'])
-    qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
-                            data.vocab,
-                            use_definitions=bool(c['dict_path']),
-                            def_word_gating=c['def_word_gating'],
-                            compose_type=c['compose_type'],
-                            reuse_word_embeddings=c['reuse_word_embeddings'],
-                            def_reader=c['def_reader'],
-                            weights_init=Uniform(width=0.1),
-                            biases_init=Constant(0.))
+    qam = ExtractiveQAModel(
+        c['dim'], c['emb_dim'], c['readout_dims'],
+        c['num_input_words'], c['def_num_input_words'], data.vocab,
+        coattention=c['coattention'],
+        use_definitions=bool(c['dict_path']),
+        def_word_gating=c['def_word_gating'],
+        compose_type=c['compose_type'],
+        reuse_word_embeddings=c['reuse_word_embeddings'],
+        def_reader=c['def_reader'],
+        weights_init=Uniform(width=0.1),
+        biases_init=Constant(0.))
     qam.initialize()
     logger.debug("Model created")
     if c['embedding_path']:
@@ -143,19 +152,35 @@ def train_extractive_qa(new_training_job, config, save_path,
                      for key in sorted(parameters.keys())],
                     width=120))
 
+    # apply dropout to the training cost and to all the variables
+    # that we monitor during training
+    train_cost = cost
+    train_monitored_vars = list(monitored_vars)
+    if c['dropout']:
+        regularized_cg = ComputationGraph([cost] + train_monitored_vars)
+        bidir_outputs, = VariableFilter(
+            bricks=[Bidirectional], roles=[OUTPUT])(cg)
+        readout_layers = VariableFilter(
+            bricks=[Rectifier], roles=[OUTPUT])(cg)
+        dropout_vars = [bidir_outputs] + readout_layers
+        logger.debug("applying dropout to {}".format(
+            ", ".join([v.name for v in  dropout_vars])))
+        regularized_cg = apply_dropout(regularized_cg, dropout_vars, c['dropout'])
+        train_cost = regularized_cg.outputs[0]
+        train_monitored_vars = regularized_cg.outputs[1:]
+
     rules = []
     if c['grad_clip_threshold']:
         rules.append(StepClipping(c['grad_clip_threshold']))
     rules.append(Adam(learning_rate=c['learning_rate'],
                       beta1=c['momentum']))
     algorithm = GradientDescent(
-        cost=cost,
+        cost=train_cost,
         parameters=trained_parameters,
         step_rule=CompositeRule(rules))
-    train_monitored_vars = list(monitored_vars)
+
     if c['grad_clip_threshold']:
         train_monitored_vars.append(algorithm.total_gradient_norm)
-
     if c['monitor_parameters']:
         train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 
@@ -185,14 +210,12 @@ def train_extractive_qa(new_training_job, config, save_path,
         data.get_stream('dev', batch_size=c['batch_size_valid']),
         prefix="dev").set_conditions(
             before_training=not fast_start,
-            after_epoch=True,
-            every_n_batches=c['mon_freq_valid'])
+            after_epoch=True)
     track_the_best = TrackTheBest(
         validation.record_name(exact_match_ratio),
         choose_best=max).set_conditions(
             before_training=True,
-            after_epoch=True,
-            every_n_batches=c['mon_freq_valid'])
+            after_epoch=True)
     extensions.extend([validation,
                        track_the_best])
         # We often use pretrained word embeddings and we don't want

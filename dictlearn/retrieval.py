@@ -15,6 +15,8 @@ import json
 import nltk
 from wordnik import swagger, WordApi, AccountApi
 
+import fuel
+
 from dictlearn.util import vec2str
 from dictlearn.corenlp import StanfordCoreNLP
 
@@ -44,8 +46,11 @@ class Dictionary(object):
                                          self._path + '.tmp')
         self._meta_tmp_path = os.path.join(os.path.dirname(path),
             self._meta_path + '.tmp')
-        if self._path and os.path.exists(self._path):
-            self.load()
+        if self._path:
+            if os.path.exists(self._path):
+                self.load()
+            else:
+                raise Exception("Error: could not load dictionary {}".format(self._path))
 
     def load(self):
         with open(self._path, 'r') as src:
@@ -339,6 +344,9 @@ class Retrieval(object):
             self._vocab_def = vocab_def
         self._dictionary = dictionary
         self._max_def_length = max_def_length
+        if exclude_top_k == -1:
+            logger.debug("Exclude definition of all dictionary words")
+            exclude_top_k = vocab_text.size()
         self._exclude_top_k = exclude_top_k
 
         if all(numpy.array(self._vocab_text._id_to_freq) == 1) and exclude_top_k > 0:
@@ -458,7 +466,7 @@ class Retrieval(object):
         # `defs` have variable length and have to be padded
         max_def_length = max(map(len, defs))
         def_array = numpy.zeros((len(defs), max_def_length), dtype='int64')
-        def_mask = numpy.ones_like(def_array, dtype='float32')
+        def_mask = numpy.ones_like(def_array, dtype=fuel.config.floatX)
         for i, def_ in enumerate(defs):
             def_array[i, :len(def_)] = def_
             def_mask[i, len(def_):] = 0.

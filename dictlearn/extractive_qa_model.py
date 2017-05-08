@@ -6,6 +6,7 @@ from collections import OrderedDict
 
 from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
 from blocks.bricks.base import application
+from blocks.bricks.simple import Rectifier
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
@@ -45,22 +46,30 @@ class ExtractiveQAModel(Initializable):
     compose_type : str
 
     """
-    def __init__(self, dim, emb_dim, coattention, num_input_words, vocab,
-                 use_definitions, def_word_gating, compose_type,
+    def __init__(self, dim, emb_dim, readout_dims,
+                 num_input_words, def_num_input_words, vocab,
+                 use_definitions, def_word_gating, compose_type, coattention,
                  def_reader, reuse_word_embeddings, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
         if num_input_words == 0:
             num_input_words = vocab.size()
+        if def_num_input_words == 0:
+            def_num_input_words = num_input_words
+
         self._coattention = coattention
         self._num_input_words = num_input_words
         self._use_definitions = use_definitions
 
+        lookup_num_words = (max(num_input_words, def_num_input_words)
+                            if reuse_word_embeddings
+                            else num_input_words)
+
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
         children = []
-        self._lookup = LookupTable(self._num_input_words, emb_dim)
+        self._lookup = LookupTable(lookup_num_words, emb_dim)
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
@@ -71,15 +80,17 @@ class ExtractiveQAModel(Initializable):
                          self._question_transform,
                          self._bidir, self._bidir_fork])
 
-        self._begin_readout = MLP([None], [2 * dim, 1], name='begin_readout')
-        self._end_readout = MLP([None], [2 * dim, 1], name='end_readout')
+        activations = [Rectifier()] * len(readout_dims) + [None]
+        readout_dims = [2 * dim] + readout_dims + [1]
+        self._begin_readout = MLP(activations, readout_dims, name='begin_readout')
+        self._end_readout = MLP(activations, readout_dims, name='end_readout')
         self._softmax = NDimensionalSoftmax()
         children.extend([self._begin_readout, self._end_readout, self._softmax])
 
         if self._use_definitions:
             def_reader_class = eval(def_reader)
             def_reader_kwargs = dict(
-                num_input_words=self._num_input_words,
+                num_input_words=def_num_input_words,
                 dim=dim, emb_dim=emb_dim,
                 vocab=vocab,
                 lookup=self._lookup if reuse_word_embeddings else None)
@@ -157,7 +168,7 @@ class ExtractiveQAModel(Initializable):
         # should be (batch size, context length, question_length)
         affinity = tensor.batched_dot(context_enc, flip12(question_enc))
         affinity_mask = contexts_mask[:, :, None] * questions_mask[:, None, :]
-        affinity = affinity * affinity_mask - 1000 * (1 - affinity_mask)
+        affinity = affinity * affinity_mask - 1000.0 * (1 - affinity_mask)
         # soft-aligns every position in the context to positions in the question
         d2q_att_weights = self._softmax.apply(affinity, extra_ndim=1)
         application_call.add_auxiliary_variable(
