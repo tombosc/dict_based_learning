@@ -8,8 +8,8 @@ import tempfile
 from contextlib import contextmanager
 
 @contextmanager
-def temporary_content_path(content):
-    _, path = tempfile.mkstemp()
+def temporary_content_path(content, suffix=""):
+    _, path = tempfile.mkstemp(suffix=suffix)
     with open(path, 'w') as dst:
         print(content, file=dst)
     yield path

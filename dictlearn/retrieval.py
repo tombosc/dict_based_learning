@@ -46,8 +46,11 @@ class Dictionary(object):
                                          self._path + '.tmp')
         self._meta_tmp_path = os.path.join(os.path.dirname(path),
             self._meta_path + '.tmp')
-        if self._path and os.path.exists(self._path):
-            self.load()
+        if self._path:
+            if os.path.exists(self._path):
+                self.load()
+            else:
+                raise Exception("Error: could not load dictionary {}".format(self._path))
 
     def load(self):
         with open(self._path, 'r') as src:

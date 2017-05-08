@@ -1,11 +1,9 @@
 from dictlearn.config_registry import ConfigRegistry
 
-prefix = '/data/lisa/exp/bosctom/dict_based_learning/'
-
 lm_config_registry = ConfigRegistry()
 lm_config_registry.set_root_config({
     # data
-    'data_path': prefix + 'data/onebillionword/',
+    'data_path': 'onebillionword/',
     'dict_path' : "",
     'layout' : 'standard',
     'num_input_words' : 10000,
@@ -14,6 +12,7 @@ lm_config_registry.set_root_config({
     'batch_size' : 64,
     'batch_size_valid' : 64,
     'max_def_length' : 100,
+    'max_def_per_word': 1000,
     'exclude_top_k' : -1,
     'top_k_words' : -1,
 
@@ -64,7 +63,7 @@ c['batch_size'] = 32
 c['batch_size_valid'] = 32
 c['max_def_per_word'] = 3
 c['max_def_length'] = 100
-c['dict_path'] = prefix + 'data/dict_snli.json'
+c['dict_path'] = 'data/dict_snli.json'
 c['learning_rate'] = 0.0003 
 # Stuff to tune:
 c['standalone_def_lookup'] = False
@@ -91,23 +90,15 @@ lm_config_registry['obw_base_10k_slower_30kI'] = c
 # Want to try a new dictionary
 # doesn't contain everything cause it crashed as well
 c = lm_config_registry['obw_10k_dict3']
-c['dict_path'] = prefix + 'data/dict_obw.json'
+c['dict_path'] = 'dict_obw.json'
 lm_config_registry['obw_10k_dict3_n'] = c
 
 # what happens with mean reader
 c = lm_config_registry['obw_10k_dict3']
 c['def_reader'] = 'mean'
-c['dict_path'] = prefix + 'data/dict_obw.json'
+c['dict_path'] = 'dict_obw.json'
 lm_config_registry['obw_10k_dict_mean'] = c
 
-c = lm_config_registry['obw_10k_dict3_n']
-# This run aims to see what happens with a basic combiner but more defs.
-# I suspect this is worse than 3
-c['max_def_per_word'] = 10
-# Only keep small defs: faster and changes nothing as ~99% of dicts are < 50 in
-# length
-c['max_def_length'] = 50 
-lm_config_registry['obw_10k_dict3_n2'] = c
 
 c = lm_config_registry['obw_10k_dict1']
 c['learning_rate'] = 0.002
@@ -120,3 +111,13 @@ lm_config_registry['obw_base_10k_fast'] = c
 c = lm_config_registry['obw_10k_dict1_fast']
 c['standalone_def_rnn'] = True
 lm_config_registry['obw_10k_dict2_fast'] = c
+
+# test : sort by cov then len
+c = lm_config_registry['obw_10k_dict_mean']
+c['dict_path'] = 'dict_obw_reordered_max1_cov.json'
+c['max_def_per_word'] = 1 
+lm_config_registry['obw_10k_dict_mean_cov1'] = c
+
+# test: sort by len then cov
+c['dict_path'] = 'dict_obw_reordered_max1_len.json'
+lm_config_registry['obw_10k_dict_mean_len1'] = c
