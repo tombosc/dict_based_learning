@@ -74,8 +74,8 @@ def _initialize_data_and_model(config):
             c['max_def_length'], c['exclude_top_k'])
     qam = ExtractiveQAModel(
         c['dim'], c['emb_dim'], c['readout_dims'],
-        c['coattention'], c['num_input_words'],
-        data.vocab,
+        c['num_input_words'], c['def_num_input_words'], data.vocab,
+        coattention=c['coattention'],
         use_definitions=bool(c['dict_path']),
         def_word_gating=c['def_word_gating'],
         compose_type=c['compose_type'],

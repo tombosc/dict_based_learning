@@ -46,22 +46,30 @@ class ExtractiveQAModel(Initializable):
     compose_type : str
 
     """
-    def __init__(self, dim, emb_dim, readout_dims, coattention, num_input_words, vocab,
-                 use_definitions, def_word_gating, compose_type,
+    def __init__(self, dim, emb_dim, readout_dims,
+                 num_input_words, def_num_input_words, vocab,
+                 use_definitions, def_word_gating, compose_type, coattention,
                  def_reader, reuse_word_embeddings, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
         if num_input_words == 0:
             num_input_words = vocab.size()
+        if def_num_input_words == 0:
+            def_num_input_words = num_input_words
+
         self._coattention = coattention
         self._num_input_words = num_input_words
         self._use_definitions = use_definitions
 
+        lookup_num_words = (max(num_input_words, def_num_input_words)
+                            if reuse_word_embeddings
+                            else num_input_words)
+
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
         children = []
-        self._lookup = LookupTable(self._num_input_words, emb_dim)
+        self._lookup = LookupTable(lookup_num_words, emb_dim)
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
@@ -82,7 +90,7 @@ class ExtractiveQAModel(Initializable):
         if self._use_definitions:
             def_reader_class = eval(def_reader)
             def_reader_kwargs = dict(
-                num_input_words=self._num_input_words,
+                num_input_words=def_num_input_words,
                 dim=dim, emb_dim=emb_dim,
                 vocab=vocab,
                 lookup=self._lookup if reuse_word_embeddings else None)

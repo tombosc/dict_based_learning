@@ -10,6 +10,7 @@ qa_config_registry.set_root_config({
     'embedding_path' : "",
     'layout' : 'standard',
     'num_input_words' : 10000,
+    'def_num_input_words' : 0,
     'max_length' : 100,
     'batch_size' : 32,
     'batch_size_valid' : 32,
