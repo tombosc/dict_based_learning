@@ -32,7 +32,6 @@ qa_config_registry.set_root_config({
 
     # monitoring and checkpointing
     'mon_freq_train' : 10,
-    'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
     'save_freq_epochs' : 1,
     'n_batches' : 0,

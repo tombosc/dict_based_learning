@@ -209,14 +209,12 @@ def train_extractive_qa(new_training_job, config, save_path,
         data.get_stream('dev', batch_size=c['batch_size_valid']),
         prefix="dev").set_conditions(
             before_training=not fast_start,
-            after_epoch=True,
-            every_n_batches=c['mon_freq_valid'])
+            after_epoch=True)
     track_the_best = TrackTheBest(
         validation.record_name(exact_match_ratio),
         choose_best=max).set_conditions(
             before_training=True,
-            after_epoch=True,
-            every_n_batches=c['mon_freq_valid'])
+            after_epoch=True)
     extensions.extend([validation,
                        track_the_best])
         # We often use pretrained word embeddings and we don't want
