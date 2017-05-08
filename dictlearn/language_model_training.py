@@ -28,6 +28,7 @@ from blocks.extensions.predicates import OnLogRecord
 from blocks.main_loop import MainLoop
 from blocks.serialization import load_parameters
 
+import fuel
 from fuel.streams import ServerDataStream
 
 from dictlearn.util import rename, masked_root_mean_square, get_free_port
@@ -51,7 +52,10 @@ def train_language_model(new_training_job, config, save_path, params,
     data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
     if c['dict_path']:
-        retrieval = Retrieval(data.vocab, Dictionary(c['dict_path']),
+        dict_full_path = os.path.join(fuel.config.data_path[0], c['dict_path'])
+        dict_ = Dictionary(dict_full_path)
+        logger.debug("Loaded dictionary with {} entries".format(dict_.num_entries()))
+        retrieval = Retrieval(data.vocab, dict_,
                               c['max_def_length'], c['exclude_top_k'],
                               max_def_per_word=c['max_def_per_word'])
 
@@ -89,8 +93,7 @@ def train_language_model(new_training_job, config, save_path, params,
     monitored_vars = [length, cost, perplexity]
     if c['dict_path']:
         num_definitions, = VariableFilter(name='num_definitions')(cg)
-        max_definition_length, = VariableFilter(name='max_definition_length')(cg)
-        monitored_vars.extend([num_definitions, max_definition_length])
+        monitored_vars.extend([num_definitions])
 
     parameters = cg.get_parameter_dict()
     logger.info("Trainable parameters" + "\n" +
@@ -173,7 +176,7 @@ def train_language_model(new_training_job, config, save_path, params,
             .add_condition(
                 ['after_batch', 'after_epoch'],
                  OnLogRecord(track_the_best.notification_name),
-                 (save_path + "_best.tar",)),
+                 (os.path.join(save_path, "best_model.tar"),)),
         DumpTensorflowSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],
