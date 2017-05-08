@@ -5,6 +5,7 @@ qa_config_registry.set_root_config({
     # data
     'data_path' : "",
     'dict_path' : "",
+    'vocab_path' : "",
     'dict_vocab_path' : "",
     'embedding_path' : "",
     'layout' : 'standard',
@@ -22,6 +23,7 @@ qa_config_registry.set_root_config({
     # model
     'dim' : 128,
     'emb_dim' : 0,
+    'readout_dims' : [],
     'coattention' : True,
     'learning_rate' : 0.001,
     'momentum' : 0.9,
@@ -66,7 +68,7 @@ qa_config_registry['squad_glove2'] = c
 def from2to3(c):
     c['max_def_length'] = 30
     c['exclude_top_k'] = 10000
-    c['dict_path'] = 'squad/squad_from_scratch/dict2.json'
+    c['dict_path'] = 'squad/squad_from_scratch/dict.json'
 
 c = qa_config_registry['squad2']
 from2to3(c)
@@ -82,6 +84,7 @@ def from3to4(c):
     c['emb_dim'] = 300
     c['reuse_word_embeddings'] = True
     c['compose_type'] = 'transform_and_sum'
+    c['dict_path'] = 'squad/squad_from_scratch/dict2.json'
 
 c = qa_config_registry['squad3']
 from3to4(c)

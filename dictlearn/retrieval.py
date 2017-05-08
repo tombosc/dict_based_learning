@@ -15,6 +15,8 @@ import json
 import nltk
 from wordnik import swagger, WordApi, AccountApi
 
+import fuel
+
 from dictlearn.util import vec2str
 from dictlearn.corenlp import StanfordCoreNLP
 
@@ -257,9 +259,10 @@ class Dictionary(object):
         # lemmas, not stems. Lemmatizers, on the other hand, can not be
         # fully trusted when it comes to unknown words.
         for word in words:
+            if isinstance(word, str):
+                word = word.decode('utf-8')
+
             if word in self._data:
-                if isinstance(word, str):
-                    word = word.decode('utf-8')
                 logger.debug(u"a known word {}, skip".format(word))
                 continue
 
@@ -271,10 +274,12 @@ class Dictionary(object):
             if self._remaining_calls < _MIN_REMAINING_CALLS:
                 self._wait_until_quota_reset()
             try:
+                if isinstance(word, str):
+                    word = word.decode('utf-8')
                 # NOTE(kudkudak): We fetch all dictionaries, but retrieval can filter them based on meta info
                 definitions = self._word_api.getDefinitions(word)
             except Exception:
-                logger.error("error during fetching '{}'".format(word))
+                logger.error(u"error during fetching '{}'".format(word))
                 logger.error(traceback.format_exc())
                 continue
             self._remaining_calls -= 1
@@ -300,7 +305,7 @@ class Dictionary(object):
                 except Exception:
                     logger.error("error during tokenizing '{}'".format(text))
                     logger.error(traceback.format_exc())
-            logger.debug("definitions for '{}' fetched {} remaining".format(word, self._remaining_calls))
+            logger.debug(u"definitions for '{}' fetched {} remaining".format(word, self._remaining_calls))
         self.save()
         self._last_saved = 0
 
@@ -313,14 +318,15 @@ class Dictionary(object):
 
 class Retrieval(object):
 
-    def __init__(self, vocab, dictionary,
+    def __init__(self, vocab_text, dictionary,
                  max_def_length=1000, exclude_top_k=None,
-                 with_too_long_defs='drop',
+                 with_too_long_defs='drop', vocab_def=None,
                  max_def_per_word=1000000):
         """Retrieves the definitions.
-
-        vocab
-            The vocabulary.
+        vocab_text
+            The vocabulary for text
+        vocab_def
+            The vocabulary for definitions
         dictionary
             The dictionary of the definitions.
         max_def_length
@@ -331,10 +337,23 @@ class Retrieval(object):
         max_def_per_word
             Pick at most max_n_def definitions for each word
         """
-        self._vocab = vocab
+        self._vocab_text = vocab_text
+        if vocab_def is None:
+            self._vocab_def = self._vocab_text
+        else:
+            self._vocab_def = vocab_def
         self._dictionary = dictionary
         self._max_def_length = max_def_length
+        if exclude_top_k == -1:
+            logger.debug("Exclude definition of all dictionary words")
+            exclude_top_k = vocab_text.size()
         self._exclude_top_k = exclude_top_k
+
+        if all(numpy.array(self._vocab_text._id_to_freq) == 1) and exclude_top_k > 0:
+            # Also note that after merging doing exclude_top_k on freqs in merged def/text is perhaps
+            # confusing
+            raise Exception("Cannot perform exclude_top_k based on vocabulary without frequency information.")
+
         self._max_def_per_word = max_def_per_word
         # TODO(kudkudak): To follow conventions - def dropping etc should also be performed in crawl_dict.py
 
@@ -381,9 +400,9 @@ class Retrieval(object):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
                     word = vec2str(word)
-                word_id = self._vocab.word_to_id(word)
+                word_id = self._vocab_text.word_to_id(word)
                 if (self._exclude_top_k
-                    and word_id != self._vocab.unk
+                    and word_id != self._vocab_text.unk
                     and word_id < self._exclude_top_k):
                     continue
 
@@ -412,10 +431,10 @@ class Retrieval(object):
                         else:
                             raise NotImplementedError()
 
-                        final_def_ = [self._vocab.bod]
+                        final_def_ = [self._vocab_def.bod]
                         for token in def_:
-                            final_def_.append(self._vocab.word_to_id(token))
-                        final_def_.append(self._vocab.eod)
+                            final_def_.append(self._vocab_def.word_to_id(token))
+                        final_def_.append(self._vocab_def.eod)
                         word_def_indices[word].append(len(definitions))
                         definitions.append(final_def_)
 
@@ -447,7 +466,7 @@ class Retrieval(object):
         # `defs` have variable length and have to be padded
         max_def_length = max(map(len, defs))
         def_array = numpy.zeros((len(defs), max_def_length), dtype='int64')
-        def_mask = numpy.ones_like(def_array, dtype='float32')
+        def_mask = numpy.ones_like(def_array, dtype=fuel.config.floatX)
         for i, def_ in enumerate(defs):
             def_array[i, :len(def_)] = def_
             def_mask[i, len(def_):] = 0.
@@ -463,4 +482,4 @@ class Retrieval(object):
         doesn't mean a thing, call me.
 
         """
-        return [self._vocab.bod, self._vocab.eod]
+        return [self._vocab_def.bod, self._vocab_def.eod]

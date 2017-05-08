@@ -307,6 +307,20 @@ class LoadNoUnpickling(Load):
             if self.load_log:
                 main_loop.log = load(source, name='log')
 
+class PrintMessage(SimpleExtension):
+    """Prints log messages to the screen."""
+    def __init__(self, msg, **kwargs):
+        self._msg = msg
+        kwargs.setdefault("before_first_epoch", True)
+        kwargs.setdefault("on_resumption", True)
+        kwargs.setdefault("after_training", True)
+        kwargs.setdefault("after_epoch", True)
+        kwargs.setdefault("on_interrupt", True)
+        super(PrintMessage, self).__init__(**kwargs)
+
+    def do(self, which_callback, *args):
+        print(self._msg)
+
 
 class StartFuelServer(SimpleExtension):
 

@@ -7,13 +7,13 @@ Run as:
 python bin/merge_vocab.py --target_coverage_text=0.95 --target_coverage_def=0.9
 --vocab_text=$DATA_DIR/snli/vocab.txt --vocab_def=$DATA_DIR/snli/dict_all_3_05_lowercase_lemma_vocab.txt
 --target=$DATA_DIR/snli/dict_all_3_05_lowercase_lemma_vocab_0.95_0.9.txt
+
+Note: be careful and use only train for shortlisting
 """
 
-import h5py
 import argparse
 import logging
-from six import text_type
-import json
+
 import numpy as np
 
 from dictlearn.vocab import Vocabulary
@@ -89,7 +89,8 @@ def main():
         , current_coverage_text / float(np.sum(vocab_text.frequencies))
     ))
 
-    vocab_result = Vocabulary.build(list(current_vocab), sort_by='lexicographical')
+    vocab_result = Vocabulary.build(
+        {word: vocab_text.word_freq(word) for word in current_vocab})
     vocab_result.save(args.target)
 
 
