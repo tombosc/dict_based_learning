@@ -41,11 +41,15 @@ class NLISimple(Initializable):
             retrieval=None, reader_type="rnn", compose_type="sum", def_dim=300,
             disregard_word_embeddings=False, combiner_dropout=1.0, combiner_bn=False,
             combiner_dropout_type="regular", share_def_lookup=False, exclude_top_k=-1,
-            combiner_reader_translate=True, def_vocab=None,
+            combiner_reader_translate=True, def_vocab=None, def_emb_dim=-1,
             combiner_gating="none",
             combiner_shortcut=False,
             # Others
             **kwargs):
+
+        if def_emb_dim <= 0:
+            logger.info("Assuming def_emb_dim=emb_dim")
+            def_emb_dim = emb_dim
 
         self._vocab = vocab
         self._encoder = encoder
@@ -80,16 +84,16 @@ class NLISimple(Initializable):
             if reader_type== "rnn":
                 self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_def_words,
                     weights_init=Uniform(width=0.1), translate=combiner_reader_translate,
-                    biases_init=Constant(0.), dim=def_dim, emb_dim=emb_dim, vocab=def_vocab, lookup=def_lookup)
+                    biases_init=Constant(0.), dim=def_dim, emb_dim=def_emb_dim, vocab=def_vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 if combiner_reader_translate:
                     logger.warning("Translate in MeanPoolReadDefinitions is redundant")
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_def_words,
                     translate=combiner_reader_translate,
-                    weights_init=Uniform(width=0.1), lookup=def_lookup, dim=emb_dim,
-                    biases_init=Constant(0.), emb_dim=emb_dim, vocab=def_vocab)
+                    weights_init=Uniform(width=0.1), lookup=def_lookup, dim=def_emb_dim,
+                    biases_init=Constant(0.), emb_dim=def_emb_dim, vocab=def_vocab)
 
-            self._combiner = MeanPoolCombiner(dim=def_dim, emb_dim=emb_dim,
+            self._combiner = MeanPoolCombiner(dim=def_dim, emb_dim=def_emb_dim,
                 dropout=combiner_dropout, dropout_type=combiner_dropout_type,
                 def_word_gating=combiner_gating,
                 shortcut_unk_and_excluded=combiner_shortcut, num_input_words=num_input_words, exclude_top_k=exclude_top_k, vocab=vocab,
@@ -97,7 +101,7 @@ class NLISimple(Initializable):
             children.extend([self._def_reader, self._combiner])
 
             if self._encoder == "rnn":
-                self._rnn_fork = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
+                self._rnn_fork = Linear(input_dim=def_emb_dim, output_dim=4 * translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
                 # TODO(kudkudak): Better LSTM weight init
                 self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.1))
@@ -108,8 +112,15 @@ class NLISimple(Initializable):
             else:
                 raise NotImplementedError("Not implemented encoder")
 
+            if def_emb_dim != emb_dim:
+                self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_dim,
+                    weights_init=GlorotUniform(), biases_init=Constant(0))
+                children.append(self._translate_pre_def)
+            else:
+                self._translate_pre_def = None
+
             if self._translate_after_emb:
-                self._translation = Linear(input_dim=emb_dim, output_dim=translate_dim,
+                self._translation = Linear(input_dim=def_dim, output_dim=translate_dim,
                     weights_init=GlorotUniform(), biases_init=Constant(0))
                 self._translation_act = Rectifier()
                 children.append(self._translation)
@@ -158,31 +169,10 @@ class NLISimple(Initializable):
         super(NLISimple, self).__init__(children=children, **kwargs)
 
     def get_embeddings_lookups(self):
-        if not self._retrieval:
-            return [self._lookup]
-        elif self._retrieval and not self._only_def:
-            return [self._lookup, self._def_reader._def_lookup]
-        elif self._retrieval and self._only_def:
-            return [self._def_reader._def_lookup]
-        else:
-            raise NotImplementedError()
+        return [self._lookup]
 
     def set_embeddings(self, embeddings):
-        if not self._retrieval:
-            self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-        elif self._retrieval and not self._only_def:
-            self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-            self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-        else:
-            raise NotImplementedError()
-
-    def embeddings_var(self):
-        if not self._retrieval:
-            return [self._lookup.parameters[0]]
-        elif self._retrieval and not self._only_def:
-            return [self._lookup.parameters[0], self._def_reader._def_lookup.parameters[0]]
-        else:
-            raise NotImplementedError()
+        self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
     @application
     def apply(self, application_call,
@@ -201,6 +191,16 @@ class NLISimple(Initializable):
 
         if self._retrieval is not None:
             assert defs is not None
+
+            if self._translate_pre_def:
+                logger.info("Translate pre def")
+                s1_emb = s1_emb.reshape((s1_emb.shape[0] * s1_emb.shape[1], s1_emb.shape[2]))
+                s2_emb = s2_emb.reshape((s2_emb.shape[0] * s2_emb.shape[1], s2_emb.shape[2]))
+                s1_emb = self._translate_pre_def.apply(s1_emb)
+                s2_emb = self._translate_pre_def.apply(s2_emb)
+                s1_emb = s1_emb.reshape((s1_preunk.shape[0], s1_preunk.shape[1], -1))
+                s2_emb = s2_emb.reshape((s2_preunk.shape[0], s2_preunk.shape[1], -1))
+
 
             def_embs = self._def_reader.apply(defs, def_mask)
 

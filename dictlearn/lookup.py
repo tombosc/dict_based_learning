@@ -128,6 +128,7 @@ class MeanPoolReadDefinitions(Initializable):
         children = []
 
         if lookup is None:
+            logger.info("emb_dim={}".format(emb_dim))
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
         else:
             self._def_lookup = lookup

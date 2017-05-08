@@ -22,6 +22,7 @@ snli_config_registry.set_root_config({
     'vocab': '',
 
     'def_dim': 300, # LSTM reader hidden state or translate in MeanPool
+    'def_emb_dim': -1, # Dimensionality of vectors used in definitions
     'compose_type': '',
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
