@@ -136,8 +136,10 @@ class MeanPoolReadDefinitions(Initializable):
 
         # Makes sense for shared lookup. Then we precondition embeddings.
         # Doesn't makes otherwise (WH = W')
-        self._def_translate = Linear(emb_dim, dim, name='def_translate')
-        children.extend([self._def_lookup, self._def_translate])
+        if self._translate:
+            self._def_translate = Linear(emb_dim, dim, name='def_translate')
+            children.extend([self._def_translate])
+        children.extend([self._def_lookup])
 
         super(MeanPoolReadDefinitions, self).__init__(children=children, **kwargs)
 
