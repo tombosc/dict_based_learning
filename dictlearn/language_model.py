@@ -70,8 +70,6 @@ class LanguageModel(Initializable):
         if self._retrieval:
             self._retrieve = RetrievalOp(retrieval)
 
-        # Dima: we can have slightly less copy-paste here if we
-        # copy the RecurrentFromFork class from my other projects.
         children = []
         self._main_lookup = LookupTable(self._num_input_words, emb_dim, name='main_lookup')
         self._main_fork = Linear(dim, 4 * dim, name='main_fork')
@@ -99,8 +97,6 @@ class LanguageModel(Initializable):
                                                            normalize=False)
             else:
                 raise Exception("def reader not understood")
-
-            # TODO: implem FC tanh, FC relu?
 
             self._combiner = MeanPoolCombiner(
                 dim=dim, emb_dim=emb_dim, compose_type=compose_type)
@@ -156,10 +152,6 @@ class LanguageModel(Initializable):
             # Auxililary variable for debugging
             application_call.add_auxiliary_variable(
                 def_embeddings.shape[0], name="num_definitions")
-            application_call.add_auxiliary_variable(
-                def_embeddings.shape[1], name="max_definition_length")
-            #application_call.add_auxiliary_variable(
-            #    masked_root_mean_square(def_mean, mask), name='def_mean_rootmean2')
 
         # shortlisting
         word_ids = self._word_to_id(words)
@@ -176,27 +168,12 @@ class LanguageModel(Initializable):
 
         if self._retrieval:
             rnn_inputs = self._combiner.apply(word_embs, mask, def_embeddings, def_map)
-            #TODO: deal with other args of combiner.apply
-            #if self._compose_type == 'sum':
-            #    rnn_inputs += def_mean
-            #elif self._compose_type.startswith('fully_connected'):
-            #    concat = tensor.concatenate([rnn_inputs, def_mean], axis=2)
-            #    rnn_inputs = self._def_state_compose.apply(concat)
-            #elif self._compose_type.startswith('linear_and_sum'):
-            #    rnn_inputs += self._def_state_transform.apply(def_mean)
-            #else:
-            #    assert False
-            #application_call.add_auxiliary_variable(
-            #    masked_root_mean_square(rnn_inputs, mask),
-            #    name='merged_input_rootmean2')
         else:
             rnn_inputs = word_embs
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(word_embs, mask), name='main_rnn_in_RMS')
 
-        #if self._disregard_word_embeddings:
-        #    rnn_inputs = def_mean
         main_rnn_states = self._main_rnn.apply(
             tensor.transpose(self._main_fork.apply(rnn_inputs), (1, 0, 2)),
             mask=mask.T)[0]
@@ -213,15 +190,4 @@ class LanguageModel(Initializable):
             costs.sum(), targets_mask.sum())
         application_call.add_auxiliary_variable(
             perplexity, name='perplexity')
-
-        # Analyze predictions
-        #last_indices = tensor.max(tensor.arange(targets_mask.shape[0]).reshape((-1,1))*targets_mask, axis=0).astype('int64')
-        #batch_indices = tensor.arange(logits.shape[1])
-        #last_logits = logits[last_indices, batch_indices]
-        #last_predictions = last_logits.argmax(axis=1)
-        #last_targets = targets[last_indices, batch_indices]
-        #last_correct = tensor.eq(last_predictions, last_targets).astype('int64')
-        #application_call.add_auxiliary_variable(
-        #    last_correct, name='last_correct')
-
         return costs
