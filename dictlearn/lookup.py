@@ -161,6 +161,9 @@ class MeanPoolReadDefinitions(Initializable):
                 + T.ge(defs, self._num_input_words) * self._vocab.unk)
         # Memory bottleneck:
         # For instance (16101,52,300) ~= 32GB.
+        # [(16786, 52, 1), (16786, 52, 100)]
+        # TODO: Measure memory consumption here and check if it is in sensible range
+        # or maybe introduce some control in Retrieval?
         defs_emb = self._def_lookup.apply(defs)
         application_call.add_auxiliary_variable(
             unk_ratio(defs, def_mask, self._vocab.unk),

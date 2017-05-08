@@ -61,6 +61,9 @@ from dictlearn.nli_simple_model import NLISimple
 from dictlearn.retrieval import Retrieval, Dictionary
 
 
+# vocab defaults to data.vocab
+# vocab_text defaults to vocab
+# Vocab def defaults to vocab
 def _initialize_model_and_data(c):
 
     if c['vocab']:
@@ -80,7 +83,7 @@ def _initialize_model_and_data(c):
         else:
             retrieval_vocab = data.vocab
 
-        retrieval = Retrieval(vocab_text=data.vocab, def_vocab=retrieval_vocab,
+        retrieval = Retrieval(vocab_text=data.vocab, vocab_def=retrieval_vocab,
             dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])

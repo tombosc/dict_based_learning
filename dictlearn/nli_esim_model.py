@@ -4,7 +4,6 @@ ESIM NLI model
 import theano
 import theano.tensor as T
 from theano import tensor
-
 import logging
 logger = logging.getLogger(__file__)
 
@@ -118,6 +117,7 @@ class ESIM(Initializable):
               + tensor.ge(s2_preunk, self._num_input_words) * self._vocab.unk)
 
         ### Embed ###
+
         s1_emb = self._lookup.apply(s1)
         s2_emb = self._lookup.apply(s2)
 
@@ -138,18 +138,37 @@ class ESIM(Initializable):
                 s1_emb = apply_dropout(s1_emb, drop_prob=self._dropout)
                 s2_emb = apply_dropout(s2_emb, drop_prob=self._dropout)
 
-        ### biLSTM ###
+        ### Encode ###
 
-        premise_outs, c1 = blocks.biLSTM(premise_in, dim=self.dim, seq_len=prem_seq_lengths, name='premise')
-        hypothesis_outs, c2 = blocks.biLSTM(hypothesis_in, dim=self.dim, seq_len=hyp_seq_lengths, name='hypothesis')
-
-        premise_bi = tf.concat(premise_outs, axis=2)
-        hypothesis_bi = tf.concat(hypothesis_outs, axis=2)
-
-        premise_list = tf.unstack(premise_bi, axis=1)
-        hypothesis_list = tf.unstack(hypothesis_bi, axis=1)
+        s1_bilstm = self._premise_encoder.apply(s1_emb) # (batch_size, n_seq, 2 * dim)
+        s2_bilstm = self._premise_encoder.apply(s2_emb) # (batch_size, n_seq, 2 * dim)
 
         ### Attention ###
+
+        # Compute E matrix (eq. 11)
+        # E_ij = <s1[i], s2[j]>
+        # each call computes E[
+        def compute_e_row(s2_i, s1_bilstm):
+            b_size = s1_bilstm.shape[0]
+            # s2_i is (batch_size, emb_dim)
+            # s1_bilstm is (batch_size, seq_len, emb_dim)
+            s2_i = s2_i.dimshuffle(0, "x", 1) # (batch_size, 1, emb_dim)
+            s2_i = T.repeat(s2_i, s1_bilstm.shape[1], axis=1) # (batch_size, seq_len, emb_dim)
+
+            # (batch_size * seq_len, emb_dim)
+            s1_bilstm = s1_bilstm.reshape((s1_bilstm.shape[0] * s1_bilstm.shape[1], s1_bilstm.shape[2]))
+            # (batch_size * seq_len, emb_dim)
+            s2_i = s2_i.reshape((s2_i.shape[0] * s2_i.shape[1], s2_i.shape[2]))
+
+            score = T.batched_dot(s1_bilstm, s2_i)
+            score = score.reshape((b_size, -1)) # (batch_size, seq_len)
+            score = theano.tensor.nnet.softmax(score)
+            return score
+
+        E, _ = theano.scan(compute_e_row, sequences=[s2_bilstm.transpose(1, 0, 2)], non_sequences=[s1_bilstm])
+        # (seq_len, batch_size, seq_len)
+        E = E.dimshuffle(1, 0, 2)
+        # (batch_size, seq_len, seq_len)
 
         scores_all = []
         premise_attn = []
