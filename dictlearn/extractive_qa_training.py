@@ -69,15 +69,17 @@ def _initialize_data_and_model(config):
             dict_vocab, Dictionary(
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
             c['max_def_length'], c['exclude_top_k'])
-    qam = ExtractiveQAModel(c['dim'], c['emb_dim'], c['coattention'], c['num_input_words'],
-                            data.vocab,
-                            use_definitions=bool(c['dict_path']),
-                            def_word_gating=c['def_word_gating'],
-                            compose_type=c['compose_type'],
-                            reuse_word_embeddings=c['reuse_word_embeddings'],
-                            def_reader=c['def_reader'],
-                            weights_init=Uniform(width=0.1),
-                            biases_init=Constant(0.))
+    qam = ExtractiveQAModel(
+        c['dim'], c['emb_dim'], c['readout_dims'],
+        c['coattention'], c['num_input_words'],
+        data.vocab,
+        use_definitions=bool(c['dict_path']),
+        def_word_gating=c['def_word_gating'],
+        compose_type=c['compose_type'],
+        reuse_word_embeddings=c['reuse_word_embeddings'],
+        def_reader=c['def_reader'],
+        weights_init=Uniform(width=0.1),
+        biases_init=Constant(0.))
     qam.initialize()
     logger.debug("Model created")
     if c['embedding_path']:
