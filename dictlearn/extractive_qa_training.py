@@ -154,8 +154,9 @@ def train_extractive_qa(new_training_job, config, save_path,
 
     # apply dropout to the training cost and to all the variables
     # that we monitor during training
+    train_cost = cost
+    train_monitored_vars = list(monitored_vars)
     if c['dropout']:
-        train_monitored_vars = list(monitored_vars)
         regularized_cg = ComputationGraph([cost] + train_monitored_vars)
         bidir_outputs, = VariableFilter(
             bricks=[Bidirectional], roles=[OUTPUT])(cg)
