@@ -22,9 +22,9 @@ def test_vec2str():
 
 
 def test_retrieval():
-    with temporary_content_path(TEST_VOCAB) as path:
+    with temporary_content_path(TEST_VOCAB, ".txt") as path:
         vocab = Vocabulary(path)
-    with temporary_content_path(TEST_DICT_JSON) as path:
+    with temporary_content_path(TEST_DICT_JSON, ".json") as path:
         dict_ = Dictionary(path)
 
     # check a super simple case
