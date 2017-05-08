@@ -214,6 +214,8 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     # Freeze embeddings
     if not c['train_emb']:
         frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]
+        train_params =  [p for p in cg[True].parameters]
+        assert len(set(frozen_params) & set(train_params)) > 0
     else:
         frozen_params = []
     train_params = [p for p in cg[True].parameters if p not in frozen_params]
