@@ -28,6 +28,7 @@ qa_config_registry.set_root_config({
     'learning_rate' : 0.001,
     'momentum' : 0.9,
     'grad_clip_threshold' : 5.0,
+    'dropout' : 0.,
 
     # monitoring and checkpointing
     'mon_freq_train' : 10,

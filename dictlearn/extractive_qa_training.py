@@ -19,11 +19,14 @@ from theano import tensor
 from nltk.tokenize.moses import MosesDetokenizer
 
 from blocks.initialization import Uniform, Constant
+from blocks.bricks.recurrent import Bidirectional
+from blocks.bricks.simple import Rectifier
 from blocks.algorithms import (
     Adam, GradientDescent, Adam, StepClipping, CompositeRule)
-from blocks.graph import ComputationGraph
+from blocks.graph import ComputationGraph, apply_dropout
 from blocks.model import Model
 from blocks.filter import VariableFilter
+from blocks.roles import OUTPUT
 from blocks.extensions import FinishAfter, Timing, Printing
 from blocks.extensions.training import TrackTheBest
 from blocks.extensions.saveload import Checkpoint
@@ -149,19 +152,34 @@ def train_extractive_qa(new_training_job, config, save_path,
                      for key in sorted(parameters.keys())],
                     width=120))
 
+    # apply dropout to the training cost and to all the variables
+    # that we monitor during training
+    if c['dropout']:
+        train_monitored_vars = list(monitored_vars)
+        regularized_cg = ComputationGraph([cost] + train_monitored_vars)
+        bidir_outputs, = VariableFilter(
+            bricks=[Bidirectional], roles=[OUTPUT])(cg)
+        readout_layers = VariableFilter(
+            bricks=[Rectifier], roles=[OUTPUT])(cg)
+        dropout_vars = [bidir_outputs] + readout_layers
+        logger.debug("applying dropout to {}".format(
+            ", ".join([v.name for v in  dropout_vars])))
+        regularized_cg = apply_dropout(regularized_cg, dropout_vars, c['dropout'])
+        train_cost = regularized_cg.outputs[0]
+        train_monitored_vars = regularized_cg.outputs[1:]
+
     rules = []
     if c['grad_clip_threshold']:
         rules.append(StepClipping(c['grad_clip_threshold']))
     rules.append(Adam(learning_rate=c['learning_rate'],
                       beta1=c['momentum']))
     algorithm = GradientDescent(
-        cost=cost,
+        cost=train_cost,
         parameters=trained_parameters,
         step_rule=CompositeRule(rules))
-    train_monitored_vars = list(monitored_vars)
+
     if c['grad_clip_threshold']:
         train_monitored_vars.append(algorithm.total_gradient_norm)
-
     if c['monitor_parameters']:
         train_monitored_vars.extend(parameter_stats(parameters, algorithm))
 

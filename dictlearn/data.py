@@ -18,6 +18,9 @@ import os
 import functools
 import h5py
 import numpy
+import logging
+
+logger = logging.getLogger()
 
 import fuel
 from fuel.transformers import (
@@ -108,7 +111,7 @@ class Data(object):
     @property
     def vocab(self):
         if not self._vocab:
-            print("Loading default vocab")
+            logger.debug("Loading default vocab")
             self._vocab = Vocabulary(
                 os.path.join(self._path, "vocab.txt"))
         return self._vocab
