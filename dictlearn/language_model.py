@@ -72,8 +72,8 @@ class LanguageModel(Initializable):
 
         children = []
         self._main_lookup = LookupTable(self._num_input_words, emb_dim, name='main_lookup')
-        self._main_fork = Linear(dim, 4 * dim, name='main_fork')
-        self._main_rnn = DebugLSTM(dim, name='main_rnn')
+        self._main_fork = Linear(emb_dim, 4 * dim, name='main_fork')
+        self._main_rnn = DebugLSTM(dim, name='main_rnn') # TODO(tombosc): use regular LSTM?
         children.extend([self._main_lookup, self._main_fork, self._main_rnn])
         if self._retrieval:
             if standalone_def_lookup:
@@ -109,6 +109,14 @@ class LanguageModel(Initializable):
 
         super(LanguageModel, self).__init__(children=children, **kwargs)
 
+    def add_perplexity_measure(self, application_call, minus_logs, mask, name):
+        costs = (minus_logs * mask).sum(axis=0)
+        perplexity = tensor.exp(costs.sum() / mask.sum())
+        perplexity.tag.aggregation_scheme = Perplexity(
+            costs.sum(), mask.sum())
+        application_call.add_auxiliary_variable(perplexity, name=name)
+        return costs
+
     @application
     def apply(self, application_call, words, mask):
         """Compute the log-likelihood for a batch of sequences.
@@ -126,11 +134,6 @@ class LanguageModel(Initializable):
             defs, def_mask, def_map = self._retrieve(words)
             def_embeddings = self._def_reader.apply(defs, def_mask)
 
-            # TODO(tombosc): are the following ~15 lines useful?
-            # Reorder and copy embeddings so that the embeddings of all the definitions
-            # that correspond to a position in the text form a continuous span of a tensor
-            #def_embeddings = def_embeddings[def_map[:, 2]]
-
             # Compute the spans corresponding to text positions
             #num_defs = tensor.zeros((1 + words.shape[0] * words.shape[1],), dtype='int32')
             #num_defs = tensor.inc_subtensor(
@@ -138,6 +141,7 @@ class LanguageModel(Initializable):
             #cum_sum_defs = tensor.cumsum(num_defs)
             #def_spans = tensor.concatenate([cum_sum_defs[:-1, None], cum_sum_defs[1:, None]],
             #                               axis=1)
+            
             #application_call.add_auxiliary_variable(def_spans, name='def_spans')
 
             ## Mean-pooling of definitions
@@ -181,13 +185,30 @@ class LanguageModel(Initializable):
         # The first token is not predicted
         logits = self._pre_softmax.apply(main_rnn_states[:-1])
         targets = output_word_ids.T[1:]
-        targets_mask = mask.T[1:]
         minus_logs = self._softmax.categorical_cross_entropy(
             targets, logits, extra_ndim=1)
-        costs = (minus_logs * targets_mask).sum(axis=0)
-        perplexity = tensor.exp(costs.sum() / targets_mask.sum())
-        perplexity.tag.aggregation_scheme = Perplexity(
-            costs.sum(), targets_mask.sum())
-        application_call.add_auxiliary_variable(
-            perplexity, name='perplexity')
+
+        targets_mask = mask.T[1:]
+        costs = self.add_perplexity_measure(application_call, minus_logs,
+                               targets_mask,
+                               "perplexity")
+
+        missing_embs = tensor.eq(input_word_ids, self._vocab.unk).astype('int32') # (bs, L)
+        self.add_perplexity_measure(application_call, minus_logs,
+                               targets_mask * missing_embs.T[:-1],
+                               "perplexity_after_mis_word_embs")
+        self.add_perplexity_measure(application_call, minus_logs,
+                               targets_mask * (1-missing_embs.T[:-1]),
+                               "perplexity_after_word_embs")
+
+        if self._retrieval:
+            has_def = tensor.zeros_like(output_word_ids)
+            has_def = tensor.inc_subtensor(has_def[def_map[:,0], def_map[:,1]], 1)
+            mask_targets_has_def = has_def.T[:-1] * targets_mask # (L-1, bs)
+            self.add_perplexity_measure(application_call, minus_logs,
+                                   mask_targets_has_def,
+                                   "perplexity_after_def_embs")
+            application_call.add_auxiliary_variable(
+                    mask_targets_has_def.T, name='mask_def_emb')
+
         return costs
