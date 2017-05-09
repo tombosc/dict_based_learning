@@ -114,7 +114,7 @@ snli_config_registry['sum_small_dict'] = c
 
 ### Small dict v.2 ###
 
-# TODO: Write down current best model as of 6.05
+# TODO: Write down current best model as of 9.05
 
 ### RNN + Small dict ###
 c = snli_config_registry['sum_small_dict']

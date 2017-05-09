@@ -218,6 +218,7 @@ class ESIM(Initializable):
         s2_comp_bilstm = self._hypothesis_encoder2.apply(s2_comp)  # (batch_size, n_seq, 2 * dim)
 
         ### Pooling Layer ###
+
         s1_comp_bilstm_ave = T.mean((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
         s1_comp_bilstm_max = T.max((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
 

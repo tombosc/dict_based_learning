@@ -31,11 +31,11 @@ import atexit
 import signal
 import pprint
 import subprocess
-
 import json
-
 import numpy
 import theano
+import logging
+
 from theano import tensor as T
 
 from blocks.algorithms import (
@@ -58,13 +58,14 @@ from dictlearn.extensions import StartFuelServer, DumpCSVSummaries, SimilarityWo
     construct_dict_embedder, RetrievalPrintStats, PrintMessage
 from dictlearn.data import SNLIData
 from dictlearn.nli_simple_model import NLISimple
+from dictlearn.nli_esim_model import ESIM
 from dictlearn.retrieval import Retrieval, Dictionary
-
+from dictlearn.nli_simple_model import LSTMReadDefinitions, MeanPoolReadDefinitions, MeanPoolCombiner
 
 # vocab defaults to data.vocab
 # vocab_text defaults to vocab
 # Vocab def defaults to vocab
-def _initialize_model_and_data(c):
+def _initialize_simple_model_and_data(c):
 
     if c['vocab']:
         vocab = Vocabulary(c['vocab'])
@@ -124,8 +125,85 @@ def _initialize_model_and_data(c):
 
     return simple, data, dict, retrieval
 
+def _initialize_esim_model_and_data(c):
 
-def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server):
+    if c['vocab']:
+        vocab = Vocabulary(c['vocab'])
+    else:
+        vocab = None
+
+    # Load data
+    data = SNLIData(path=c['data_path'], layout=c['layout'], vocab=vocab)
+
+    # Dict
+    if c['dict_path']:
+        dict = Dictionary(c['dict_path'])
+
+        if len(c['vocab_def']):
+            retrieval_vocab = Vocabulary(c['vocab_def'])
+        else:
+            retrieval_vocab = data.vocab
+
+        retrieval = Retrieval(vocab_text=data.vocab, vocab_def=retrieval_vocab,
+            dictionary=dict, max_def_length=c['max_def_length'],
+            with_too_long_defs=c['with_too_long_defs'],
+            exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
+
+        data.set_retrieval(retrieval)
+
+        num_input_def_words = c['num_input_def_words'] if c['num_input_def_words'] > 0 else c['num_input_words']
+        def_emb_dim = c['def_emb_dim'] if c['def_emb_dim'] > 0 else c['emb_dim']
+
+        # TODO: Refactor lookup passing to reader. Very incoventient ATM
+        if c['reader_type'] == "rnn":
+            def_reader = LSTMReadDefinitions(num_input_words=num_input_def_words,
+                weights_init=Uniform(width=0.1), translate=c['combiner_reader_translate'],
+                biases_init=Constant(0.), dim=c['def_dim'], emb_dim=def_emb_dim,
+                vocab=retrieval_vocab, lookup=None)
+        elif c['reader_type'] == "mean":
+           def_reader = MeanPoolReadDefinitions(num_input_words=num_input_def_words,
+                translate=c['combiner_reader_translate'],
+                weights_init=Uniform(width=0.1), lookup=None, dim=def_emb_dim,
+                biases_init=Constant(0.), emb_dim=def_emb_dim, vocab=retrieval_vocab)
+        else:
+            raise NotImplementedError()
+
+        def_combiner = MeanPoolCombiner(dim=c['def_dim'], emb_dim=def_emb_dim,
+            dropout=c['combiner_dropout'], dropout_type=c['combiner_dropout_type'],
+            def_word_gating=c['combiner_gating'],
+            shortcut_unk_and_excluded=c['combiner_shortcut'], num_input_words=num_input_def_words,
+            exclude_top_k=c['exclude_top_k'],
+            vocab=vocab, compose_type=c['compose_type'])
+
+    else:
+        retrieval = None
+        dict = None
+        def_combiner = None
+        def_reader = None
+
+    # Initialize
+    simple = ESIM(
+        # Baseline arguments
+        emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
+        num_input_words=c['num_input_words'], def_dim=c['def_dim'],
+
+        def_combiner=def_combiner, def_reader=def_reader,
+
+        # Init
+        weights_init=GlorotUniform(), biases_init=Constant(0.0)
+    )
+    simple.push_initialization_config()
+    if c['encoder'] == 'rnn':
+        simple._rnn_encoder.weights_init = Uniform(std=0.1)
+    simple.initialize()
+
+    if c['embedding_path']:
+        embeddings = np.load(c['embedding_path'])
+        simple.set_embeddings(embeddings.astype(theano.config.floatX))
+
+    return simple, data, dict, retrieval
+
+def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, model='simple'):
     if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
         raise Exception("Some words have neither word nor def embedding")
 
@@ -145,7 +223,12 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     # Save config to save_path
     json.dump(config, open(os.path.join(save_path, "config.json"), "w"))
 
-    simple, data, used_dict, used_retrieval = _initialize_model_and_data(c)
+    if model == 'simple':
+        nli_model, data, used_dict, used_retrieval = _initialize_simple_model_and_data(c)
+    elif model == 'esim':
+        nli_model, data, used_dict, used_retrieval = _initialize_esim_model_and_data(c)
+    else:
+        raise NotImplementedError()
 
     # Compute cost
     s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
@@ -165,7 +248,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     cg = {}
     for train_phase in [True, False]:
-        pred = simple.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+        pred = nli_model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
             s2_def_map=s2_def_map, train_phase=train_phase)
         cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
         error_rate = MisclassificationRate().apply(y.flatten(), pred)
@@ -174,7 +257,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
-    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in simple._mlp],
+    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in nli_model._mlp],
         roles=[WEIGHT])(cg[True].variables)
     weight_decay = sum((w ** 2).sum() for w in weights_to_decay)
     final_cost = cg[True].outputs[0] + np.float32(c['l2']) * weight_decay
@@ -213,7 +296,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     # Freeze embeddings
     if not c['train_emb']:
-        frozen_params = [p for E in simple.get_embeddings_lookups() for p in E.parameters]
+        frozen_params = [p for E in nli_model.get_embeddings_lookups() for p in E.parameters]
         train_params =  [p for p in cg[True].parameters]
         assert len(set(frozen_params) & set(train_params)) > 0
     else:
