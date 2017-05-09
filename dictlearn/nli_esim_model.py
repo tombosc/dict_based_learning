@@ -93,7 +93,7 @@ class ESIM(Initializable):
         ## MLP
         self._mlp = MLP([Tanh()], [8 * dim, dim])
 
-        # TODO: Add BN, 
+        # TODO: Add BN,
 
         self._pred = MLP([Softmax()], [dim, 3])
         children.append(self._pred)
@@ -153,17 +153,12 @@ class ESIM(Initializable):
             b_size = s1_bilstm.shape[0]
             # s2_i is (batch_size, emb_dim)
             # s1_bilstm is (batch_size, seq_len, emb_dim)
-            # s1_mask is (batch_size, seq_len, emb_dim)
-            s2_i = s2_i.dimshuffle(0, "x", 1) # (batch_size, 1, emb_dim)
-            s2_i = T.repeat(s2_i, s1_bilstm.shape[1], axis=1) # (batch_size, seq_len, emb_dim)
-
-            # (batch_size * seq_len, emb_dim)
-            s1_bilstm = s1_bilstm.reshape((s1_bilstm.shape[0] * s1_bilstm.shape[1], s1_bilstm.shape[2]))
-            # (batch_size * seq_len, emb_dim)
-            s2_i = s2_i.reshape((s2_i.shape[0] * s2_i.shape[1], s2_i.shape[2]))
-
-            score = T.batched_dot(s1_bilstm, s2_i)
-            score = score.reshape((b_size, -1)) # (batch_size, seq_len)
+            # s1_mask is (batch_size, seq_len)
+            s2_i = s2_i.reshape((s2_i.shape[0], s2_i.shape[1], 1))
+            s2_i = T.repeat(s2_i, 2, axis=2)
+            # s2_i is (batch_size, emb_dim, 1)
+            score = T.batched_dot(s1_bilstm, s2_i) # (batch_size, seq_len, 1)
+            score = score[:, :, 0].reshape((b_size, -1)) # (batch_size, seq_len)
 
             score = theano.tensor.nnet.softmax(s1_mask * score)
             return score # E[i, :]
@@ -217,7 +212,7 @@ class ESIM(Initializable):
         ### Final classifier ###
 
         # MLP layer
-        # (batch_size, 4 * dim)
+        # (batch_size, 8 * dim)
         m = T.concatenate([s1_comp_bilstm_ave, s1_comp_bilstm_max, s2_comp_bilstm_ave, s2_comp_bilstm_max], axis=1)
         pre_logits = self._mlp.apply(m)
 
