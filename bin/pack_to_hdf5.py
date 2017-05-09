@@ -18,8 +18,9 @@ def main():
     parser = argparse.ArgumentParser("Converts text to HDF5")
     parser.add_argument("--type", choices=("text", "squad", "snli"), default='text',
                         help="What kind of data should be converted")
-    parser.add_argument("data", help="The data to convert")
     parser.add_argument("--lowercase", action="store_true")
+    parser.add_argument("--relaxed_span", action="store_true", default=False)
+    parser.add_argument("data", help="The data to convert")
     parser.add_argument("h5", help="Destination")
     args = parser.parse_args()
 
@@ -33,7 +34,8 @@ def main():
         port = get_free_port()
         try:
             corenlp = start_corenlp(port)
-            squad_to_h5py_dataset(args.data, args.h5, "http://localhost:{}".format(port))
+            squad_to_h5py_dataset(args.data, args.h5, "http://localhost:{}".format(port),
+                                  not args.relaxed_span)
         finally:
             if corenlp and corenlp.returncode is None:
                 corenlp.kill()
