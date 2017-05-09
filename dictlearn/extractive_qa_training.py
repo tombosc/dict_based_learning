@@ -383,12 +383,12 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
 
         result = 'correct' if is_correct else 'wrong'
         print('#{}'.format(done_examples))
-        print("CONTEXT:", detokenize(example['contexts_text'][0]))
-        print("QUESTION:", detokenize(example['questions_text'][0]))
-        print("RIGHT ANSWER: {}".format(correct_answer))
-        print("ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
-                                                   predicted_answer_span.stop,
-                                                   result),
+        print(u"CONTEXT:", detokenize(example['contexts_text'][0]))
+        print(u"QUESTION:", detokenize(example['questions_text'][0]))
+        print(u"RIGHT ANSWER: {}".format(correct_answer))
+        print(u"ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
+                                                    predicted_answer_span.stop,
+                                                    result),
               answer)
         print()
 
