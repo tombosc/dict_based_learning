@@ -10,6 +10,7 @@ qa_config_registry.set_root_config({
     'embedding_path' : "",
     'layout' : 'standard',
     'num_input_words' : 10000,
+    'def_num_input_words' : 0,
     'max_length' : 100,
     'batch_size' : 32,
     'batch_size_valid' : 32,
@@ -28,10 +29,11 @@ qa_config_registry.set_root_config({
     'learning_rate' : 0.001,
     'momentum' : 0.9,
     'grad_clip_threshold' : 5.0,
+    'dropout' : 0.,
+    'random_unk' : False,
 
     # monitoring and checkpointing
     'mon_freq_train' : 10,
-    'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
     'save_freq_epochs' : 1,
     'n_batches' : 0,

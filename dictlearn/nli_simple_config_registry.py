@@ -22,6 +22,7 @@ snli_config_registry.set_root_config({
     'vocab': '',
 
     'def_dim': 300, # LSTM reader hidden state or translate in MeanPool
+    'def_emb_dim': -1, # Dimensionality of vectors used in definitions
     'compose_type': '',
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
@@ -113,7 +114,7 @@ snli_config_registry['sum_small_dict'] = c
 
 ### Small dict v.2 ###
 
-# TODO: Write down current best model as of 6.05
+# TODO: Write down current best model as of 9.05
 
 ### RNN + Small dict ###
 c = snli_config_registry['sum_small_dict']

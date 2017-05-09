@@ -1,6 +1,7 @@
 """A dictionary-equipped extractive QA model."""
 import theano
 from theano import tensor
+from theano.gradient import disconnected_grad
 
 from collections import OrderedDict
 
@@ -46,22 +47,33 @@ class ExtractiveQAModel(Initializable):
     compose_type : str
 
     """
-    def __init__(self, dim, emb_dim, readout_dims, coattention, num_input_words, vocab,
-                 use_definitions, def_word_gating, compose_type,
-                 def_reader, reuse_word_embeddings, **kwargs):
+    def __init__(self, dim, emb_dim, readout_dims,
+                 num_input_words, def_num_input_words, vocab,
+                 use_definitions, def_word_gating, compose_type, coattention,
+                 def_reader, reuse_word_embeddings, random_unk, **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
         if num_input_words == 0:
             num_input_words = vocab.size()
+        if def_num_input_words == 0:
+            def_num_input_words = num_input_words
+
         self._coattention = coattention
         self._num_input_words = num_input_words
         self._use_definitions = use_definitions
+        self._random_unk = random_unk
+
+        lookup_num_words = num_input_words
+        if reuse_word_embeddings:
+            lookup_num_words = max(num_input_words, def_num_input_words)
+        if random_unk:
+            lookup_num_words = vocab.size()
 
         # Dima: we can have slightly less copy-paste here if we
         # copy the RecurrentFromFork class from my other projects.
         children = []
-        self._lookup = LookupTable(self._num_input_words, emb_dim)
+        self._lookup = LookupTable(lookup_num_words, emb_dim)
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
         self._encoder_rnn = LSTM(dim, name='encoder_rnn')
         self._question_transform = Linear(dim, dim, name='question_transform')
@@ -80,9 +92,12 @@ class ExtractiveQAModel(Initializable):
         children.extend([self._begin_readout, self._end_readout, self._softmax])
 
         if self._use_definitions:
+            # A potential bug here: we pass the same vocab to the def reader.
+            # If a different token is reserved for UNK in text and in the definitions,
+            # we can be screwed.
             def_reader_class = eval(def_reader)
             def_reader_kwargs = dict(
-                num_input_words=self._num_input_words,
+                num_input_words=def_num_input_words,
                 dim=dim, emb_dim=emb_dim,
                 vocab=vocab,
                 lookup=self._lookup if reuse_word_embeddings else None)
@@ -124,14 +139,19 @@ class ExtractiveQAModel(Initializable):
 
     @application
     def _encode(self, application_call, text, mask, def_embs=None, def_map=None, text_name=None):
-        text = (
-            tensor.lt(text, self._num_input_words) * text
-            + tensor.ge(text, self._num_input_words) * self._vocab.unk)
+        if not self._random_unk:
+            text = (
+                tensor.lt(text, self._num_input_words) * text
+                + tensor.ge(text, self._num_input_words) * self._vocab.unk)
         if text_name:
             application_call.add_auxiliary_variable(
                 unk_ratio(text, mask, self._vocab.unk),
                 name='{}_unk_ratio'.format(text_name))
         embs = self._lookup.apply(text)
+        if self._random_unk:
+            embs = (
+                tensor.lt(text, self._num_input_words)[:, :, None] * embs
+                + tensor.ge(text, self._num_input_words)[:, :, None] * disconnected_grad(embs))
         if def_embs:
             embs = self._combiner.apply(embs, mask, def_embs, def_map)
         encoded = flip01(

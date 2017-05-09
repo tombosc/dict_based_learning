@@ -30,6 +30,8 @@ def main():
         help="Add definitions from lowercase version of word and lemmas")
     parser.add_argument("--add-dictname-to-defs", action="store_true",
         help="Adds dictionary name to definition")
+    parser.add_argument("--wordnet", action="store_true",
+        help="Crawl WordNet")
     parser.add_argument("--identity", action="store_true",
                         help="Identity mapping dictionary")
     parser.add_argument("--spelling", action="store_true",
@@ -45,35 +47,39 @@ def main():
     vocab = Vocabulary(args.vocab)
     dict_ = Dictionary(args.dict)
 
-    if args.api_key:
+    try:
         port = get_free_port()
-        try:
-            popen = start_corenlp(port)
+        popen = start_corenlp(port)
+        url = "http://localhost:{}".format(port)
+        if args.api_key:
             dict_.crawl_wordnik(
-                    vocab, args.api_key, "http://localhost:{}".format(port),
+                vocab, args.api_key, url,
                 crawl_also_lowercase=args.crawl_also_lowercase,
                 crawl_also_lemma=args.crawl_also_lemma)
-        finally:
-            if popen and popen.returncode is None:
-                popen.kill()
-    # NOTE(kudkudak): A bit ugly, but this covers case where we have Cats which do not get added lemmas
-    # from cat without try_lower=True
-    elif args.add_lemma_defs or args.add_lower_lemma_defs:
-        dict_.add_from_lemma_definitions(vocab, try_lower=args.add_lower_lemma_defs)
-    elif args.add_lower_defs:
-        dict_.add_from_lowercase_definitions(vocab)
-    elif args.add_dict_name_def:
-        dict_.add_dictname_to_defs(vocab)
-    elif args.just_lemmas:
-        dict_.crawl_lemmas(vocab)
-    elif args.just_lowercase:
-        dict_.crawl_lowercase(vocab)
-    elif args.identity:
-        dict_.setup_identity_mapping(vocab)
-    elif args.spelling:
-        dict_.setup_spelling(vocab)
-    else:
-        raise ValueError("don't know what to do")
+        elif args.wordnet:
+            dict_.crawl_wordnet(url)
+        elif args.add_lemma_defs or args.add_lower_lemma_defs:
+            # NOTE(kudkudak): A bit ugly, but this covers case where
+            # we have Cats which do not get added lemmas
+            # from cat without try_lower=True
+            dict_.add_from_lemma_definitions(vocab, try_lower=args.add_lower_lemma_defs)
+        elif args.add_lower_defs:
+            dict_.add_from_lowercase_definitions(vocab)
+        elif args.add_dict_name_def:
+            dict_.add_dictname_to_defs(vocab)
+        elif args.just_lemmas:
+            dict_.crawl_lemmas(vocab)
+        elif args.just_lowercase:
+            dict_.crawl_lowercase(vocab)
+        elif args.identity:
+            dict_.setup_identity_mapping(vocab)
+        elif args.spelling:
+            dict_.setup_spelling(vocab)
+        else:
+            raise ValueError("don't know what to do")
+    finally:
+        if popen and popen.returncode is None:
+            popen.kill()
 
 if __name__ == "__main__":
     main()

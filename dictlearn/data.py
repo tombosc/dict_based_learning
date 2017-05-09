@@ -18,6 +18,9 @@ import os
 import functools
 import h5py
 import numpy
+import logging
+
+logger = logging.getLogger()
 
 import fuel
 from fuel.transformers import (
@@ -34,11 +37,13 @@ from dictlearn.util import str2vec
 # We have to pad all the words to contain the same
 # number of characters.
 MAX_NUM_CHARACTERS = 100
+def _str2vec(word):
+    return str2vec(word, MAX_NUM_CHARACTERS)
 
 
 def vectorize(words):
     """Replaces words with vectors."""
-    return [str2vec(word, MAX_NUM_CHARACTERS) for word in words]
+    return [_str2vec(word) for word in words]
 
 
 def listify(example):
@@ -108,7 +113,7 @@ class Data(object):
     @property
     def vocab(self):
         if not self._vocab:
-            print("Loading default vocab")
+            logger.debug("Loading default vocab")
             self._vocab = Vocabulary(
                 os.path.join(self._path, "vocab.txt"))
         return self._vocab
@@ -222,6 +227,11 @@ def digitize(vocab, source_data):
     return numpy.array([vocab.encode(words) for words in source_data])
 
 
+def keep_text(example):
+    return {'contexts_text': vectorize(example['contexts']),
+            'questions_text': vectorize(example['questions'])}
+
+
 class ExtractiveQAData(Data):
 
     def __init__(self, retrieval=None, *args, **kwargs):
@@ -243,6 +253,8 @@ class ExtractiveQAData(Data):
         if not q_ids:
             stream = FilterSources(stream, [source for source in dataset.sources
                                             if source != 'q_ids'])
+        else:
+            stream = SourcewiseMapping(stream, _str2vec, which_sources=('q_ids'))
         stream = PutTextTransfomer(stream, dataset, raw_text=True)
         # <eos> is added for two purposes: to serve a sentinel for coattention,
         # and also to ensure the answer span ends at a token
@@ -255,6 +267,9 @@ class ExtractiveQAData(Data):
             if self._retrieval:
                 raise NotImplementedError()
             return stream
+        if raw_text:
+            stream = Mapping(stream, keep_text, mapping_accepts=dict,
+                             add_sources=('contexts_text', 'questions_text'))
         stream = Batch(stream, iteration_scheme=ConstantScheme(batch_size))
         if self._retrieval:
             stream = Mapping(
@@ -262,10 +277,10 @@ class ExtractiveQAData(Data):
                 functools.partial(retrieve_and_pad_squad, self._retrieval),
                 mapping_accepts=dict,
                 add_sources=('defs', 'def_mask', 'contexts_def_map', 'questions_def_map'))
-        if not raw_text:
-            stream = SourcewiseMapping(stream, functools.partial(digitize, self.vocab),
-                                       which_sources=('contexts', 'questions'))
-        stream = Padding(stream, mask_sources=('contexts', 'questions'))
+        stream = SourcewiseMapping(stream, functools.partial(digitize, self.vocab),
+                                   which_sources=('contexts', 'questions'))
+        stream = Padding(
+            stream, mask_sources=['contexts', 'questions'] + (['contexts_text'] if raw_text else []))
         return stream
 
 

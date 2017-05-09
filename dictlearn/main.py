@@ -26,13 +26,13 @@ def add_config_arguments(config, parser):
             # let's assume all the lists in our configurations will be
             # lists of ints
             if isinstance(value, list):
-                convertor = lambda s: map(int, s.split())
+                convertor = lambda s: map(int, s.split(','))
             parser.add_argument(
                 "--" + key, type=convertor,
                 help="A setting from the configuration")
 
 
-def main(config_registry, training_func):
+def main(config_registry, training_func, **training_func_kwargs):
     parser = argparse.ArgumentParser("Learning with a dictionary")
     parser.add_argument("--fast-start", action="store_true",
                         help="Start faster by skipping a few things at the start")
@@ -64,7 +64,7 @@ def main(config_registry, training_func):
         else:
             logger.info("Continue an existing job")
         training_func(new_training_job, config, args.save_path,
-                      args.params, args.fast_start, args.fuel_server)
+                      args.params, args.fast_start, args.fuel_server, **training_func_kwargs)
     run_with_redirection(
         os.path.join(args.save_path, 'stdout.txt'),
         os.path.join(args.save_path, 'stderr.txt'),

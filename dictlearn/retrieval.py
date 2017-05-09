@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 import numpy
 import json
 import nltk
+from nltk.corpus import wordnet
 from wordnik import swagger, WordApi, AccountApi
 
 import fuel
@@ -50,7 +51,8 @@ class Dictionary(object):
             if os.path.exists(self._path):
                 self.load()
             else:
-                raise Exception("Error: could not load dictionary {}".format(self._path))
+                logger.warning("No dict was loaded; ignore if you are"
+                               " creating new one")
 
     def load(self):
         with open(self._path, 'r') as src:
@@ -138,6 +140,8 @@ class Dictionary(object):
         lemmatizer = nltk.WordNetLemmatizer()
         added = 0
         for word in vocab.words:
+            if not word in self._data:
+                self._data[word] = []
 
             word_list = [word, word.lower()] if try_lower else [word]
 
@@ -155,6 +159,7 @@ class Dictionary(object):
                                     self._data[word].append(def_)
                 except:
                     logger.error("lemmatizer crashed on {}".format(word))
+                    logger.error(traceback.format_exc())
         logger.info("Added {} new defs in add_from_lemma_definitions".format(added))
         self.save()
 
@@ -185,6 +190,20 @@ class Dictionary(object):
         for word in vocab.words:
             self._data[word] = [[word.lower()]]
             self._meta_data[word.lower()] = {"sourceDictionary": "lowercase"}
+        self.save()
+
+    def crawl_wordnet(self, corenlp_url):
+        corenlp = StanfordCoreNLP(corenlp_url)
+        for i, word in enumerate(wordnet.words()):
+            if word in self._data:
+                logger.info('skip a known word {}'.format(word))
+                continue
+            self._data[word] = []
+            for synset in wordnet.synsets(word):
+                def_ = corenlp.tokenize(synset.definition())[0]
+                self._data[word].append(def_)
+            if i % 10000 == 0:
+                self.save()
         self.save()
 
     def crawl_wordnik(self, vocab, api_key, corenlp_url,
