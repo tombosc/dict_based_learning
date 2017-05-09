@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__file__)
 
 from blocks.bricks import Initializable, Linear, MLP
-from blocks.bricks import Softmax, Rectifier
+from blocks.bricks import Softmax, Rectifier, Sequence
 from blocks.bricks.bn import BatchNormalization
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.base import application, lazy
@@ -77,7 +77,13 @@ class NLISimple(Initializable):
 
         if retrieval:
             if share_def_lookup:
-                def_lookup = self._lookup
+                if emb_dim != def_emb_dim:
+                    self._translate_pre_def2 = Linear(input_dim=emb_dim, output_dim=def_emb_dim,
+                        weights_init=GlorotUniform(), biases_init=Constant(0))
+                    children.append(self._translate_pre_def2)
+                    def_lookup = Sequence([self._lookup, self._translate_pre_def2])
+                else:
+                    def_lookup = self._lookup
             else:
                 def_lookup = None
 
