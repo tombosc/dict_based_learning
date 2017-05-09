@@ -173,7 +173,8 @@ def _initialize_esim_model_and_data(c):
             def_word_gating=c['combiner_gating'],
             shortcut_unk_and_excluded=c['combiner_shortcut'], num_input_words=num_input_def_words,
             exclude_top_k=c['exclude_top_k'],
-            vocab=vocab, compose_type=c['compose_type'])
+            vocab=vocab, compose_type=c['compose_type'],
+            weights_init=Uniform(width=0.1), biases_init=Constant(0.))
 
     else:
         retrieval = None
@@ -185,7 +186,7 @@ def _initialize_esim_model_and_data(c):
     simple = ESIM(
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
-        num_input_words=c['num_input_words'], def_dim=c['def_dim'],
+        num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
 
         def_combiner=def_combiner, def_reader=def_reader,
 
@@ -193,8 +194,10 @@ def _initialize_esim_model_and_data(c):
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
     simple.push_initialization_config()
-    if c['encoder'] == 'rnn':
-        simple._rnn_encoder.weights_init = Uniform(std=0.1)
+    # TODO: Not sure anymore why we do that
+    if c['encoder'] == 'bilstm':
+        for enc in simple._rnns:
+            enc.weights_init = Uniform(std=0.1)
     simple.initialize()
 
     if c['embedding_path']:
@@ -257,16 +260,24 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
-    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in nli_model._mlp],
-        roles=[WEIGHT])(cg[True].variables)
-    weight_decay = sum((w ** 2).sum() for w in weights_to_decay)
-    final_cost = cg[True].outputs[0] + np.float32(c['l2']) * weight_decay
+    if model == 'snli':
+        weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in nli_model._mlp],
+            roles=[WEIGHT])(cg[True].variables)
+        weight_decay = np.float32(c['l2']) * sum((w ** 2).sum() for w in weights_to_decay)
+    else:
+        weight_decay = 0.0
+
+    final_cost = cg[True].outputs[0] + weight_decay
     final_cost.name = 'final_cost'
 
     # Add updates for population parameters
-    pop_updates = get_batch_normalization_updates(cg[True])
-    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
-        for p, m in pop_updates]
+    if model == 'snli':
+        pop_updates = get_batch_normalization_updates(cg[True])
+        extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
+            for p, m in pop_updates]
+    else:
+        pop_updates = []
+        extra_updates = []
 
     if params:
         logger.debug("Load parameters from {}".format(params))

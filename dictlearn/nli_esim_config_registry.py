@@ -13,12 +13,15 @@ nli_esim_config_registry.set_root_config({
     'emb_dim': 300,
     'dim': 300,
     'dict_path': '',
+    'vocab': '',
+    'encoder': 'bilstm',
 
     # Also used in NYU-MLI
     'embedding_path': '',
     'train_emb': 1,
 
     # Dict params
+    'vocab_def': '',
     'compose_type': '',
     'try_lowercase': True,
     'disregard_word_embeddings': False,

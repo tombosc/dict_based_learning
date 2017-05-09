@@ -7,7 +7,7 @@ from theano import tensor
 import logging
 logger = logging.getLogger(__file__)
 
-from blocks.bricks import Initializable, Linear, MLP
+from blocks.bricks import Initializable, Linear, MLP, BatchNormalizedMLP
 from blocks.bricks import Softmax, Rectifier, Sequence, Tanh
 from blocks.bricks.bn import BatchNormalization
 from blocks.bricks.recurrent import LSTM
@@ -18,7 +18,7 @@ from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitializa
 
 from dictlearn.inits import GlorotUniform
 from dictlearn.lookup import MeanPoolCombiner, LSTMReadDefinitions, MeanPoolReadDefinitions
-from dictlearn.util import apply_dropout
+from dictlearn.theano_util import apply_dropout
 
 class ESIM(Initializable):
     """
@@ -26,7 +26,7 @@ class ESIM(Initializable):
     """
 
     # seq_length, emb_dim, hidden_dim
-    def __init__(self, dim, emb_dim, vocab, def_dim=-1,
+    def __init__(self, dim, emb_dim, vocab, def_dim=-1, encoder='bilstm',
             def_reader=None, def_combiner=None, dropout=0.5, num_input_words=-1,
             # Others
             **kwargs):
@@ -34,6 +34,11 @@ class ESIM(Initializable):
         self._dropout = dropout
         self._vocab = vocab
         self._emb_dim = emb_dim
+        self._def_reader = def_reader
+        self._def_combiner = def_combiner
+
+        if encoder != 'bilstm':
+            raise NotImplementedError()
 
         if def_dim < 0:
             self._def_dim = emb_dim
@@ -68,57 +73,38 @@ class ESIM(Initializable):
 
         self._prem_bilstm = Sequence([_prem_bidir_fork, _prem_bidir], name="prem_bilstm")
         self._hyp_bilstm = Sequence([_hyp_bidir_fork, _hyp_bidir], name="hyp_bilstm")
+        children.extend([_hyp_bidir_fork, _hyp_bidir])
+        children.extend([_prem_bidir, _prem_bidir_fork])
         children.extend([self._prem_bilstm, self._hyp_bilstm])
 
         ## BiLSTM no. 2 (encoded attentioned embeddings)
-        _hyp_bidir_fork = Linear(4 * dim, 4 * dim, name='hyp_bidir_fork2')
+        _hyp_bidir_fork = Linear(8 * dim, 4 * dim, name='hyp_bidir_fork2')
         _hyp_bidir = Bidirectional(LSTM(dim), name='hyp_bidir2')
-        _prem_bidir_fork = Linear(4 * dim, 4 * dim, name='prem_bidir_fork2')
+        _prem_bidir_fork = Linear(8 * dim, 4 * dim, name='prem_bidir_fork2')
         _prem_bidir = Bidirectional(LSTM(dim), name='prem_bidir2')
         self._prem_bilstm2 = Sequence([_prem_bidir_fork, _prem_bidir], name="prem_bilstm2")
         self._hyp_bilstm2 = Sequence([_hyp_bidir_fork, _hyp_bidir], name="hyp_bilstm2")
+        children.extend([_hyp_bidir_fork, _hyp_bidir])
+        children.extend([_prem_bidir, _prem_bidir_fork])
         children.extend([self._prem_bilstm2, self._hyp_bilstm2])
 
+        self._rnns = [self._prem_bilstm2, self._hyp_bilstm2, self._prem_bilstm, self._hyp_bilstm]
+
         ## MLP
-        self._mlp = MLP([Tanh()], [dim, dim], \
-            weights_init=GlorotUniform(), \
-            biases_init=Constant(0))
+        self._mlp = MLP([Tanh()], [8 * dim, dim])
 
-        # TODO: Add BN
+        # TODO: Add BN, 
 
-        self._pred = MLP([Softmax()], [dim, 3], \
-            weights_init=GlorotUniform(), \
-            biases_init=Constant(0))
+        self._pred = MLP([Softmax()], [dim, 3])
         children.append(self._pred)
 
         super(ESIM, self).__init__(children=children, **kwargs)
 
     def get_embeddings_lookups(self):
-        if not self._retrieval:
-            return [self._lookup]
-        elif self._retrieval and not self._only_def:
-            return [self._lookup, self._def_reader._def_lookup]
-        elif self._retrieval and self._only_def:
-            return [self._def_reader._def_lookup]
-        else:
-            raise NotImplementedError()
+        return [self._lookup]
 
     def set_embeddings(self, embeddings):
-        if not self._retrieval:
-            self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-        elif self._retrieval and not self._only_def:
-            self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-            self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
-        else:
-            raise NotImplementedError()
-
-    def embeddings_var(self):
-        if not self._retrieval:
-            return [self._lookup.parameters[0]]
-        elif self._retrieval and not self._only_def:
-            return [self._lookup.parameters[0], self._def_reader._def_lookup.parameters[0]]
-        else:
-            raise NotImplementedError()
+        self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
     @application
     def apply(self, application_call,
@@ -154,14 +140,15 @@ class ESIM(Initializable):
 
         ### Encode ###
 
-        s1_bilstm = self._premise_encoder.apply(s1_emb) # (batch_size, n_seq, def_dim)
-        s2_bilstm = self._hypothesis_encoder.apply(s2_emb) # (batch_size, n_seq, def_dim)
+        # TODO: Share this bilstm?
+        s1_bilstm, _ = self._prem_bilstm.apply(s1_emb) # (batch_size, n_seq, 2 * dim)
+        s2_bilstm, _ = self._hyp_bilstm.apply(s2_emb) # (batch_size, n_seq, 2 * dim)
 
         ### Attention ###
 
         # Compute E matrix (eq. 11)
         # E_ij = <s1[i], s2[j]>
-        # each call computes E[
+        # each call computes E[i, :]
         def compute_e_row(s2_i, s1_bilstm, s1_mask):
             b_size = s1_bilstm.shape[0]
             # s2_i is (batch_size, emb_dim)
@@ -182,19 +169,19 @@ class ESIM(Initializable):
             return score # E[i, :]
 
         # NOTE: No point in masking here
-        E, _ = theano.scan(compute_e_row, sequences=[s2_bilstm.transpose(1, 0, 2)], non_sequences=[s1_bilstm, s1_mask])
+        E, _ = theano.scan(compute_e_row, sequences=[s1_bilstm.transpose(1, 0, 2)],
+            non_sequences=[s2_bilstm, s2_mask])
         # (seq_len, batch_size, seq_len)
         E = E.dimshuffle(1, 0, 2)
+        assert E.ndim == 3
         # (batch_size, seq_len, seq_len)
 
         ### Compute tilde vectors (eq. 12 and 13) ###
 
         def compute_tilde_vector(e_i, s, s_mask):
             # e_i is (batch_size, seq_len)
-            s_tilde_i = e_i.dimshuffle(0, 1, "x")
             # s_tilde_i = \sum e_ij b_j, (batch_size, seq_len)
-            s_tilde_i = (e_i.dimshuffle(0, 1, "x") * (s * s_mask)).sum(axis=1)
-
+            s_tilde_i = (e_i.dimshuffle(0, 1, "x") * (s * s_mask.dimshuffle(0, 1, "x"))).sum(axis=1)
             return s_tilde_i
 
         # (batch_size, seq_len, def_dim)
@@ -202,20 +189,21 @@ class ESIM(Initializable):
             sequences=[E.dimshuffle(1, 0, 2)], non_sequences=[s2_bilstm, s2_mask])
         s1_tilde = s1_tilde.dimshuffle(1, 0, 2)
         s2_tilde, _ = theano.scan(compute_tilde_vector,
-            sequences=[E.dimshuffle(2, 1, 0)], non_sequences=[s1_bilstm, s1_mask])
+            sequences=[E.dimshuffle(2, 0, 1)], non_sequences=[s1_bilstm, s1_mask])
         s2_tilde = s2_tilde.dimshuffle(1, 0, 2)
 
         ### Compose (eq. 14 and 15) ###
 
-        # (batch_size, seq_len, 4 * def_dim)
-        s1_comp = T.concatenate([s1_bilstm, s1_tilde, s1_bilstm - s1_tilde, s1_bilstm * s1_tilde])
-        s2_comp = T.concatenate([s2_bilstm, s2_tilde, s2_bilstm - s2_tilde, s2_bilstm * s2_tilde])
+        # (batch_size, seq_len, 8 * dim)
+        s1_comp = T.concatenate([s1_bilstm, s1_tilde, s1_bilstm - s1_tilde, s1_bilstm * s1_tilde], axis=2)
+        s2_comp = T.concatenate([s2_bilstm, s2_tilde, s2_bilstm - s2_tilde, s2_bilstm * s2_tilde], axis=2)
 
         ### Encode (eq. 16 and 17) ###
 
-        # (batch_size, seq_len, 4 * def_dim)
-        s1_comp_bilstm = self._premise_encoder2.apply(s1_comp)  # (batch_size, n_seq, 2 * dim)
-        s2_comp_bilstm = self._hypothesis_encoder2.apply(s2_comp)  # (batch_size, n_seq, 2 * dim)
+        # (batch_size, seq_len, 8 * dim)
+        # TODO: Share this bilstm?
+        s1_comp_bilstm, _ = self._prem_bilstm2.apply(s1_comp)  # (batch_size, n_seq, 2 * dim)
+        s2_comp_bilstm, _ = self._hyp_bilstm2.apply(s2_comp)  # (batch_size, n_seq, 2 * dim)
 
         ### Pooling Layer ###
 
@@ -223,12 +211,14 @@ class ESIM(Initializable):
         s1_comp_bilstm_max = T.max((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
 
         s2_comp_bilstm_ave = T.mean((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
+        # (batch_size, dim)
         s2_comp_bilstm_max = T.max((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
 
         ### Final classifier ###
 
         # MLP layer
-        m = T.concatenate([s1_comp_bilstm_ave, s1_comp_bilstm_max, s2_comp_bilstm_ave, s2_comp_bilstm_max], axis=2)
+        # (batch_size, 4 * dim)
+        m = T.concatenate([s1_comp_bilstm_ave, s1_comp_bilstm_max, s2_comp_bilstm_ave, s2_comp_bilstm_max], axis=1)
         pre_logits = self._mlp.apply(m)
 
         if train_phase:
@@ -236,6 +226,8 @@ class ESIM(Initializable):
 
         # Get prediction
         self.logits = self._pred.apply(pre_logits)
+
+        return self.logits
 
 
 
