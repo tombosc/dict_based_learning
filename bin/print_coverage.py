@@ -27,9 +27,11 @@ def main():
     if args.dict and args.top_k:
         print("Analysing coverage of dict of text")
         dict_ = Dictionary(args.dict)
+        n_not_covered_by_embs = total * (1 - coverage[args.top_k - 1])
         n_covered_by_dict = 0
         n_more_def_than_1 = 0
         n_covered_by_dict_by_lowercasing = 0
+        n_covered_by_dict_by_lemmatizing = 0
         for i in range(args.top_k, len(freqs)):
 
             if len(dict_.get_definitions(words[i])) > 1:
@@ -39,15 +41,21 @@ def main():
                 n_covered_by_dict += freqs[i]
             elif dict_.get_definitions(words[i].lower()):
                 n_covered_by_dict_by_lowercasing += freqs[i]
+            else:
+                pass
+
 
         print("Dictionary has {} entries".format(dict_.num_entries()))
-        print("Dictionary covers {}% of total occurences".format(100 * n_covered_by_dict / total))
+        print("Dictionary covers {}% of total occurences in addition to word emb".
+              format(100 * n_covered_by_dict / total))
         print("Dictionary covers additional {}% of total occurences not covered by word emb".
-            format(100 * n_covered_by_dict / (total * (1 - coverage[args.top_k-1]))))
-        print("Dictionary def with >1 def (calculated only after topk)   {}%".
-            format(100 * n_more_def_than_1 / (total * (1 - coverage[args.top_k - 1]))))
+              format(100 * n_covered_by_dict / n_not_covered_by_embs))
+        print("Dictionary def with >1 def (calculated only after topk) {}%".
+              format(100 * n_more_def_than_1 / n_not_covered_by_embs))
+        print("Querying dict with lowercased words covers {}% in addition to word emb".
+              format(100 * n_covered_by_dict_by_lowercasing / total))
         print("Querying dict with lowercased words covers {}% of total occurences not covered by word emb".
-            format(100 * n_covered_by_dict_by_lowercasing / (total * (1 - coverage[args.top_k-1]))))
+              format(100 * n_covered_by_dict_by_lowercasing / n_not_covered_by_embs))
 
     elif args.embedding and args.top_k:
 

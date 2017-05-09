@@ -49,7 +49,8 @@ def text_to_h5py_dataset(text_path, dst_path):
             })
 
 
-def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
+def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url,
+                          exact_span=True):
     data = json.load(open(squad_path))
     data = data['data']
 
@@ -70,21 +71,28 @@ def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url):
     num_issues = 0
     for article in data:
         for paragraph in article['paragraphs']:
-            context, context_positions = tokenize(corenlp, paragraph['context'])
+            context, context_positions = corenlp.tokenize(paragraph['context'])
             context_begin, context_end = add_text(context)
 
             for qa in paragraph['qas']:
                 try:
-                    question, _ = tokenize(corenlp, qa['question'])
+                    question, _ = corenlp.tokenize(qa['question'])
                     question_begin, question_end = add_text(question)
                     answer_begins = []
                     answer_ends = []
 
                     for answer in qa['answers']:
                         start = answer['answer_start']
-                        assert paragraph['context'][start:start + len(answer['text'])] == answer['text']
-                        answer_text, _ = tokenize(corenlp, answer['text'])
-                        begin = context_positions.index(answer['answer_start'])
+                        assert (paragraph['context'][start:start + len(answer['text'])]
+                                == answer['text'])
+                        answer_text, _ = corenlp.tokenize(answer['text'])
+                        try:
+                            begin = context_positions.index(answer['answer_start'])
+                        except ValueError:
+                            if exact_span:
+                                raise
+                            logger.error("{} is not a starting position of a token".format(begin))
+                            begin = [pos for pos in context_positions if pos > begin][0]
 
                         end = begin + len(answer_text)
                         answer_begins.append(begin)
