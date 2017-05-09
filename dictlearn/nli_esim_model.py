@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__file__)
 
 from blocks.bricks import Initializable, Linear, MLP
-from blocks.bricks import Softmax, Rectifier
+from blocks.bricks import Softmax, Rectifier, Sequence, Tanh
 from blocks.bricks.bn import BatchNormalization
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.base import application, lazy
@@ -25,18 +25,20 @@ class ESIM(Initializable):
     ESIM model based on https://github.com/NYU-MLL/multiNLI/blob/master/python/models/esim.py
     """
 
-    def __init__(self, dim, mlp_dim, translate_dim, emb_dim, vocab,
-            def_reader=None, def_combiner=None, dropout=0.5,
+    # seq_length, emb_dim, hidden_dim
+    def __init__(self, dim, emb_dim, vocab, def_dim=-1,
+            def_reader=None, def_combiner=None, dropout=0.5, num_input_words=-1,
             # Others
             **kwargs):
 
         self._dropout = dropout
         self._vocab = vocab
-        self._retrieval = retrieval
-        self._only_def = disregard_word_embeddings
+        self._emb_dim = emb_dim
 
-        if reader_type not in {"rnn", "mean"}:
-            raise NotImplementedError("Not implemented " + reader_type)
+        if def_dim < 0:
+            self._def_dim = emb_dim
+        else:
+            self._def_dim = def_dim
 
         if num_input_words > 0:
             logger.info("Restricting vocab to " + str(num_input_words))
@@ -46,30 +48,45 @@ class ESIM(Initializable):
 
         children = []
 
+        ## Embedding
+        self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
+        children.append(self._lookup)
+
         if def_reader:
+            self._final_emb_dim = self._def_dim
             self._def_reader = def_reader
-            self._combiner = def_combiner
-            children.extend([self._def_reader, self._combiner])
+            self._def_combiner = def_combiner
+            children.extend([self._def_reader, self._def_combiner])
+        else:
+            self._final_emb_dim = self._emb_dim
 
-        # BiLSTM
-        self._bidir_fork = Linear(emb_dim, 4 * dim, name='bidir_fork')
-        self._bidir = Bidirectional(LSTM(dim), name='bidir')
-        children.extend([self._bidir_fork, self._bidir])
+        ## BiLSTM
+        _hyp_bidir_fork = Linear(emb_dim, 4 * dim, name='hyp_bidir_fork')
+        _hyp_bidir = Bidirectional(LSTM(dim), name='hyp_bidir')
+        _prem_bidir_fork = Linear(emb_dim, 4 * dim, name='prem_bidir_fork')
+        _prem_bidir = Bidirectional(LSTM(dim), name='prem_bidir')
 
-        self._mlp = []
-        current_dim = 2 * translate_dim  # Joint
-        for i in range(n_layers):
-            rect = Rectifier()
-            dense = Linear(input_dim=current_dim, output_dim=mlp_dim,
-                name="MLP_layer_" + str(i), \
-                weights_init=GlorotUniform(), \
-                biases_init=Constant(0))
-            current_dim = mlp_dim
-            bn = BatchNormalization(input_dim=current_dim, name="BN_" + str(i), conserve_memory=False)
-            children += [dense, rect, bn] #TODO: Strange place to put ReLU
-            self._mlp.append([dense, rect, bn])
+        self._prem_bilstm = Sequence([_prem_bidir_fork, _prem_bidir], name="prem_bilstm")
+        self._hyp_bilstm = Sequence([_hyp_bidir_fork, _hyp_bidir], name="hyp_bilstm")
+        children.extend([self._prem_bilstm, self._hyp_bilstm])
 
-        self._pred = MLP([Softmax()], [current_dim, 3], \
+        ## BiLSTM no. 2 (encoded attentioned embeddings)
+        _hyp_bidir_fork = Linear(4 * dim, 4 * dim, name='hyp_bidir_fork2')
+        _hyp_bidir = Bidirectional(LSTM(dim), name='hyp_bidir2')
+        _prem_bidir_fork = Linear(4 * dim, 4 * dim, name='prem_bidir_fork2')
+        _prem_bidir = Bidirectional(LSTM(dim), name='prem_bidir2')
+        self._prem_bilstm2 = Sequence([_prem_bidir_fork, _prem_bidir], name="prem_bilstm2")
+        self._hyp_bilstm2 = Sequence([_hyp_bidir_fork, _hyp_bidir], name="hyp_bilstm2")
+        children.extend([self._prem_bilstm2, self._hyp_bilstm2])
+
+        ## MLP
+        self._mlp = MLP([Tanh()], [dim, dim], \
+            weights_init=GlorotUniform(), \
+            biases_init=Constant(0))
+
+        # TODO: Add BN
+
+        self._pred = MLP([Softmax()], [dim, 3], \
             weights_init=GlorotUniform(), \
             biases_init=Constant(0))
         children.append(self._pred)
@@ -107,9 +124,6 @@ class ESIM(Initializable):
     def apply(self, application_call,
             s1_preunk, s1_mask, s2_preunk, s2_mask, def_mask=None,
             defs=None, s1_def_map=None, s2_def_map=None, train_phase=True):
-
-        ### First biLSTM layer ###
-
         # Shortlist words (sometimes we want smaller vocab, especially when dict is small)
         s1 = (tensor.lt(s1_preunk, self._num_input_words) * s1_preunk
               + tensor.ge(s1_preunk, self._num_input_words) * self._vocab.unk)
@@ -140,18 +154,19 @@ class ESIM(Initializable):
 
         ### Encode ###
 
-        s1_bilstm = self._premise_encoder.apply(s1_emb) # (batch_size, n_seq, 2 * dim)
-        s2_bilstm = self._premise_encoder.apply(s2_emb) # (batch_size, n_seq, 2 * dim)
+        s1_bilstm = self._premise_encoder.apply(s1_emb) # (batch_size, n_seq, def_dim)
+        s2_bilstm = self._hypothesis_encoder.apply(s2_emb) # (batch_size, n_seq, def_dim)
 
         ### Attention ###
 
         # Compute E matrix (eq. 11)
         # E_ij = <s1[i], s2[j]>
         # each call computes E[
-        def compute_e_row(s2_i, s1_bilstm):
+        def compute_e_row(s2_i, s1_bilstm, s1_mask):
             b_size = s1_bilstm.shape[0]
             # s2_i is (batch_size, emb_dim)
             # s1_bilstm is (batch_size, seq_len, emb_dim)
+            # s1_mask is (batch_size, seq_len, emb_dim)
             s2_i = s2_i.dimshuffle(0, "x", 1) # (batch_size, 1, emb_dim)
             s2_i = T.repeat(s2_i, s1_bilstm.shape[1], axis=1) # (batch_size, seq_len, emb_dim)
 
@@ -162,93 +177,64 @@ class ESIM(Initializable):
 
             score = T.batched_dot(s1_bilstm, s2_i)
             score = score.reshape((b_size, -1)) # (batch_size, seq_len)
-            score = theano.tensor.nnet.softmax(score)
-            return score
 
-        E, _ = theano.scan(compute_e_row, sequences=[s2_bilstm.transpose(1, 0, 2)], non_sequences=[s1_bilstm])
+            score = theano.tensor.nnet.softmax(s1_mask * score)
+            return score # E[i, :]
+
+        # NOTE: No point in masking here
+        E, _ = theano.scan(compute_e_row, sequences=[s2_bilstm.transpose(1, 0, 2)], non_sequences=[s1_bilstm, s1_mask])
         # (seq_len, batch_size, seq_len)
         E = E.dimshuffle(1, 0, 2)
         # (batch_size, seq_len, seq_len)
 
-        scores_all = []
-        premise_attn = []
-        alphas = []
+        ### Compute tilde vectors (eq. 12 and 13) ###
 
-        for i in range(self.sequence_length):
+        def compute_tilde_vector(e_i, s, s_mask):
+            # e_i is (batch_size, seq_len)
+            s_tilde_i = e_i.dimshuffle(0, 1, "x")
+            # s_tilde_i = \sum e_ij b_j, (batch_size, seq_len)
+            s_tilde_i = (e_i.dimshuffle(0, 1, "x") * (s * s_mask)).sum(axis=1)
 
-            scores_i_list = []
-            for j in range(self.sequence_length):
-                score_ij = tf.reduce_sum(tf.multiply(premise_list[i], hypothesis_list[j]), 1, keep_dims=True)
-                scores_i_list.append(score_ij)
+            return s_tilde_i
 
-            scores_i = tf.stack(scores_i_list, axis=1)
-            alpha_i = blocks.masked_softmax(scores_i, mask_hyp)
-            a_tilde_i = tf.reduce_sum(tf.multiply(alpha_i, hypothesis_bi), 1)
-            premise_attn.append(a_tilde_i)
+        # (batch_size, seq_len, def_dim)
+        s1_tilde, _ = theano.scan(compute_tilde_vector,
+            sequences=[E.dimshuffle(1, 0, 2)], non_sequences=[s2_bilstm, s2_mask])
+        s1_tilde = s1_tilde.dimshuffle(1, 0, 2)
+        s2_tilde, _ = theano.scan(compute_tilde_vector,
+            sequences=[E.dimshuffle(2, 1, 0)], non_sequences=[s1_bilstm, s1_mask])
+        s2_tilde = s2_tilde.dimshuffle(1, 0, 2)
 
-            scores_all.append(scores_i)
-            alphas.append(alpha_i)
+        ### Compose (eq. 14 and 15) ###
 
-        scores_stack = tf.stack(scores_all, axis=2)
-        scores_list = tf.unstack(scores_stack, axis=1)
+        # (batch_size, seq_len, 4 * def_dim)
+        s1_comp = T.concatenate([s1_bilstm, s1_tilde, s1_bilstm - s1_tilde, s1_bilstm * s1_tilde])
+        s2_comp = T.concatenate([s2_bilstm, s2_tilde, s2_bilstm - s2_tilde, s2_bilstm * s2_tilde])
 
-        hypothesis_attn = []
-        betas = []
-        for j in range(self.sequence_length):
-            scores_j = scores_list[j]
-            beta_j = blocks.masked_softmax(scores_j, mask_prem)
-            b_tilde_j = tf.reduce_sum(tf.multiply(beta_j, premise_bi), 1)
-            hypothesis_attn.append(b_tilde_j)
+        ### Encode (eq. 16 and 17) ###
 
-            betas.append(beta_j)
-
-        # Make attention-weighted sentence representations into one tensor,
-        premise_attns = tf.stack(premise_attn, axis=1)
-        hypothesis_attns = tf.stack(hypothesis_attn, axis=1)
-
-        # For making attention plots,
-        self.alpha_s = tf.stack(alphas, axis=2)
-        self.beta_s = tf.stack(betas, axis=2)
-
-        ### Subcomponent Inference ###
-
-        prem_diff = tf.subtract(premise_bi, premise_attns)
-        prem_mul = tf.multiply(premise_bi, premise_attns)
-        hyp_diff = tf.subtract(hypothesis_bi, hypothesis_attns)
-        hyp_mul = tf.multiply(hypothesis_bi, hypothesis_attns)
-
-        m_a = tf.concat([premise_bi, premise_attns, prem_diff, prem_mul], 2)
-        m_b = tf.concat([hypothesis_bi, hypothesis_attns, hyp_diff, hyp_mul], 2)
-
-        ### Inference Composition ###
-
-        v1_outs, c3 = blocks.biLSTM(m_a, dim=self.dim, seq_len=prem_seq_lengths, name='v1')
-        v2_outs, c4 = blocks.biLSTM(m_b, dim=self.dim, seq_len=hyp_seq_lengths, name='v2')
-
-        v1_bi = tf.concat(v1_outs, axis=2)
-        v2_bi = tf.concat(v2_outs, axis=2)
+        # (batch_size, seq_len, 4 * def_dim)
+        s1_comp_bilstm = self._premise_encoder2.apply(s1_comp)  # (batch_size, n_seq, 2 * dim)
+        s2_comp_bilstm = self._hypothesis_encoder2.apply(s2_comp)  # (batch_size, n_seq, 2 * dim)
 
         ### Pooling Layer ###
+        s1_comp_bilstm_ave = T.mean((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
+        s1_comp_bilstm_max = T.max((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
 
-        v_1_sum = tf.reduce_sum(v1_bi, 1)
-        v_1_ave = tf.div(v_1_sum, tf.expand_dims(tf.cast(prem_seq_lengths, tf.float32), -1))
+        s2_comp_bilstm_ave = T.mean((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
+        s2_comp_bilstm_max = T.max((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
 
-        v_2_sum = tf.reduce_sum(v2_bi, 1)
-        v_2_ave = tf.div(v_2_sum, tf.expand_dims(tf.cast(hyp_seq_lengths, tf.float32), -1))
-
-        v_1_max = tf.reduce_max(v1_bi, 1)
-        v_2_max = tf.reduce_max(v2_bi, 1)
-
-        v = tf.concat([v_1_ave, v_2_ave, v_1_max, v_2_max], 1)
+        ### Final classifier ###
 
         # MLP layer
-        h_mlp = tf.nn.tanh(tf.matmul(v, self.W_mlp) + self.b_mlp)
+        m = T.concatenate([s1_comp_bilstm_ave, s1_comp_bilstm_max, s2_comp_bilstm_ave, s2_comp_bilstm_max], axis=2)
+        pre_logits = self._mlp.apply(m)
 
-        # Dropout applied to classifier
-        h_drop = tf.nn.dropout(h_mlp, self.keep_rate_ph)
+        if train_phase:
+            pre_logits = apply_dropout(pre_logits, drop_prob=self._dropout)
 
         # Get prediction
-        self.logits = tf.matmul(h_drop, self.W_cl) + self.b_cl
+        self.logits = self._pred.apply(pre_logits)
 
 
 
