@@ -35,11 +35,14 @@ from blocks.extensions.monitoring import (DataStreamMonitoring,
 from blocks.main_loop import MainLoop
 from blocks.serialization import load_parameters
 from blocks.monitoring.evaluators import DatasetEvaluator
+from blocks.monitoring.aggregation import MonitoredQuantity
+from blocks.extensions import SimpleExtension
 from blocks.extensions.predicates import OnLogRecord
 
 import fuel
 from fuel.streams import ServerDataStream
 
+import dictlearn.squad_evaluate
 from dictlearn.util import (
     rename, masked_root_mean_square, get_free_port,
     copy_streams_to_file, run_with_redirection)
@@ -51,8 +54,53 @@ from dictlearn.extensions import (
 from dictlearn.extractive_qa_model import ExtractiveQAModel
 from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import Retrieval, Dictionary
+from dictlearn.squad_evaluate import normalize_answer
+from dictlearn.util import vec2str
 
 logger = logging.getLogger()
+
+detok = MosesDetokenizer()
+def detokenize(str_):
+    return u" ".join(detok.detokenize(str_))
+
+
+class TextMatchRatio(MonitoredQuantity):
+
+    def __init__(self, data_path, *args, **kwargs):
+        with open(data_path, 'r'):
+            self._data = json.load(open(data_path))['data']
+        super(TextMatchRatio, self).__init__(*args, **kwargs)
+
+    def initialize(self):
+        self.predictions = {}
+
+    def aggregate(self, predicted_begins, predicted_ends,
+                  contexts_text, q_ids):
+        batch_size = predicted_begins.shape[0]
+        for i in range(batch_size):
+            predicted_answer = detokenize(
+                map(vec2str,
+                    contexts_text[i][predicted_begins[i]:predicted_ends[i]]))
+            q_id = vec2str(q_ids[i])
+            self.predictions[q_id] = predicted_answer
+
+    def get_aggregated_value(self):
+        results = dictlearn.squad_evaluate.evaluate(self._data, self.predictions)
+        return results['exact_match']
+
+
+class DumpPredictions(SimpleExtension):
+
+    def __init__(self, save_path, text_match_ratio, *args, **kwargs):
+        self._save_path = save_path
+        self._text_match_ratio = text_match_ratio
+        super(DumpPredictions, self).__init__(*args, **kwargs)
+
+    def do(self, *args, **kwargs):
+        iterations_done = self.main_loop.log.status['iterations_done']
+        with open(os.path.join(
+                self._save_path, "{}.json".format(iterations_done)), 'w') as dst:
+            json.dump(self._text_match_ratio.predictions, dst, indent=2, sort_keys=True)
 
 
 def _initialize_data_and_model(config):
@@ -80,6 +128,7 @@ def _initialize_data_and_model(config):
         def_word_gating=c['def_word_gating'],
         compose_type=c['compose_type'],
         reuse_word_embeddings=c['reuse_word_embeddings'],
+        random_unk=c['random_unk'],
         def_reader=c['def_reader'],
         weights_init=Uniform(width=0.1),
         biases_init=Constant(0.))
@@ -88,7 +137,7 @@ def _initialize_data_and_model(config):
     if c['embedding_path']:
         qam.set_embeddings(numpy.load(
             os.path.join(fuel.config.data_path[0], c['embedding_path'])))
-    logger.debug("Embeddings loaded")
+        logger.debug("Embeddings loaded")
     return data, qam
 
 
@@ -119,6 +168,8 @@ def train_extractive_qa(new_training_job, config, save_path,
 
     length = rename(qam.contexts.shape[1], 'length')
     batch_size = rename(qam.contexts.shape[0], 'batch_size')
+    predicted_begins, = VariableFilter(name='predicted_begins')(cg)
+    predicted_ends, = VariableFilter(name='predicted_ends')(cg)
     exact_match, = VariableFilter(name='exact_match')(cg)
     exact_match_ratio = rename(exact_match.mean(), 'exact_match_ratio')
     context_unk_ratio, = VariableFilter(name='context_unk_ratio')(cg)
@@ -137,6 +188,12 @@ def train_extractive_qa(new_training_job, config, save_path,
             def_gates_max = tensor.maximum(*[x.max() for x in def_gates])
             monitored_vars.extend([rename(def_gates_min, 'def_gates_min'),
                                    rename(def_gates_max, 'def_gates_max')])
+    text_match_ratio = TextMatchRatio(
+        data_path=os.path.join(fuel.config.data_path[0], 'squad/dev-v1.1.json'),
+        requires=[predicted_begins, predicted_ends,
+                  tensor.ltensor3('contexts_text'),
+                  tensor.lmatrix('q_ids')],
+        name='text_match_ratio')
 
     parameters = cg.get_parameter_dict()
     trained_parameters = parameters.values()
@@ -206,18 +263,29 @@ def train_extractive_qa(new_training_job, config, save_path,
             every_n_batches=c['mon_freq_train']),
     ]
     validation = DataStreamMonitoring(
-        monitored_vars,
-        data.get_stream('dev', batch_size=c['batch_size_valid']),
+        [text_match_ratio] + monitored_vars,
+        data.get_stream('dev', batch_size=c['batch_size_valid'],
+                        raw_text=True, q_ids=True),
         prefix="dev").set_conditions(
             before_training=not fast_start,
             after_epoch=True)
-    track_the_best = TrackTheBest(
+    dump_predictions = DumpPredictions(
+        save_path, text_match_ratio,
+        before_training=not fast_start,
+        after_epoch=True)
+    track_the_best_exact = TrackTheBest(
         validation.record_name(exact_match_ratio),
         choose_best=max).set_conditions(
             before_training=True,
             after_epoch=True)
-    extensions.extend([validation,
-                       track_the_best])
+    track_the_best_text = TrackTheBest(
+        validation.record_name(text_match_ratio),
+        choose_best=max).set_conditions(
+            before_training=True,
+            after_epoch=True)
+    extensions.extend([validation, dump_predictions,
+                       track_the_best_exact,
+                       track_the_best_text])
         # We often use pretrained word embeddings and we don't want
         # to load and save them every time. To avoid that, we use
         # save_main_loop=False, we only save the trained parameters,
@@ -234,7 +302,7 @@ def train_extractive_qa(new_training_job, config, save_path,
                    after_training=not fast_start)
             .add_condition(
                 ['after_batch', 'after_epoch'],
-                 OnLogRecord(track_the_best.notification_name),
+                 OnLogRecord(track_the_best_text.notification_name),
                  (root_path + "_best" + extension,)),
         DumpTensorflowSummaries(
             save_path,
@@ -266,10 +334,6 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     with open(tar_path) as src:
         cg.set_parameter_values(load_parameters(src))
 
-    detok = MosesDetokenizer()
-    def detokenize(str_):
-        return " ".join(detok.detokenize(str_))
-
     predicted_begins, = VariableFilter(name='predicted_begins')(cg)
     predicted_ends, = VariableFilter(name='predicted_ends')(cg)
     compute = [predicted_begins[0], predicted_ends[0]]
@@ -277,7 +341,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
         d2q_att_weights, = VariableFilter(name='d2q_att_weights')(cg)
         q2d_att_weights, = VariableFilter(name='q2d_att_weights')(cg)
         compute.extend([d2q_att_weights, q2d_att_weights])
-    predict_func = theano.function(qam.input_vars, compute)
+    predict_func = theano.function(qam.input_vars.values(), compute)
 
     done_examples = 0
     num_correct = 0
@@ -293,15 +357,21 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     for example in stream.get_epoch_iterator(as_dict=True):
         if done_examples == num_examples:
             break
+        example['contexts_text'] = [
+            map(vec2str, example['contexts_text'][0])]
+        example['questions_text'] = [
+            map(vec2str, example['questions_text'][0])]
         feed = dict(example)
         del feed['q_ids']
-        feed['contexts'] = numpy.array(data.vocab.encode(example['contexts'][0]))[None, :]
-        feed['questions'] = numpy.array(data.vocab.encode(example['questions'][0]))[None, :]
+        del feed['contexts_text']
+        del feed['questions_text']
+        del feed['contexts_text_mask']
         result = predict_func(**feed)
         correct_answer_span = slice(example['answer_begins'], example['answer_ends'])
         predicted_answer_span = slice(*result[:2])
+        correct_answer = detokenize(example['contexts_text'][0][correct_answer_span])
+        answer = detokenize(example['contexts_text'][0][predicted_answer_span])
         is_correct = correct_answer_span == predicted_answer_span
-        answer = detokenize(example['contexts'][0, predicted_answer_span])
 
         if c['coattention']:
             d2q.append(result[-2])
@@ -309,12 +379,13 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
 
         done_examples += 1
         num_correct += is_correct
-        predictions[example['q_ids'][0]] = answer
+        predictions[vec2str(example['q_ids'][0])] = answer
 
         result = 'correct' if is_correct else 'wrong'
         print('#{}'.format(done_examples))
-        print("CONTEXT:", detokenize(example['contexts'][0]))
-        print("QUESTION:", detokenize(example['questions'][0]))
+        print("CONTEXT:", detokenize(example['contexts_text'][0]))
+        print("QUESTION:", detokenize(example['questions_text'][0]))
+        print("RIGHT ANSWER: {}".format(correct_answer))
         print("ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
                                                    predicted_answer_span.stop,
                                                    result),
@@ -328,4 +399,4 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     # with open(os.path.join(save_path, 'attention.pkl'), 'w') as dst:
     #     cPickle.dump({'d2q': d2q, 'q2d': q2d}, dst)
     with open(dest_path, 'w') as dst:
-        json.dump(predictions, dst, indent=2)
+        json.dump(predictions, dst, indent=2, sort_keys=True)
