@@ -156,7 +156,7 @@ class SimilarityWordEmbeddingEval(SimpleExtension):
 
     def __init__(self, embedder, prefix="", **kwargs):
         try:
-            from web.datasets.similarity import fetch_MEN, fetch_WS353, fetch_SimLex999
+            from web.datasets.similarity import fetch_MEN, fetch_WS353, fetch_SimLex999, fetch_RW
         except ImportError:
             raise RuntimeError("Please install web (https://github.com/kudkudak/word-embeddings-benchmarks)")
 
@@ -168,7 +168,8 @@ class SimilarityWordEmbeddingEval(SimpleExtension):
         tasks = { # TODO: Pick a bit better tasks
             "MEN": fetch_MEN(),
             "WS353": fetch_WS353(),
-            "SIMLEX999": fetch_SimLex999()
+            "SIMLEX999": fetch_SimLex999(),
+            "RW": fetch_RW()
         }
 
         # Print sample data
@@ -268,6 +269,11 @@ class DumpCSVSummaries(SimpleExtension):
             self._current_log = pd.read_csv(os.path.join(self._save_path, "logs.csv")).to_dict()
 
         super(DumpCSVSummaries, self).__init__(**kwargs)
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
+        return self
 
     def do(self, *args, **kwargs):
         for key, value in self.main_loop.log.current_row.items():
