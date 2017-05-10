@@ -45,6 +45,9 @@ logger = logging.getLogger()
 
 def train_language_model(new_training_job, config, save_path, params,
                          fast_start, fuel_server):
+    assert((c['dict_path'] and not c['embedding_path']) or 
+           (not c['dict_path'] and c['embedding_path']))
+
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
@@ -69,6 +72,11 @@ def train_language_model(new_training_job, config, save_path, params,
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
+
+    if c['embedding_path']:
+        emb_full_path = os.path.join(fuel.config.data_path[0], c['embedding_path'])
+        lm.set_embeddings(numpy.load(emb_full_path))
+        logger.debug("Embeddings loaded")
 
     words = tensor.ltensor3('words')
     words_mask = tensor.matrix('words_mask')
@@ -97,9 +105,17 @@ def train_language_model(new_training_job, config, save_path, params,
         monitored_vars.extend([num_definitions])
 
     parameters = cg.get_parameter_dict()
-    logger.info("Trainable parameters" + "\n" +
+    trained_parameters = parameters.values()
+    if c['embedding_path'] and not c['train_emb']:
+        logger.debug("Exclude  word embeddings from the trained parameters")
+        trained_parameters = [p for p in trained_parameters
+                              if not p == lm.get_embeddings_params()]
+
+    logger.info("Cost parameters" + "\n" +
                 pprint.pformat(
-                    [(key, parameters[key].get_value().shape)
+                    [" ".join((
+                       key, str(parameters[key].get_value().shape),
+                       'trained' if parameters[key] in trained_parameters else 'frozen'))
                      for key in sorted(parameters.keys())],
                     width=120))
 
@@ -110,7 +126,7 @@ def train_language_model(new_training_job, config, save_path, params,
                       beta1=c['momentum']))
     algorithm = GradientDescent(
         cost=cost,
-        parameters=parameters.values(),
+        parameters=trained_parameters,
         step_rule=CompositeRule(rules))
     train_monitored_vars = list(monitored_vars)
     if c['grad_clip_threshold']:

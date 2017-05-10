@@ -109,6 +109,14 @@ class LanguageModel(Initializable):
 
         super(LanguageModel, self).__init__(children=children, **kwargs)
 
+    def set_embeddings(self, embeddings):
+        self._main_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
+        # TODO(tombosc): what happens with standalone def !
+
+    def get_embeddings_params(self):
+        return self._main_lookup.parameters[0]
+
+
     def add_perplexity_measure(self, application_call, minus_logs, mask, name):
         costs = (minus_logs * mask).sum(axis=0)
         perplexity = tensor.exp(costs.sum() / mask.sum())

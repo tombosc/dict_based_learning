@@ -24,10 +24,16 @@ lm_config_registry.set_root_config({
     'learning_rate' : 0.001,
     'momentum' : 0.9,
     'grad_clip_threshold' : 5.0,
+
+    # embeddings
+    'embedding_path': '',
+    'train_emb': False,
+
     # model: def_reader
     'def_reader': 'LSTM',
     'standalone_def_rnn' : False,
     'standalone_def_lookup': False,
+
 
     # monitoring and checkpointing
     'mon_freq_train' : 100,
@@ -61,9 +67,8 @@ c['num_output_words'] = 10000
 c['exclude_top_k'] = 10000
 c['batch_size'] = 32
 c['batch_size_valid'] = 32
-c['max_def_per_word'] = 3
 c['max_def_length'] = 100
-c['dict_path'] = 'data/dict_snli.json'
+c['dict_path'] = 'dict_snli.json'
 c['learning_rate'] = 0.0003 
 # Stuff to tune:
 c['standalone_def_lookup'] = False
@@ -116,8 +121,43 @@ lm_config_registry['obw_10k_dict2_fast'] = c
 c = lm_config_registry['obw_10k_dict_mean']
 c['dict_path'] = 'dict_obw_reordered_max1_cov.json'
 c['max_def_per_word'] = 1 
+
 lm_config_registry['obw_10k_dict_mean_cov1'] = c
 
 # test: sort by len then cov
 c['dict_path'] = 'dict_obw_reordered_max1_len.json'
 lm_config_registry['obw_10k_dict_mean_len1'] = c
+
+c['dict_path'] = 'dict_obw_reordered_max1_si.json'
+lm_config_registry['obw_10k_dict_mean_si1'] = c
+
+c = lm_config_registry['obw_10k_dict_mean']
+c['max_def_per_word'] = 1 
+lm_config_registry['obw_10k_dict_mean_r1'] = c
+
+c = lm_config_registry['obw_10k_dict3_n']
+c['dict_path'] = 'dict_obw_2.json'
+c['max_def_per_word'] = 3
+lm_config_registry['obw_10k_dict3_n2'] = c
+
+c = lm_config_registry['obw_10k_dict1']
+c['dict_path'] = 'dict_obw.json'
+c['max_def_per_word'] = 3
+lm_config_registry['obw_10k_dict1_n'] = c
+
+c = lm_config_registry['obw_10k_dict2']
+c['dict_path'] = 'dict_obw.json'
+c['max_def_per_word'] = 3
+lm_config_registry['obw_10k_dict2_n'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
+c['train_emb']= False
+c['emb_dim'] = 300
+lm_config_registry['obw_base_10k_glove300k'] = c
+
+c['num_input_words'] = 300005
+lm_config_registry['obw_base_300k_glove300k'] = c
+
+
+
