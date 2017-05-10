@@ -34,6 +34,7 @@ JOB_TEMPLATE = """
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--template", help="A path to the template")
+    parser.add_argument("--gpus", type=int, default=1, help="Number of gpus")
     parser.add_argument("commands", nargs='+', help="Commands to run")
     args = parser.parse_args()
 
@@ -42,6 +43,7 @@ def main():
     else:
         job_specs = json.loads(JOB_TEMPLATE)
     job_specs['jobDefinition']['command'] = ' '.join(args.commands)
+    job_specs['jobDefinition']['resources']['gpus'] = args.gpus
 
     _, path = tempfile.mkstemp()
     try:
