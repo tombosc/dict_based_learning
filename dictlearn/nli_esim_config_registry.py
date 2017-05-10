@@ -55,11 +55,11 @@ c = nli_esim_config_registry['root']
 nli_esim_config_registry['baseline'] = c
 
 c = nli_esim_config_registry['root']
+c['train_emb'] = 0
+c['embedding_path'] = 'data/snli/glove.840B.300d.npy'
+nli_esim_config_registry['baseline_glove'] = c
+
+
+c = nli_esim_config_registry['root']
 c['num_input_words'] = 3000
 nli_esim_config_registry['baseline_3k'] = c
-
-### Establish baseline with Glove ###
-c = nli_esim_config_registry['root']
-c['embeddng_path'] = '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/glove.840B.300d.npy'
-c['train_emb'] = 0
-nli_esim_config_registry['baseline_glove'] = c
