@@ -1,6 +1,12 @@
 """
 ESIM NLI model
+
+TODO: Remove inits
 """
+import sys
+# 100x larger recursion limit is needed for ESIM
+sys.setrecursionlimit(100000)
+
 import theano
 import theano.tensor as T
 from theano import tensor
@@ -17,7 +23,6 @@ from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitialization, Uniform
 
 from dictlearn.inits import GlorotUniform
-from dictlearn.lookup import MeanPoolCombiner, LSTMReadDefinitions, MeanPoolReadDefinitions
 from dictlearn.theano_util import apply_dropout
 
 class ESIM(Initializable):
@@ -91,11 +96,10 @@ class ESIM(Initializable):
         self._rnns = [self._prem_bilstm2, self._hyp_bilstm2, self._prem_bilstm, self._hyp_bilstm]
 
         ## MLP
-        self._mlp = MLP([Tanh()], [8 * dim, dim])
+        self._mlp = BatchNormalizedMLP([Tanh()], [8 * dim, dim])
+        children.append(self._mlp)
 
-        # TODO: Add BN,
-
-        self._pred = MLP([Softmax()], [dim, 3])
+        self._pred = BatchNormalizedMLP([Softmax()], [dim, 3])
         children.append(self._pred)
 
         super(ESIM, self).__init__(children=children, **kwargs)
@@ -223,6 +227,5 @@ class ESIM(Initializable):
         self.logits = self._pred.apply(pre_logits)
 
         return self.logits
-
 
 

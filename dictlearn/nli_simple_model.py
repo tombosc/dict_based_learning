@@ -89,8 +89,9 @@ class NLISimple(Initializable):
 
             if reader_type== "rnn":
                 self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_def_words,
-                    weights_init=Uniform(width=0.1), translate=combiner_reader_translate,
-                    biases_init=Constant(0.), dim=def_dim, emb_dim=def_emb_dim, vocab=def_vocab, lookup=def_lookup)
+                    weights_init=Uniform(width=0.1),
+                    biases_init=Constant(0.), dim=def_dim,
+                    emb_dim=def_emb_dim, vocab=def_vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 if combiner_reader_translate:
                     logger.warning("Translate in MeanPoolReadDefinitions is redundant")

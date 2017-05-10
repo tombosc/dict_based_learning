@@ -62,6 +62,9 @@ from dictlearn.nli_esim_model import ESIM
 from dictlearn.retrieval import Retrieval, Dictionary
 from dictlearn.nli_simple_model import LSTMReadDefinitions, MeanPoolReadDefinitions, MeanPoolCombiner
 
+from blocks.serialization import secure_dump, dump_and_add_to_dump
+from blocks.extensions import SimpleExtension
+
 # vocab defaults to data.vocab
 # vocab_text defaults to vocab
 # Vocab def defaults to vocab
@@ -260,24 +263,22 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
-    if model == 'snli':
+    if model == 'simple':
         weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in nli_model._mlp],
             roles=[WEIGHT])(cg[True].variables)
         weight_decay = np.float32(c['l2']) * sum((w ** 2).sum() for w in weights_to_decay)
-    else:
+    elif model == 'esim':
         weight_decay = 0.0
+    else:
+        raise NotImplementedError()
 
     final_cost = cg[True].outputs[0] + weight_decay
     final_cost.name = 'final_cost'
 
     # Add updates for population parameters
-    if model == 'snli':
-        pop_updates = get_batch_normalization_updates(cg[True])
-        extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
-            for p, m in pop_updates]
-    else:
-        pop_updates = []
-        extra_updates = []
+    pop_updates = get_batch_normalization_updates(cg[True])
+    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
+        for p, m in pop_updates]
 
     if params:
         logger.debug("Load parameters from {}".format(params))
@@ -464,21 +465,21 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
-        choose_best=min).set_conditions(
-        before_training=True,
-        after_epoch=True,
-        every_n_batches=c['mon_freq_valid'])
-    extensions.append(track_the_best)
-    extensions.append(Checkpoint(main_loop_path,
-        parameters=cg[True].parameters + [p for p, m in pop_updates],
         before_training=not fast_start,
         every_n_batches=c['save_freq_batches'],
-        after_training=not fast_start).add_condition(
-        ['after_batch', 'after_epoch'],
-        OnLogRecord(track_the_best.notification_name),
-        (main_loop_best_val_path,)))
-
-    logger.info(extensions)
+        after_training=not fast_start,
+        choose_best=min).set_conditions( # Really it is misclassification, hence min
+        every_n_batches=c['mon_freq_valid'])
+    extensions.append(track_the_best)
+    # extensions.append(Checkpoint(main_loop_path,
+    #     parameters=cg[True].parameters + [p for p, m in pop_updates],
+    #     before_training=not fast_start,
+    #     every_n_batches=c['save_freq_batches'],
+    #     after_training=not fast_start).add_condition(
+    #     ['after_batch', 'after_epoch'],
+    #     OnLogRecord(track_the_best.notification_name),
+    #     (main_loop_best_val_path,)))
+    # logger.info(extensions)
 
     ### Run training ###
 

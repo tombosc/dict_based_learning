@@ -78,6 +78,8 @@ def main():
 
         print("Embedding has {} entries".format(len(word_set)))
         print("Embedding covers fraction {} of total occurences".format(n_covered_by_dict / total))
+
+        # TODO(kudkudak): It would be nice to have similar prints here as for dict
     else:
         raise NotImplementedError()
 

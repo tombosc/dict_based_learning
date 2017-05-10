@@ -33,7 +33,7 @@ nli_esim_config_registry.set_root_config({
     "combiner_dropout_type": "per_unit",
     "combiner_gating": "none",
     "combiner_shortcut": False,
-    'reader_type': 'rnn',
+    'reader_type': 'mean',
     'share_def_lookup': False,
     'combiner_bn': False,
 
