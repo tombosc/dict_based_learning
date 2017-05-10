@@ -81,6 +81,7 @@ qa_config_registry['squad3'] = c
 
 c = qa_config_registry['squad_glove2']
 from2to3(c)
+c['num_input_words'] = 0
 qa_config_registry['squad_glove3'] = c
 
 def from3to4(c):
