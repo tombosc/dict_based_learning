@@ -101,7 +101,8 @@ from3to4(c)
 qa_config_registry['squad_glove4'] = c
 
 def from4to5(c):
-    c['dict_path'] = 'squad/squad_from_scratch/dict_wordnet3.1.json'
+    c['dict_path'] = 'squad/squad_from_scratch/dict_wordnet3.2.json'
+    c['batch_size'] = 32
     return c
 
 qa_config_registry['squad5'] = from4to5(qa_config_registry['squad4'])
