@@ -107,3 +107,12 @@ def from4to5(c):
 
 qa_config_registry['squad5'] = from4to5(qa_config_registry['squad4'])
 qa_config_registry['squad_glove5'] = from4to5(qa_config_registry['squad_glove4'])
+
+def tune_depth_and_dropout(c):
+    c['readout_dims'] = [200]
+    c['dropout'] = 0.2
+    return c
+
+qa_config_registry['squad6'] = tune_depth_and_dropout(qa_config_registry['squad5'])
+qa_config_registry['squad_glove6'] = tune_depth_and_dropout(qa_config_registry['squad_glove2'])
+qa_config_registry['squad_glove7'] = tune_depth_and_dropout(qa_config_registry['squad_glove5'])
