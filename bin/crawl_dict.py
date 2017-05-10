@@ -65,7 +65,7 @@ def main():
             dict_.add_from_lemma_definitions(vocab, try_lower=args.add_lower_lemma_defs)
         elif args.add_lower_defs:
             dict_.add_from_lowercase_definitions(vocab)
-        elif args.add_dict_name_def:
+        elif args.add_dictname_to_defs:
             dict_.add_dictname_to_defs(vocab)
         elif args.just_lemmas:
             dict_.crawl_lemmas(vocab)
