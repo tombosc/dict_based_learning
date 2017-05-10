@@ -471,15 +471,15 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         choose_best=min).set_conditions( # Really it is misclassification, hence min
         every_n_batches=c['mon_freq_valid'])
     extensions.append(track_the_best)
-    # extensions.append(Checkpoint(main_loop_path,
-    #     parameters=cg[True].parameters + [p for p, m in pop_updates],
-    #     before_training=not fast_start,
-    #     every_n_batches=c['save_freq_batches'],
-    #     after_training=not fast_start).add_condition(
-    #     ['after_batch', 'after_epoch'],
-    #     OnLogRecord(track_the_best.notification_name),
-    #     (main_loop_best_val_path,)))
-    # logger.info(extensions)
+    extensions.append(Checkpoint(main_loop_path,
+        parameters=cg[True].parameters + [p for p, m in pop_updates],
+        before_training=not fast_start,
+        every_n_batches=c['save_freq_batches'],
+        after_training=not fast_start).add_condition(
+        ['after_batch', 'after_epoch'],
+        OnLogRecord(track_the_best.notification_name),
+        (main_loop_best_val_path,)))
+    logger.info(extensions)
 
     ### Run training ###
 
