@@ -201,6 +201,11 @@ def train_extractive_qa(new_training_job, config, save_path,
         logger.debug("Exclude  word embeddings from the trained parameters")
         trained_parameters = [p for p in trained_parameters
                               if not p == qam.embeddings_var()]
+    if c['train_only_def_part']:
+        def_reading_parameters = qam.def_reading_parameters()
+        trained_parameters = [p for p in trained_parameters
+                              if p in def_reading_parameters]
+
     logger.info("Cost parameters" + "\n" +
                 pprint.pformat(
                     [" ".join((

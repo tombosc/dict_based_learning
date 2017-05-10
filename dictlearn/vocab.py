@@ -40,6 +40,7 @@ class Vocabulary(object):
             with open(path_or_data) as f:
                 for line in f:
                     word, freq_str = line.strip().split()
+                    word = word.decode('utf-8')
                     freq = int(freq_str)
                     words_and_freqs.append((word, freq))
         else:

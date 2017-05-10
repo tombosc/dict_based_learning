@@ -1,5 +1,7 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
+import io
 import numpy
 import argparse
 
@@ -8,12 +10,16 @@ from dictlearn.retrieval import Dictionary
 
 def main():
     parser = argparse.ArgumentParser("Analyze coverage of either a dictionary or pretrained embeddings on a given vocab.")
-    parser.add_argument("--dict", help="Dictionary.", default="")
-    parser.add_argument("--embedding", default="",
-                        help="Path to embedding. Can either be a npy file or a raw glove txt file.") 
-    parser.add_argument("--top_k", type=int, default=0,
-                        help="Optional, provide statistics for excluding top_k words from source (either dict or embedding)")
+    parser.add_argument(
+        "--dict", default="", help="Dictionary.")
+    parser.add_argument(
+        "--embedding", default="",
+        help="Path to embeddings. Can either be a npy file or a raw glove txt file.")
+    parser.add_argument(
+        "--top_k", type=int, default=0,
+        help="Optional, provide statistics for excluding top_k words from source (either dict or embedding)")
     parser.add_argument("--step_size", type=int, help="Report each", default=10000)
+    parser.add_argument("--uncovered", help="Destination for uncovered files")
     parser.add_argument("vocab", help="Vocabulary")
     args = parser.parse_args()
 
@@ -28,6 +34,13 @@ def main():
     print("Cumulative distribution:")
     for i in range(args.step_size, args.step_size * (len(freqs) / args.step_size), args.step_size):
         print(i, coverage[i] * 100)
+
+    uncovered_file = io.open('/dev/null', 'w')
+    if args.uncovered:
+        uncovered_file = io.open(args.uncovered, 'w', encoding='utf-8')
+
+    if args.dict and args.top_k:
+        print("Analysing coverage of dict of text")
 
     n_covered = 0
     n_covered_by_lowercasing = 0
@@ -44,7 +57,6 @@ def main():
                 n_covered += freqs[i]
             elif dict_.get_definitions(words[i].lower()):
                 n_covered_by_lowercasing += freqs[i]
-
     elif args.embedding:
         source_name = "glove embeddings"
         # Loading (note: now only supports GloVe format)
@@ -62,7 +74,7 @@ def main():
             for i, emb in enumerate(emb_matrix):
                 if not numpy.all(emb == 0):
                     word_set.add(words[i])
-                    
+
         print("Glove embeddings has {} entries".format(len(word_set)))
 
         for i in range(args.top_k, len(freqs)):
@@ -94,6 +106,8 @@ def main():
         if args.dict:
             print("Occurences of dictionary defs with >1 def not covered by word embeddings: {}%".
               format(100 * n_more_def_than_1 / n_not_covered_by_embs))
+
+    uncovered_file.close()
 
 if __name__ == "__main__":
     main()

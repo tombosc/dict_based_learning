@@ -34,7 +34,7 @@ def main():
         help="Crawl WordNet")
     parser.add_argument("--identity", action="store_true",
                         help="Identity mapping dictionary")
-    parser.add_argument("--spelling", action="store_true",
+    parser.add_argument("--add-spelling", action="store_true",
                         help="Spelling dictionary")
     parser.add_argument("--crawl-also-lowercase", default=0, type=int,
         help="If true will crawl also lower-cased version")
@@ -67,14 +67,14 @@ def main():
             dict_.add_from_lowercase_definitions(vocab)
         elif args.add_dictname_to_defs:
             dict_.add_dictname_to_defs(vocab)
+        elif args.add_spelling:
+            dict_.add_spelling(vocab)
         elif args.just_lemmas:
             dict_.crawl_lemmas(vocab)
         elif args.just_lowercase:
             dict_.crawl_lowercase(vocab)
         elif args.identity:
             dict_.setup_identity_mapping(vocab)
-        elif args.spelling:
-            dict_.setup_spelling(vocab)
         else:
             raise ValueError("don't know what to do")
     finally:

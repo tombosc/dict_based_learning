@@ -39,7 +39,7 @@ class Dictionary(object):
         if not path.endswith("json"):
             raise Exception("Please pass path ending in .json")
 
-        self._data = {}
+        self._data = defaultdict(list)
         self._meta_data = {}
         self._path = path
         self._meta_path = path.replace(".json", "_meta.json")
@@ -56,7 +56,9 @@ class Dictionary(object):
 
     def load(self):
         with open(self._path, 'r') as src:
-            self._data = json.load(src)
+            # can't just assign because self._data should keep being a
+            # defaultdict
+            self._data.update(json.load(src))
         if os.path.exists(self._meta_path):
             with open(self._meta_path, 'r') as src:
                 self._meta_data = json.load(src)
@@ -89,12 +91,18 @@ class Dictionary(object):
             self._meta_data[word] = {"sourceDictionary": "identity"}
         self.save()
 
-    def setup_spelling(self, vocab):
+    def add_spelling(self, vocab):
         for word in vocab.words:
+            # only add spelling to the words without defs
+            if self._data[word]:
+                continue
+            print(word)
             def_ = word.decode('utf-8')
             if len(def_) > 10:
                 def_ = u"{}-{}".format(def_[:5], def_[-5:])
-            self._data[word] = [list(def_)]
+            # to avoid overlapping of the vocabularies, let's add a #
+            # before each character
+            self._data[word] = [map(lambda char: u'#' + char, def_)]
             self._meta_data[def_] = {"sourceDictionary": "spelling"}
         self.save()
 
@@ -140,9 +148,6 @@ class Dictionary(object):
         lemmatizer = nltk.WordNetLemmatizer()
         added = 0
         for word in vocab.words:
-            if not word in self._data:
-                self._data[word] = []
-
             word_list = [word, word.lower()] if try_lower else [word]
 
             for word_to_lemma in word_list:
