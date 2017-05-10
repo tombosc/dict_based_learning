@@ -9,21 +9,29 @@ from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import Dictionary
 
 def main():
-    parser = argparse.ArgumentParser("Analyize text coverage")
-    parser.add_argument("--dict", help="Dictionary", default="")
-    parser.add_argument("--embedding", help="Path to embedding", default="")
-    parser.add_argument("--top_k", type=int, help="Top k words from vocabulary")
-    parser.add_argument("--try_lowercase", type=bool)
+    parser = argparse.ArgumentParser("Analyze coverage of either a dictionary or pretrained embeddings on a given vocab.")
+    parser.add_argument(
+        "--dict", default="", help="Dictionary.")
+    parser.add_argument(
+        "--embedding", default="",
+        help="Path to embeddings. Can either be a npy file or a raw glove txt file.")
+    parser.add_argument(
+        "--top_k", type=int, default=0,
+        help="Optional, provide statistics for excluding top_k words from source (either dict or embedding)")
     parser.add_argument("--step_size", type=int, help="Report each", default=10000)
     parser.add_argument("--uncovered", help="Destination for uncovered files")
     parser.add_argument("vocab", help="Vocabulary")
     args = parser.parse_args()
+
+    assert(args.vocab.endswith(".txt"))
+    assert((args.dict and not args.embedding) or (not args.dict and args.embedding))
 
     vocab = Vocabulary(args.vocab)
     words = vocab.words
     freqs = numpy.array(vocab.frequencies)
     total = float(freqs.sum())
     coverage = numpy.cumsum(freqs) / total
+    print("Cumulative distribution:")
     for i in range(args.step_size, args.step_size * (len(freqs) / args.step_size), args.step_size):
         print(i, coverage[i] * 100)
 
@@ -33,61 +41,71 @@ def main():
 
     if args.dict and args.top_k:
         print("Analysing coverage of dict of text")
-        dict_ = Dictionary(args.dict)
-        n_not_covered_by_embs = total * (1 - coverage[args.top_k - 1])
-        n_covered_by_dict = 0
-        n_more_def_than_1 = 0
-        n_covered_by_dict_by_lowercasing = 0
-        n_covered_by_dict_by_lemmatizing = 0
-        for i in range(args.top_k, len(freqs)):
 
+    n_covered = 0
+    n_covered_by_lowercasing = 0
+    if args.dict:
+        source_name = "dictionary"
+        dict_ = Dictionary(args.dict)
+        print("Dictionary has {} entries".format(dict_.num_entries()))
+
+        n_more_def_than_1 = 0
+        for i in range(args.top_k, len(freqs)):
             if len(dict_.get_definitions(words[i])) > 1:
                 n_more_def_than_1 += freqs[i]
-
             if dict_.get_definitions(words[i]):
-                n_covered_by_dict += freqs[i]
+                n_covered += freqs[i]
             elif dict_.get_definitions(words[i].lower()):
-                n_covered_by_dict_by_lowercasing += freqs[i]
-            else:
-                print(words[i], file=uncovered_file)
-
-        print("Dictionary has {} entries".format(dict_.num_entries()))
-        print("Dictionary covers {}% of total occurences in addition to word emb".
-              format(100 * n_covered_by_dict / total))
-        print("Dictionary covers additional {}% of total occurences not covered by word emb".
-              format(100 * n_covered_by_dict / n_not_covered_by_embs))
-        print("Dictionary def with >1 def (calculated only after topk) {}%".
-              format(100 * n_more_def_than_1 / n_not_covered_by_embs))
-        print("Querying dict with lowercased words covers {}% in addition to word emb".
-              format(100 * n_covered_by_dict_by_lowercasing / total))
-        print("Querying dict with lowercased words covers {}% of total occurences not covered by word emb".
-              format(100 * n_covered_by_dict_by_lowercasing / n_not_covered_by_embs))
-
-    elif args.embedding and args.top_k:
-
-        print("Analysing coverage of emb")
+                n_covered_by_lowercasing += freqs[i]
+    elif args.embedding:
+        source_name = "glove embeddings"
         # Loading (note: now only supports GloVe format)
         word_set = set([])
-        with open(args.embedding) as f:
-            for line in f:
-                values = line.split(' ')
-                word = values[0]
-                word_set.add(word)
-            f.close()
+        if args.embedding.endswith(".txt"):
+            with open(args.embedding) as f:
+                for line in f:
+                    values = line.split(' ')
+                    word = values[0]
+                    word_set.add(word)
+                f.close()
+        elif args.embedding.endswith(".npy"):
+            print("Warning: assuming that embeddings from .npy file are ordered according to the same vocabulary file as the one passed (using pack_glove --vocab vocab_passed_here)")
+            emb_matrix = numpy.load(args.embedding)
+            for i, emb in enumerate(emb_matrix):
+                if not numpy.all(emb == 0):
+                    word_set.add(words[i])
 
-        n_covered_by_dict = 0
+        print("Glove embeddings has {} entries".format(len(word_set)))
+
         for i in range(args.top_k, len(freqs)):
-            if words[i] in word_set or (args.try_lowercase and words[i].lower() in word_set):
-                n_covered_by_dict += freqs[i]
-
-        assert args.top_k is not None
-
-        print("Embedding has {} entries".format(len(word_set)))
-        print("Embedding covers fraction {} of total occurences".format(n_covered_by_dict / total))
-
-        # TODO(kudkudak): It would be nice to have similar prints here as for dict
+            if words[i] in word_set:
+                n_covered += freqs[i]
+            elif words[i].lower() in word_set:
+                n_covered_by_lowercasing += freqs[i]
     else:
         raise NotImplementedError()
+
+
+    print("Analysing coverage of " + source_name)
+    if args.top_k:
+        print("The first " + str(args.top_k) + " ranked words are covered by word embeddings.")
+        print("This amounts to " + str(100*coverage[args.top_k - 1]) + "% of occurences.")
+    else:
+        print("Case when no word embeddings are used (args.top_k=0). " + source_name + " provides all embeddings")
+    print(source_name + " covers {} % of total occurences".
+          format(100 * n_covered / total))
+    print("Querying not found words as lowercased words additionally covers {}% of total occurences".
+          format(100 * n_covered_by_lowercasing / total))
+
+    if args.top_k:
+        n_not_covered_by_embs = total * (1 - coverage[args.top_k - 1])
+        print(source_name + " covers additional {}% of occurences not covered by word embeddings".
+          format(100 * n_covered / n_not_covered_by_embs))
+        print("Querying not found words as lowercased words additionally covers {}% of occurences not covered by word embeddings".
+          format(100 * n_covered_by_lowercasing / n_not_covered_by_embs))
+        if args.dict:
+            print("Occurences of dictionary defs with >1 def not covered by word embeddings: {}%".
+              format(100 * n_more_def_than_1 / n_not_covered_by_embs))
 
     uncovered_file.close()
 
