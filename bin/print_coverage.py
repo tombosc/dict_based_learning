@@ -1,5 +1,7 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
+import io
 import numpy
 import argparse
 
@@ -13,6 +15,7 @@ def main():
     parser.add_argument("--top_k", type=int, help="Top k words from vocabulary")
     parser.add_argument("--try_lowercase", type=bool)
     parser.add_argument("--step_size", type=int, help="Report each", default=10000)
+    parser.add_argument("--uncovered", help="Destination for uncovered files")
     parser.add_argument("vocab", help="Vocabulary")
     args = parser.parse_args()
 
@@ -23,6 +26,10 @@ def main():
     coverage = numpy.cumsum(freqs) / total
     for i in range(args.step_size, args.step_size * (len(freqs) / args.step_size), args.step_size):
         print(i, coverage[i] * 100)
+
+    uncovered_file = io.open('/dev/null', 'w')
+    if args.uncovered:
+        uncovered_file = io.open(args.uncovered, 'w', encoding='utf-8')
 
     if args.dict and args.top_k:
         print("Analysing coverage of dict of text")
@@ -42,8 +49,7 @@ def main():
             elif dict_.get_definitions(words[i].lower()):
                 n_covered_by_dict_by_lowercasing += freqs[i]
             else:
-                pass
-
+                print(words[i], file=uncovered_file)
 
         print("Dictionary has {} entries".format(dict_.num_entries()))
         print("Dictionary covers {}% of total occurences in addition to word emb".
@@ -82,6 +88,8 @@ def main():
         # TODO(kudkudak): It would be nice to have similar prints here as for dict
     else:
         raise NotImplementedError()
+
+    uncovered_file.close()
 
 if __name__ == "__main__":
     main()
