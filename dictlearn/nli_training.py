@@ -62,6 +62,9 @@ from dictlearn.nli_esim_model import ESIM
 from dictlearn.retrieval import Retrieval, Dictionary
 from dictlearn.nli_simple_model import LSTMReadDefinitions, MeanPoolReadDefinitions, MeanPoolCombiner
 
+from blocks.serialization import secure_dump, dump_and_add_to_dump
+from blocks.extensions import SimpleExtension
+
 # vocab defaults to data.vocab
 # vocab_text defaults to vocab
 # Vocab def defaults to vocab
@@ -173,7 +176,8 @@ def _initialize_esim_model_and_data(c):
             def_word_gating=c['combiner_gating'],
             shortcut_unk_and_excluded=c['combiner_shortcut'], num_input_words=num_input_def_words,
             exclude_top_k=c['exclude_top_k'],
-            vocab=vocab, compose_type=c['compose_type'])
+            vocab=vocab, compose_type=c['compose_type'],
+            weights_init=Uniform(width=0.1), biases_init=Constant(0.))
 
     else:
         retrieval = None
@@ -185,7 +189,7 @@ def _initialize_esim_model_and_data(c):
     simple = ESIM(
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
-        num_input_words=c['num_input_words'], def_dim=c['def_dim'],
+        num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
 
         def_combiner=def_combiner, def_reader=def_reader,
 
@@ -193,8 +197,10 @@ def _initialize_esim_model_and_data(c):
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
     )
     simple.push_initialization_config()
-    if c['encoder'] == 'rnn':
-        simple._rnn_encoder.weights_init = Uniform(std=0.1)
+    # TODO: Not sure anymore why we do that
+    if c['encoder'] == 'bilstm':
+        for enc in simple._rnns:
+            enc.weights_init = Uniform(std=0.1)
     simple.initialize()
 
     if c['embedding_path']:
@@ -257,10 +263,16 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
-    weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in nli_model._mlp],
-        roles=[WEIGHT])(cg[True].variables)
-    weight_decay = sum((w ** 2).sum() for w in weights_to_decay)
-    final_cost = cg[True].outputs[0] + np.float32(c['l2']) * weight_decay
+    if model == 'simple':
+        weights_to_decay = VariableFilter(bricks=[dense for dense, relu, bn in nli_model._mlp],
+            roles=[WEIGHT])(cg[True].variables)
+        weight_decay = np.float32(c['l2']) * sum((w ** 2).sum() for w in weights_to_decay)
+    elif model == 'esim':
+        weight_decay = 0.0
+    else:
+        raise NotImplementedError()
+
+    final_cost = cg[True].outputs[0] + weight_decay
     final_cost.name = 'final_cost'
 
     # Add updates for population parameters
@@ -453,9 +465,10 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
-        choose_best=min).set_conditions(
-        before_training=True,
-        after_epoch=True,
+        before_training=not fast_start,
+        every_n_batches=c['save_freq_batches'],
+        after_training=not fast_start,
+        choose_best=min).set_conditions( # Really it is misclassification, hence min
         every_n_batches=c['mon_freq_valid'])
     extensions.append(track_the_best)
     extensions.append(Checkpoint(main_loop_path,
@@ -466,7 +479,6 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         ['after_batch', 'after_epoch'],
         OnLogRecord(track_the_best.notification_name),
         (main_loop_best_val_path,)))
-
     logger.info(extensions)
 
     ### Run training ###

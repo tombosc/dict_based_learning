@@ -90,7 +90,8 @@ def train_language_model(new_training_job, config, save_path, params,
 
     length = rename(words.shape[1], 'length')
     perplexity, = VariableFilter(name='perplexity')(cg)
-    monitored_vars = [length, cost, perplexity]
+    perplexities = VariableFilter(name_regex='perplexity.*')(cg)
+    monitored_vars = [length, cost] + perplexities
     if c['dict_path']:
         num_definitions, = VariableFilter(name='num_definitions')(cg)
         monitored_vars.extend([num_definitions])

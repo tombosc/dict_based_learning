@@ -16,7 +16,16 @@ def main():
     parser.add_argument("txt", help="GLOVE data in txt format")
     parser.add_argument("npy", help="Destination for npy format")
     parser.add_argument("--vocab", default="", help="Performs subsetting based on pased vocab")
+
+    # OOV handling
+    parser.add_argument("--try-lemma", action="store_true", help="Try lemma")
+    parser.add_argument("--try-lowercase", default="", help="Try lowercase")
+
     args = parser.parse_args()
+
+    if args.try_lemma or args.try_lowercase:
+        # TODO(kudkudak): Implement
+        raise NotImplementedError("Not implemented yet")
 
     if args.vocab == "":
         embeddings = []

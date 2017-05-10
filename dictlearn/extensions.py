@@ -11,6 +11,11 @@ import scipy
 import numpy
 import numpy as np
 
+import ssl
+if hasattr(ssl, '_create_unverified_context'):
+    print("Disabling SSL verification in HTTP")
+    ssl._create_default_https_context = ssl._create_unverified_context
+
 from collections import defaultdict
 from six import iteritems
 
