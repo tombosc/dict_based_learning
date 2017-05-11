@@ -40,6 +40,8 @@ def main(config_registry, training_func, **training_func_kwargs):
                         help="Use standalone Fuel dataset server")
     parser.add_argument("--params",
                         help="Load parameters from a main loop")
+    parser.add_argument("--seed", type=int,
+                        help="The random seed")
     parser.add_argument("config", help="The configuration")
     parser.add_argument("save_path", help="The destination for saving")
     add_config_arguments(config_registry.get_root_config(), parser)
@@ -64,7 +66,8 @@ def main(config_registry, training_func, **training_func_kwargs):
         else:
             logger.info("Continue an existing job")
         training_func(new_training_job, config, args.save_path,
-                      args.params, args.fast_start, args.fuel_server, **training_func_kwargs)
+                      args.params, args.fast_start, args.fuel_server, args.seed,
+                      **training_func_kwargs)
     run_with_redirection(
         os.path.join(args.save_path, 'stdout.txt'),
         os.path.join(args.save_path, 'stderr.txt'),
