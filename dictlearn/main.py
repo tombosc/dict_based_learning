@@ -74,8 +74,8 @@ def main(config_registry, training_func, **training_func_kwargs):
 def main_evaluate(config_registry, evaluate_func):
     parser = argparse.ArgumentParser("Evaluation script")
     parser.add_argument("--part", default='train', help="Part")
-    parser.add_argument("--dest", help="Destination for outputs")
-    parser.add_argument("--num-examples", type=int, help="Number of examples to read")
+    parser.add_argument("--dest", help="Destination for outputs", default="")
+    parser.add_argument("--num-examples", type=int, help="Number of examples to read", default=-1)
     parser.add_argument("config", help="The configuration")
     parser.add_argument("tar_path", help="The tar file with parameters")
     add_config_arguments(config_registry.get_root_config(), parser)
@@ -83,11 +83,15 @@ def main_evaluate(config_registry, evaluate_func):
     args = parser.parse_args()
 
     # Modify the configuration with the command line arguments
-    config = config_registry[args.config]
-    for key in config:
-        if getattr(args, key) is not None:
-            config[key] = getattr(args, key)
-    pprint.pprint(config)
+
+    if args.config.endswith("json"):
+        config = args.config
+    else:
+        config = config_registry[args.config]
+        for key in config:
+            if getattr(args, key) is not None:
+                config[key] = getattr(args, key)
+        pprint.pprint(config)
 
     # For now this script just runs the language model training.
     # More stuff to come.
