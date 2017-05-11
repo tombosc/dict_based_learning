@@ -11,6 +11,7 @@ from blocks.bricks.simple import Rectifier
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
+from blocks.select import Selector
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
 from dictlearn.lookup import (
@@ -63,6 +64,7 @@ class ExtractiveQAModel(Initializable):
         self._num_input_words = num_input_words
         self._use_definitions = use_definitions
         self._random_unk = random_unk
+        self._reuse_word_embeddings = reuse_word_embeddings
 
         lookup_num_words = num_input_words
         if reuse_word_embeddings:
@@ -136,6 +138,15 @@ class ExtractiveQAModel(Initializable):
 
     def embeddings_var(self):
         return self._lookup.parameters[0]
+
+    def def_reading_parameters(self):
+        parameters = Selector(self._def_reader).get_parameters().values()
+        parameters.extend(Selector(self._combiner).get_parameters().values())
+        if self._reuse_word_embeddings:
+            lookup_parameters = Selector(self._lookup).get_parameters().values()
+            parameters = [p for p in parameters if p not in lookup_parameters]
+        return parameters
+
 
     @application
     def _encode(self, application_call, text, mask, def_embs=None, def_map=None, text_name=None):

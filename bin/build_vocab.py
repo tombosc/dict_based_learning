@@ -49,7 +49,9 @@ def main():
             logging.info("Will build the vocabulary from definitions in a dictionary")
             dict_ = json.load(open(f_name, "r"))
             for word, list_defs in dict_.items():
-                if args.exclude_top_k and vocab_text.word_to_id(word) < args.exclude_top_k:
+                text_vocab_id = vocab_text.word_to_id(word)
+                if (text_vocab_id != vocab_text.unk
+                        and text_vocab_id < args.exclude_top_k):
                     continue
                 for def_ in list_defs:
                     if args.weight_dict_entries:
