@@ -40,7 +40,7 @@ def main(config_registry, training_func, **training_func_kwargs):
                         help="Use standalone Fuel dataset server")
     parser.add_argument("--params",
                         help="Load parameters from a main loop")
-    parser.add_argument("--seed",
+    parser.add_argument("--seed", type=int,
                         help="The random seed")
     parser.add_argument("config", help="The configuration")
     parser.add_argument("save_path", help="The destination for saving")
