@@ -109,6 +109,13 @@ class LanguageModel(Initializable):
 
         super(LanguageModel, self).__init__(children=children, **kwargs)
 
+    def set_frozen_embeddings(self, embeddings):
+        self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
+
+    def get_frozen_embeddings_params(self):
+        return self._def_reader._def_lookup.parameters[0]
+
+
     def add_perplexity_measure(self, application_call, minus_logs, mask, name):
         costs = (minus_logs * mask).sum(axis=0)
         perplexity = tensor.exp(costs.sum() / mask.sum())
@@ -165,7 +172,6 @@ class LanguageModel(Initializable):
                           + tensor.ge(word_ids, self._num_output_words) * self._vocab.unk)
 
         # Run the main rnn with combined inputs
-        # rnn_inputs should be word_embs TODO
         word_embs = self._main_lookup.apply(input_word_ids)
         application_call.add_auxiliary_variable(
             masked_root_mean_square(word_embs, mask), name='word_emb_RMS')

@@ -31,7 +31,7 @@ class ESIM(Initializable):
     """
 
     # seq_length, emb_dim, hidden_dim
-    def __init__(self, dim, emb_dim, vocab, def_dim=-1, encoder='bilstm',
+    def __init__(self, dim, emb_dim, vocab, def_dim=-1, encoder='bilstm', bn=True,
             def_reader=None, def_combiner=None, dropout=0.5, num_input_words=-1,
             # Others
             **kwargs):
@@ -96,10 +96,14 @@ class ESIM(Initializable):
         self._rnns = [self._prem_bilstm2, self._hyp_bilstm2, self._prem_bilstm, self._hyp_bilstm]
 
         ## MLP
-        self._mlp = BatchNormalizedMLP([Tanh()], [8 * dim, dim])
-        children.append(self._mlp)
+        if bn:
+            self._mlp = BatchNormalizedMLP([Tanh()], [8 * dim, dim], conserve_memory=False, name="mlp")
+            self._pred = BatchNormalizedMLP([Softmax()], [dim, 3],  conserve_memory=False, name="pred_mlp")
+        else:
+            self._mlp = MLP([Tanh()], [8 * dim, dim], name="mlp")
+            self._pred = MLP([Softmax()], [dim, 3], name="pred_mlp")
 
-        self._pred = BatchNormalizedMLP([Softmax()], [dim, 3])
+        children.append(self._mlp)
         children.append(self._pred)
 
         super(ESIM, self).__init__(children=children, **kwargs)

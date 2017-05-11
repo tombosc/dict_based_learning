@@ -7,6 +7,7 @@ import pprint
 import logging
 import cPickle
 import subprocess
+import json
 
 import numpy
 import theano
@@ -40,15 +41,21 @@ from dictlearn.extensions import (
 from dictlearn.language_model import LanguageModel
 from dictlearn.retrieval import Retrieval, Dictionary
 
+from tests.util import temporary_content_path
+
 logger = logging.getLogger()
 
 
 def train_language_model(new_training_job, config, save_path, params,
                          fast_start, fuel_server):
+
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
+    assert((c['dict_path'] and not c['embedding_path']) or 
+           (not c['dict_path'] and c['embedding_path']))
+
     data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
     if c['dict_path']:
@@ -58,6 +65,32 @@ def train_language_model(new_training_job, config, save_path, params,
         retrieval = Retrieval(data.vocab, dict_,
                               c['max_def_length'], c['exclude_top_k'],
                               max_def_per_word=c['max_def_per_word'])
+    elif c['embedding_path']:
+        emb_full_path = os.path.join(fuel.config.data_path[0], c['embedding_path'])
+        # sleazy code ahead:
+        # load the embedding matrix and multiply every embedding by 3
+        # indeed we'll use the mean def reader and there will be <bod> <eod> 
+        # (zeros cause unknown) so we'll recover the true scale of embeddings
+        embedding_matrix = numpy.load(emb_full_path) * 3 
+        idx_words = [i for i, e in enumerate(embedding_matrix) if numpy.any(e != 0)]
+        words_w_emb = [data.vocab.words[i] for i in idx_words]
+        # create a "tautological dict" which contains the non null word embs 
+        raw_dict_frozen = {w:w for w in words_w_emb}
+        with temporary_content_path(json.dumps(raw_dict_frozen), ".json") as path:
+            dict_frozen = Dictionary(path)
+        if not c['standalone_def_lookup']:
+            logger.warning("You've asked for a standalone def lookup. "
+                           "This is not happening as frozen embeddings will be "
+                           "loaded")
+            c['standalone_def_lookup'] = True
+        if c['def_reader'] != 'mean':
+            logger.warning("You've asked for a definition reader that's not "
+                           "mean. This will be ignored.")
+            c['def_reader'] = 'mean'
+
+        retrieval = Retrieval(data.vocab, dict_frozen, max_def_length=1, 
+                              exclude_top_k=c['exclude_top_k'],
+                              max_def_per_word=1)
 
     lm = LanguageModel(c['emb_dim'], c['dim'], c['num_input_words'],
                        c['num_output_words'], data.vocab, retrieval,
@@ -69,6 +102,10 @@ def train_language_model(new_training_job, config, save_path, params,
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
+    
+    if c['embedding_path']:
+        lm.set_frozen_embeddings(embedding_matrix)
+        logger.debug("Embeddings loaded")
 
     words = tensor.ltensor3('words')
     words_mask = tensor.matrix('words_mask')
@@ -97,9 +134,17 @@ def train_language_model(new_training_job, config, save_path, params,
         monitored_vars.extend([num_definitions])
 
     parameters = cg.get_parameter_dict()
-    logger.info("Trainable parameters" + "\n" +
+    trained_parameters = parameters.values()
+    if c['embedding_path']:
+        logger.debug("Exclude word embeddings from the trained parameters")
+        trained_parameters = [p for p in trained_parameters
+                              if not p == lm.get_frozen_embeddings_params()]
+
+    logger.info("Cost parameters" + "\n" +
                 pprint.pformat(
-                    [(key, parameters[key].get_value().shape)
+                    [" ".join((
+                       key, str(parameters[key].get_value().shape),
+                       'trained' if parameters[key] in trained_parameters else 'frozen'))
                      for key in sorted(parameters.keys())],
                     width=120))
 
@@ -110,7 +155,7 @@ def train_language_model(new_training_job, config, save_path, params,
                       beta1=c['momentum']))
     algorithm = GradientDescent(
         cost=cost,
-        parameters=parameters.values(),
+        parameters=trained_parameters,
         step_rule=CompositeRule(rules))
     train_monitored_vars = list(monitored_vars)
     if c['grad_clip_threshold']:
