@@ -208,7 +208,6 @@ class NLISimple(Initializable):
                 s1_emb = s1_emb.reshape((s1_preunk.shape[0], s1_preunk.shape[1], -1))
                 s2_emb = s2_emb.reshape((s2_preunk.shape[0], s2_preunk.shape[1], -1))
 
-
             def_embs = self._def_reader.apply(defs, def_mask)
 
             s1_transl = self._combiner.apply(

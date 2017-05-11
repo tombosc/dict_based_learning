@@ -134,14 +134,17 @@ class ESIM(Initializable):
 
             def_embs = self._def_reader.apply(defs, def_mask)
 
-            s1_emb = self._combiner.apply(
+            s1_emb = self._def_combiner.apply(
                 s1_emb, s1_mask,
                 def_embs, s1_def_map, word_ids=s1, train_phase=train_phase, call_name="s1")
 
-            s2_emb = self._combiner.apply(
+            s2_emb = self._def_combiner.apply(
                 s2_emb, s2_mask,
                 def_embs, s2_def_map, word_ids=s2, train_phase=train_phase, call_name="s2")
         else:
+            application_call.add_auxiliary_variable(
+                1*s1_emb,
+                name='s1_word_embeddings')
             if train_phase and self._dropout > 0:
                 s1_emb = apply_dropout(s1_emb, drop_prob=self._dropout)
                 s2_emb = apply_dropout(s2_emb, drop_prob=self._dropout)

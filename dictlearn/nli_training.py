@@ -192,7 +192,7 @@ def _initialize_esim_model_and_data(c):
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
         num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
-        bn=c['bn'],
+        bn=c.get('bn', True),
 
         def_combiner=def_combiner, def_reader=def_reader,
 
@@ -563,25 +563,54 @@ def evaluate(c, tar_path, *args, **kwargs):
     else:
         bn_params = []
 
+    # cg = ComputationGraph([pred])
+
     # Load model
     model = Model(cg.outputs)
+    parameters = model.get_parameter_dict()  # Blocks version mismatch
+    logging.info("Trainable parameters" + "\n" +
+                pprint.pformat(
+                    [(key, parameters[key].get_value().shape)
+                        for key in sorted([get_brick(param).get_hierarchical_name(param) for param in cg.parameters])],
+                    width=120))
+    logging.info("# of parameters {}".format(
+        sum([np.prod(parameters[key].get_value().shape)
+            for key in sorted([get_brick(param).get_hierarchical_name(param) for param in cg.parameters])])))
     with open(tar_path) as src:
         params = load_parameters(src)
+
+        loaded_params_set = set(params.keys())
+        model_params_set = set([get_brick(param).get_hierarchical_name(param) for param in cg.parameters])
+
+        logging.info("Loaded extra parameters")
+        logging.info(loaded_params_set - model_params_set)
+        logging.info("Missing parameters")
+        logging.info(model_params_set - loaded_params_set)
     model.set_parameter_values(params)
+
     if c.get("bn", True):
+        logging.info("Loading " + str([get_brick(param).get_hierarchical_name(param) for param in bn_params]))
         for param in bn_params:
             param.set_value(params[get_brick(param).get_hierarchical_name(param)])
+
+    # Read logs
+    logs = pd.read_csv(os.path.join(dest_path, "logs.csv"))
+    best_val_acc = logs['valid_misclassificationrate_apply_error_rate'].min()
+    logging.info("Best measured valid acc: " + str(best_val_acc))
 
     # Predict
     predict_fnc = theano.function(cg.inputs, pred)
 
     results = {}
+
+    # TODO: Depends on batch_size?
+    batch_size = 1
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
-        stream = data.get_stream(subset, batch_size=1)
+        stream = data.get_stream(subset, batch_size=batch_size)
         it = stream.get_epoch_iterator()
         rows = []
-        for ex in it:
+        for ex in tqdm.tqdm(it, total=10000/batch_size):
             ex = dict(zip(stream.sources, ex))
             inp = [ex[v.name] for v in cg.inputs]
             prob = predict_fnc(*inp)
@@ -602,7 +631,14 @@ def evaluate(c, tar_path, *args, **kwargs):
         preds = pd.DataFrame(rows, columns=rows[0].keys())
         preds.to_csv(os.path.join(dest_path, prefix + '_predictions_{}.csv'.format(subset)))
         results[subset] = {}
-        results[subset]['acc'] = np.mean(preds.pred == preds.true_label)
+        results[subset]['misclassification'] = 1 - np.mean(preds.pred == preds.true_label)
+
+        if subset == "valid" and np.abs(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc) > 0.001:
+            logging.error("!!!")
+            logging.error("Found different best_val_acc. Probably due to changed specification of the model class.")
+            # TODO: Why this discrepancy? It is around 0.5% usually
+            logging.error("Discrepancy {}".format(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc))
+            logging.error("!!!")
 
         logging.info(results)
 
