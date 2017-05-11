@@ -18,6 +18,7 @@ import theano
 from theano import tensor
 from nltk.tokenize.moses import MosesDetokenizer
 
+import blocks
 from blocks.initialization import Uniform, Constant
 from blocks.bricks.recurrent import Bidirectional
 from blocks.bricks.simple import Rectifier
@@ -142,7 +143,11 @@ def _initialize_data_and_model(config):
 
 
 def train_extractive_qa(new_training_job, config, save_path,
-                              params, fast_start, fuel_server):
+                        params, fast_start, fuel_server, seed):
+    if seed:
+        fuel.config.default_seed = seed
+        blocks.config.config.default_seed = seed
+
     root_path = os.path.join(save_path, 'training_state')
     extension = '.tar'
     tar_path = root_path + extension
