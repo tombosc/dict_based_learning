@@ -30,7 +30,9 @@ import time
 import atexit
 import signal
 import pprint
+import pandas as pd
 import subprocess
+import tqdm
 import json
 import numpy
 import theano
@@ -507,3 +509,103 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     assert os.path.exists(save_path)
     main_loop.run()
+
+def evaluate(c, tar_path, *args, **kwargs):
+    """
+    * Runs on valid and test given network
+    * Saves all predictions
+    * Saves results.json and predictions.csv
+    """
+
+    # Load and configure
+    model = kwargs['model']
+    assert c.endswith("json")
+    c = json.load(open(c))
+    # Very ugly absolute path fix
+    ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/"
+    from six import string_types
+    for k in c:
+        if isinstance(c[k], string_types):
+            if c[k].startswith(ABS_PATH):
+                c[k] = c[k][len(ABS_PATH):]
+    assert tar_path.endswith("tar")
+    dest_path = os.path.dirname(tar_path)
+    prefix = os.path.splitext(os.path.basename(tar_path))[0]
+
+    s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
+
+    if c['dict_path']:
+        s1_def_map, s2_def_map = T.lmatrix('sentence1_def_map'), T.lmatrix('sentence2_def_map')
+        def_mask = T.fmatrix("def_mask")
+        defs = T.lmatrix("defs")
+    else:
+        s1_def_map, s2_def_map = None, None
+        def_mask = None
+        defs = None
+
+    s1_mask, s2_mask = T.fmatrix('sentence1_mask'), T.fmatrix('sentence2_mask')
+
+    if model == 'simple':
+        model, data, used_dict, used_retrieval = _initialize_simple_model_and_data(c)
+    elif model == 'esim':
+        model, data, used_dict, used_retrieval = _initialize_esim_model_and_data(c)
+    else:
+        raise NotImplementedError()
+
+    pred = model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+        s2_def_map=s2_def_map, train_phase=False)
+
+    cg = ComputationGraph([pred])
+    cg = apply_batch_normalization(cg)
+
+    if c.get("bn", True):
+        bn_params = [p for p, update_p in get_batch_normalization_updates(cg)]
+    else:
+        bn_params = []
+
+    # Load model
+    model = Model(cg.outputs)
+    with open(tar_path) as src:
+        params = load_parameters(src)
+    model.set_parameter_values(params)
+    if c.get("bn", True):
+        for param in bn_params:
+            param.set_value(params[get_brick(param).get_hierarchical_name(param)])
+
+    # Predict
+    predict_fnc = theano.function(cg.inputs, pred)
+
+    results = {}
+    for subset in ['valid', 'test']:
+        logging.info("Predicting on " + subset)
+        stream = data.get_stream(subset, batch_size=1)
+        it = stream.get_epoch_iterator()
+        rows = []
+        for ex in it:
+            ex = dict(zip(stream.sources, ex))
+            inp = [ex[v.name] for v in cg.inputs]
+            prob = predict_fnc(*inp)
+            label_pred = np.argmax(prob, axis=1)
+
+            for id in range(len(prob)):
+                s1 = data.vocab.decode(ex['sentence1'][id]).split()
+                s2 = data.vocab.decode(ex['sentence2'][id]).split()
+
+                s1 = ['*' + w + '*' if data.vocab.word_to_id(w) > c['num_input_words'] else w for w in s1]
+                s2 = ['*' + w + '*' if data.vocab.word_to_id(w) > c['num_input_words'] else w for w in s2]
+
+                rows.append({"pred": label_pred[id], "true_label": ex['label'][id],
+                    "s1": ' '.join(s1),
+                    "s2": ' '.join(s2),
+                    "p_0": prob[id, 0], "p_1": prob[id, 1], "p_2": prob[id, 2]})
+
+        preds = pd.DataFrame(rows, columns=rows[0].keys())
+        preds.to_csv(os.path.join(dest_path, prefix + '_predictions_{}.csv'.format(subset)))
+        results[subset] = {}
+        results[subset]['acc'] = np.mean(preds.pred == preds.true_label)
+
+        logging.info(results)
+
+    json.dump(results, open(os.path.join(dest_path, prefix + '_results.json'), "w"))
+
+
