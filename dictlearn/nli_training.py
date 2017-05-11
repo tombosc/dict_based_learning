@@ -215,7 +215,7 @@ def _initialize_esim_model_and_data(c):
 
     return simple, data, dict, retrieval
 
-def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, model='simple'):
+def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, seed, model='simple'):
     if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
         raise Exception("Some words have neither word nor def embedding")
 
@@ -374,7 +374,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     regular_training_stream = data.get_stream(
         'train', batch_size=c['batch_size'],
-        seed=numpy.random.randint(0, 10000000))
+        seed=seed)
 
     if fuel_server:
         # the port will be configured by the StartFuelServer extension
@@ -407,7 +407,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     if c['layout'] == 'snli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=1, seed=777),
+            data.get_stream('valid', batch_size=1, seed=seed),
             before_training=not fast_start,
             on_resumption=True,
             after_training=True,
@@ -417,14 +417,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     elif c['layout'] == 'mnli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_matched', batch_size=1, seed=777),
+            data.get_stream('valid_matched', batch_size=1, seed=seed),
             every_n_batches=c['mon_freq_valid'],
             on_resumption=True,
             after_training=True,
             prefix='valid_matched')
         validation_mismatched = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_mismatched', batch_size=1, seed=777),
+            data.get_stream('valid_mismatched', batch_size=1, seed=seed),
             every_n_batches=c['mon_freq_valid'],
             before_training=not fast_start,
             on_resumption=True,
