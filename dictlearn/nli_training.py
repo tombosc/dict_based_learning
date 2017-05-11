@@ -98,7 +98,7 @@ def _initialize_simple_model_and_data(c):
     else:
         retrieval = None
         dict = None
-        retrieval_vocab=None
+        retrieval_vocab = None
 
     # Initialize
     simple = NLISimple(
@@ -140,6 +140,9 @@ def _initialize_esim_model_and_data(c):
     # Load data
     data = SNLIData(path=c['data_path'], layout=c['layout'], vocab=vocab)
 
+    if vocab is None:
+        vocab = data.vocab
+
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
@@ -164,12 +167,12 @@ def _initialize_esim_model_and_data(c):
             def_reader = LSTMReadDefinitions(num_input_words=num_input_def_words,
                 weights_init=Uniform(width=0.1), translate=c['combiner_reader_translate'],
                 biases_init=Constant(0.), dim=c['def_dim'], emb_dim=def_emb_dim,
-                vocab=retrieval_vocab, lookup=None)
+                vocab=vocab, lookup=None)
         elif c['reader_type'] == "mean":
            def_reader = MeanPoolReadDefinitions(num_input_words=num_input_def_words,
-                translate=c['combiner_reader_translate'],
+                translate=c['combiner_reader_translate'], vocab=vocab,
                 weights_init=Uniform(width=0.1), lookup=None, dim=def_emb_dim,
-                biases_init=Constant(0.), emb_dim=def_emb_dim, vocab=retrieval_vocab)
+                biases_init=Constant(0.), emb_dim=def_emb_dim)
         else:
             raise NotImplementedError()
 
@@ -263,7 +266,8 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         error_rate = MisclassificationRate().apply(y.flatten(), pred)
         # NOTE: Please don't change outputs of cg
         cg[train_phase] = ComputationGraph([cost, error_rate])
-        cg[train_phase] = apply_batch_normalization(cg[train_phase])
+        if c.get('bn', True):
+            cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
     if model == 'simple':
@@ -403,20 +407,28 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     if c['layout'] == 'snli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=c['batch_size']),
+            data.get_stream('valid', batch_size=1, seed=777),
+            before_training=not fast_start,
+            on_resumption=True,
+            after_training=True,
             every_n_batches=c['mon_freq_valid'],
             prefix='valid')
         extensions.append(validation)
     elif c['layout'] == 'mnli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_matched', batch_size=c['batch_size']),
+            data.get_stream('valid_matched', batch_size=1, seed=777),
             every_n_batches=c['mon_freq_valid'],
+            on_resumption=True,
+            after_training=True,
             prefix='valid_matched')
         validation_mismatched = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_mismatched', batch_size=c['batch_size']),
+            data.get_stream('valid_mismatched', batch_size=1, seed=777),
             every_n_batches=c['mon_freq_valid'],
+            before_training=not fast_start,
+            on_resumption=True,
+            after_training=True,
             prefix='valid_mismatched')
         extensions.extend([validation, validation_mismatched])
     else:
@@ -467,7 +479,6 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         Printing(every_n_batches=c['mon_freq']),
         PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
         FinishAfter(after_n_batches=c['n_batches'])])
-
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
         before_training=not fast_start,
@@ -592,6 +603,8 @@ def evaluate(c, tar_path, *args, **kwargs):
         logging.info("Loading " + str([get_brick(param).get_hierarchical_name(param) for param in bn_params]))
         for param in bn_params:
             param.set_value(params[get_brick(param).get_hierarchical_name(param)])
+        for p in bn_params:
+            model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
 
     # Read logs
     logs = pd.read_csv(os.path.join(dest_path, "logs.csv"))
@@ -604,10 +617,10 @@ def evaluate(c, tar_path, *args, **kwargs):
     results = {}
 
     # TODO: Depends on batch_size?
-    batch_size = 1
+    batch_size = 15
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
-        stream = data.get_stream(subset, batch_size=batch_size)
+        stream = data.get_stream(subset, batch_size=batch_size, seed=778)
         it = stream.get_epoch_iterator()
         rows = []
         for ex in tqdm.tqdm(it, total=10000/batch_size):

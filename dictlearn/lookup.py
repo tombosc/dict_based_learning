@@ -235,21 +235,19 @@ class MeanPoolCombiner(Initializable):
         children = []
 
         if self._def_word_gating=="self_attention":
-            self._gate_mlp = Linear(dim, dim,  weights_init=GlorotUniform(), biases_init=Constant(0))
+            self._gate_mlp = Linear(dim, dim)
             self._gate_act = Logistic()
             children.extend([self._gate_mlp, self._gate_act])
 
         if compose_type == 'fully_connected_linear':
             self._def_state_compose = MLP(activations=[None],
-                dims=[emb_dim + dim, emb_dim], weights_init=GlorotUniform(), biases_init=Constant(0))
+                dims=[emb_dim + dim, emb_dim])
             children.append(self._def_state_compose)
         if compose_type == "gated_sum" or compose_type == "gated_transform_and_sum":
             if dropout_type == "per_word" or dropout_type == "per_example":
                 raise RuntimeError("I dont think this combination makes much sense")
 
             self._compose_gate_mlp = Linear(dim + emb_dim, emb_dim,
-                                            weights_init=GlorotUniform(),
-                                            biases_init=Constant(0),
                                             name='gate_linear')
             self._compose_gate_act = Logistic()
             children.extend([self._compose_gate_mlp, self._compose_gate_act])
