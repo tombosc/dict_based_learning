@@ -116,7 +116,9 @@ def tune_depth_and_dropout(c):
     return c
 
 qa_config_registry['squad6'] = tune_depth_and_dropout(qa_config_registry['squad5'])
-qa_config_registry['squad_glove6'] = tune_depth_and_dropout(qa_config_registry['squad_glove2'])
+c = tune_depth_and_dropout(qa_config_registry['squad_glove2'])
+c['batch_size'] = 32
+qa_config_registry['squad_glove6'] = c
 qa_config_registry['squad_glove7'] = tune_depth_and_dropout(qa_config_registry['squad_glove5'])
 
 # a better regularized baseline config
