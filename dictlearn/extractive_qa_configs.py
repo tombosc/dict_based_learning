@@ -118,3 +118,14 @@ def tune_depth_and_dropout(c):
 qa_config_registry['squad6'] = tune_depth_and_dropout(qa_config_registry['squad5'])
 qa_config_registry['squad_glove6'] = tune_depth_and_dropout(qa_config_registry['squad_glove2'])
 qa_config_registry['squad_glove7'] = tune_depth_and_dropout(qa_config_registry['squad_glove5'])
+
+# a better regularized baseline config
+c = qa_config_registry['squad2']
+c['batch_size'] = 32
+qa_config_registry['squad7'] = c
+
+# spelling
+def change_dict_to_spelling(c):
+    c['emb_dim'] = 200
+    c['dict_path'] = 'squad/squad_from_scratch/spelling.json'
+    c['dict_vocab_path'] = 'squad/squad_from_scratch/spelling_vocab.txt'
