@@ -27,7 +27,6 @@ lm_config_registry.set_root_config({
 
     # embeddings
     'embedding_path': '',
-    'train_emb': False,
 
     # model: def_reader
     'def_reader': 'LSTM',
@@ -152,12 +151,33 @@ lm_config_registry['obw_10k_dict2_n'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['train_emb']= False
 c['emb_dim'] = 300
 lm_config_registry['obw_base_10k_glove300k'] = c
 
 c['num_input_words'] = 300005
 lm_config_registry['obw_base_300k_glove300k'] = c
 
+def new_dictify(c):
+    c['dict_path'] = 'onebillionword/wn/dict_obw.json'
+    c['max_def_per_word'] = 14
+    c['max_def_length'] = 30
+    return c
 
+c = lm_config_registry['obw_10k_dict1']
+c = new_dictify(c)
+lm_config_registry['obw_10k_dict1_wn'] = c
+c = lm_config_registry['obw_10k_dict2']
+c = new_dictify(c)
+lm_config_registry['obw_10k_dict2_wn'] = c
 
+c = lm_config_registry['obw_base_10k_slower']
+c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
+c['emb_dim'] = 300
+c['exclude_top_k'] = 10000
+c['def_reader'] = 'mean'
+c['standalone_def_lookup'] = True
+c['compose_type'] = 'transform_and_sum'
+lm_config_registry['obw_base_10k_tr_glove_300k'] = c
+
+c['embedding_path']= 'onebillionword/wn/glove.840B.300d_300k_common.npy'
+lm_config_registry['obw_base_10k_tr_glove_300k_restr'] = c
