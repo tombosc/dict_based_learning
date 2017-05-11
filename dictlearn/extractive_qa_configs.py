@@ -126,6 +126,11 @@ qa_config_registry['squad7'] = c
 
 # spelling
 def change_dict_to_spelling(c):
-    c['emb_dim'] = 200
-    c['dict_path'] = 'squad/squad_from_scratch/spelling.json'
-    c['dict_vocab_path'] = 'squad/squad_from_scratch/spelling_vocab.txt'
+    c['dict_path'] = 'squad/squad_from_scratch/dict_spelling2.json'
+    c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_with_chars.txt'
+    return c
+c = change_dict_to_spelling(qa_config_registry['squad5'])
+# for some reason this was helpful
+# TODO: trying again without it
+c['emb_dim'] = 200
+qa_config_registry['squad8'] = c
