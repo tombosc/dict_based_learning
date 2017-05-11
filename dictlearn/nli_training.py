@@ -190,6 +190,7 @@ def _initialize_esim_model_and_data(c):
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
         num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
+        bn=c['bn'],
 
         def_combiner=def_combiner, def_reader=def_reader,
 
@@ -276,9 +277,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     final_cost.name = 'final_cost'
 
     # Add updates for population parameters
-    pop_updates = get_batch_normalization_updates(cg[True])
-    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
-        for p, m in pop_updates]
+
+    if c.get("bn", True):
+        pop_updates = get_batch_normalization_updates(cg[True])
+        extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
+            for p, m in pop_updates]
+    else:
+        pop_updates = []
+        extra_updates = []
 
     if params:
         logger.debug("Load parameters from {}".format(params))
@@ -382,37 +388,34 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
             hwm=100,
             script_path=os.path.join(os.path.dirname(__file__), "../bin/start_fuel_server.py"),
             before_training=fuel_server),
-        Timing(every_n_batches=c['mon_freq_train']),
+        Timing(every_n_batches=c['mon_freq']),
         ProgressBar(),
         RetrievalPrintStats(retrieval=used_retrieval, every_n_batches=c['mon_freq_valid'],
             before_training=not fast_start),
         Timestamp(),
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
-            every_n_batches=c['mon_freq_train']),
+            every_n_batches=c['mon_freq']),
     ]
 
     if c['layout'] == 'snli':
         validation = DataStreamMonitoring(
             monitored_vars,
             data.get_stream('valid', batch_size=c['batch_size']),
-            prefix='valid').set_conditions(
-            before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid'])
+            every_n_batches=c['mon_freq_valid'],
+            prefix='valid')
         extensions.append(validation)
     elif c['layout'] == 'mnli':
         validation = DataStreamMonitoring(
             monitored_vars,
             data.get_stream('valid_matched', batch_size=c['batch_size']),
-            prefix='valid_matched').set_conditions(
-            before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid'])
+            every_n_batches=c['mon_freq_valid'],
+            prefix='valid_matched')
         validation_mismatched = DataStreamMonitoring(
             monitored_vars,
             data.get_stream('valid_mismatched', batch_size=c['batch_size']),
-            prefix='valid_mismatched').set_conditions(
-            before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid'])
+            every_n_batches=c['mon_freq_valid'],
+            prefix='valid_mismatched')
         extensions.extend([validation, validation_mismatched])
     else:
         raise NotImplementedError()
@@ -452,29 +455,29 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     extensions.extend([DumpCSVSummaries(
         save_path,
-        every_n_batches=c['mon_freq_train'],
+        every_n_batches=c['mon_freq'],
         after_training=True),
         DumpTensorflowSummaries(
             save_path,
             after_epoch=True,
-            every_n_batches=c['mon_freq_train'],
+            every_n_batches=c['mon_freq'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
-        PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq_train']),
+        Printing(every_n_batches=c['mon_freq']),
+        PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
         FinishAfter(after_n_batches=c['n_batches'])])
 
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
         before_training=not fast_start,
-        every_n_batches=c['save_freq_batches'],
+        every_n_epochs=c['save_freq_epochs'],
         after_training=not fast_start,
-        choose_best=min).set_conditions( # Really it is misclassification, hence min
-        every_n_batches=c['mon_freq_valid'])
+        every_n_batches=c['mon_freq_valid'],
+        choose_best=min)
     extensions.append(track_the_best)
     extensions.append(Checkpoint(main_loop_path,
         parameters=cg[True].parameters + [p for p, m in pop_updates],
         before_training=not fast_start,
-        every_n_batches=c['save_freq_batches'],
+        every_n_epochs=c['save_freq_epochs'],
         after_training=not fast_start).add_condition(
         ['after_batch', 'after_epoch'],
         OnLogRecord(track_the_best.notification_name),

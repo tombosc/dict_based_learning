@@ -5,12 +5,13 @@ nli_esim_config_registry = ConfigRegistry()
 # Each epoch has ~500k examples
 # Params copied from https://github.com/NYU-MLL/multiNLI/blob/master/python/util/parameters.py
 nli_esim_config_registry.set_root_config({
-    'data_path':  '/data/lisa/exp/jastrzes/dict_based_learning/data/snli/',
+    'data_path':  'snli',
     'layout': 'snli',
 
     # Lookup params
     'max_def_per_word': 100000,
     'emb_dim': 300,
+    'bn': 0,
     'dim': 300,
     'dict_path': '',
     'vocab': '',
@@ -44,9 +45,9 @@ nli_esim_config_registry.set_root_config({
 
     # Misc. Monitor every 100% of epoch
     'monitor_parameters': 0,
-    'mon_freq_train': int((500000) / 32),
-    'save_freq_batches':int((500000) / 32),
-    'mon_freq_valid': int((500000) / 32),
+    'mon_freq': int((500000) / 32) / 3, # 3 times per epoch
+    'save_freq_epochs': 1,
+    'mon_freq_valid': int((500000) / 32) / 3,
     'n_batches': 200 * (500000 / 32) # ~200 epochs of SNLI
 })
 
