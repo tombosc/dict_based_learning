@@ -422,6 +422,7 @@ class Retrieval(object):
         def_map = []
         word_def_indices = defaultdict(list)
 
+
         for seq_pos, sequence in enumerate(batch):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
@@ -441,9 +442,6 @@ class Retrieval(object):
                     self._debug_info['N_words'] += 1
                     self._debug_info['N_missed_words'] += (len(word_defs) == 0)
                     # End of debug info
-
-                    if not word_defs:
-                        continue
 
                     for i, def_ in enumerate(word_defs):
                         self._debug_info['N_def'] += 1

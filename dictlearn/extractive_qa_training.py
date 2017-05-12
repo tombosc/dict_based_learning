@@ -104,6 +104,25 @@ class DumpPredictions(SimpleExtension):
             json.dump(self._text_match_ratio.predictions, dst, indent=2, sort_keys=True)
 
 
+class Annealing(SimpleExtension):
+
+    def __init__(self, annealing_learning_rate, *args, **kwargs):
+        self._annealing_learning_rate = annealing_learning_rate
+        kwargs['before_training'] = True
+        super(Annealing, self).__init__(*args, **kwargs)
+
+    def do(self, which_callback, *args, **kwargs):
+        if which_callback == 'before_training':
+            cg = ComputationGraph(self.main_loop.algorithm.total_step_norm)
+            self._learning_rate_var, = VariableFilter(theano_name='learning_rate')(cg)
+            logger.debug("Annealing extension is initialized")
+        elif which_callback == 'after_epoch':
+            logger.debug("Annealing the learning rate to {}".format(self._annealing_learning_rate))
+            self._learning_rate_var.set_value(self._annealing_learning_rate)
+        else:
+            raise ValueError("don't know what to do")
+
+
 def initialize_data_and_model(config):
     c = config
     vocab = None
@@ -120,7 +139,8 @@ def initialize_data_and_model(config):
         data._retrieval = Retrieval(
             dict_vocab, Dictionary(
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
-            c['max_def_length'], c['exclude_top_k'])
+            c['max_def_length'], c['exclude_top_k'],
+            with_too_long_defs=c['with_too_long_defs'])
     qam = ExtractiveQAModel(
         c['dim'], c['emb_dim'], c['readout_dims'],
         c['num_input_words'], c['def_num_input_words'], data.vocab,
@@ -151,6 +171,7 @@ def train_extractive_qa(new_training_job, config, save_path,
     root_path = os.path.join(save_path, 'training_state')
     extension = '.tar'
     tar_path = root_path + extension
+    best_tar_path = root_path + '_best' + extension
 
     c = config
     data, qam = initialize_data_and_model(c)
@@ -313,7 +334,7 @@ def train_extractive_qa(new_training_job, config, save_path,
             .add_condition(
                 ['after_batch', 'after_epoch'],
                  OnLogRecord(track_the_best_text.notification_name),
-                 (root_path + "_best" + extension,)),
+                 (best_tar_path,)),
         DumpTensorflowSummaries(
             save_path,
             after_epoch=True,
@@ -324,7 +345,11 @@ def train_extractive_qa(new_training_job, config, save_path,
             before_training=not fast_start),
         Printing(after_epoch=True,
                  every_n_batches=c['mon_freq_train']),
-        FinishAfter(after_n_batches=c['n_batches'])
+        FinishAfter(after_n_batches=c['n_batches']),
+        Annealing(c['annealing_learning_rate'],
+                  after_n_epochs=c['annealing_start_epoch']),
+        LoadNoUnpickling(best_tar_path,
+                         after_n_epochs=c['annealing_start_epoch'])
     ])
 
     main_loop = MainLoop(
