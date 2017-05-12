@@ -16,7 +16,7 @@ def start_corenlp(port):
     command = "java -mx4g edu.stanford.nlp.pipeline.StanfordCoreNLPServer -quiet -port {} -timeout 15000".format(port)
     popen = subprocess.Popen(command.split())
     # ugly!
-    time.sleep(1.0)
+    time.sleep(2.0)
     return popen
 
 
