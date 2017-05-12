@@ -264,7 +264,6 @@ class DumpCSVSummaries(SimpleExtension):
     def __init__(self, save_path, mode="w", **kwargs):
         self._save_path = save_path
         self._mode = mode
-
         if self._mode == "w":
             # Clean up file
             with open(os.path.join(self._save_path, "logs.csv"), "w") as f:
@@ -275,12 +274,9 @@ class DumpCSVSummaries(SimpleExtension):
 
         super(DumpCSVSummaries, self).__init__(**kwargs)
 
-    def __setstate__(self, state):
-        self.__dict__ = state
-        pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
-        return self
-
     def do(self, *args, **kwargs):
+        import pdb;
+        pdb.set_trace()
         for key, value in self.main_loop.log.current_row.items():
             try:
                 float_value = float(value)

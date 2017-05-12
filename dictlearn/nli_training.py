@@ -2,6 +2,7 @@
 Training loop for simple SNLI model that can use dict enchanced embeddings
 
 TODO: What's best way to refactor it. I think training loop taking model + cost would be good enough for us
+TODO: State CSV pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
 """
 
 import sys
@@ -76,9 +77,11 @@ def _initialize_simple_model_and_data(c):
         vocab = Vocabulary(c['vocab'])
     else:
         vocab = None
-
     # Load data
     data = SNLIData(path=c['data_path'], layout=c['layout'], vocab=vocab)
+
+    if vocab is None:
+        vocab = data.vocab
 
     # Dict
     if c['dict_path']:
@@ -213,7 +216,7 @@ def _initialize_esim_model_and_data(c):
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
-    return simple, data, dict, retrieval
+    return simple, data, dict, retrieval, vocab
 
 def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, seed, model='simple'):
     if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
@@ -236,9 +239,9 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     json.dump(config, open(os.path.join(save_path, "config.json"), "w"))
 
     if model == 'simple':
-        nli_model, data, used_dict, used_retrieval = _initialize_simple_model_and_data(c)
+        nli_model, data, used_dict, used_retrieval, _ = _initialize_simple_model_and_data(c)
     elif model == 'esim':
-        nli_model, data, used_dict, used_retrieval = _initialize_esim_model_and_data(c)
+        nli_model, data, used_dict, used_retrieval, _ = _initialize_esim_model_and_data(c)
     else:
         raise NotImplementedError()
 
@@ -543,7 +546,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     dest_path = os.path.dirname(tar_path)
     prefix = os.path.splitext(os.path.basename(tar_path))[0]
 
-    s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
+    s1_decoded, s2_decoded = T.lmatrix('sentence1'), T.lmatrix('sentence2')
 
     if c['dict_path']:
         s1_def_map, s2_def_map = T.lmatrix('sentence1_def_map'), T.lmatrix('sentence2_def_map')
@@ -557,13 +560,13 @@ def evaluate(c, tar_path, *args, **kwargs):
     s1_mask, s2_mask = T.fmatrix('sentence1_mask'), T.fmatrix('sentence2_mask')
 
     if model == 'simple':
-        model, data, used_dict, used_retrieval = _initialize_simple_model_and_data(c)
+        model, data, used_dict, used_retrieval, used_vocab = _initialize_simple_model_and_data(c)
     elif model == 'esim':
-        model, data, used_dict, used_retrieval = _initialize_esim_model_and_data(c)
+        model, data, used_dict, used_retrieval, used_vocab = _initialize_esim_model_and_data(c)
     else:
         raise NotImplementedError()
 
-    pred = model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+    pred = model.apply(s1_decoded, s1_mask, s2_decoded, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
         s2_def_map=s2_def_map, train_phase=False)
 
     cg = ComputationGraph([pred])
@@ -617,7 +620,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     results = {}
 
     # TODO: Depends on batch_size?
-    batch_size = 15
+    batch_size = 14
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
         stream = data.get_stream(subset, batch_size=batch_size, seed=778)
@@ -630,15 +633,34 @@ def evaluate(c, tar_path, *args, **kwargs):
             label_pred = np.argmax(prob, axis=1)
 
             for id in range(len(prob)):
-                s1 = data.vocab.decode(ex['sentence1'][id]).split()
-                s2 = data.vocab.decode(ex['sentence2'][id]).split()
+                s1_decoded = used_vocab.decode(ex['sentence1'][id]).split()
+                s2_decoded = used_vocab.decode(ex['sentence2'][id]).split()
 
-                s1 = ['*' + w + '*' if data.vocab.word_to_id(w) > c['num_input_words'] else w for w in s1]
-                s2 = ['*' + w + '*' if data.vocab.word_to_id(w) > c['num_input_words'] else w for w in s2]
+                assert used_vocab == data.vocab
+
+                s1_decoded = ['*' + w + '*' if used_vocab.word_to_id(w) > c['num_input_words'] else w for w in s1_decoded]
+                s2_decoded = ['*' + w + '*' if used_vocab.word_to_id(w) > c['num_input_words'] else w for w in s2_decoded]
+
+                # Different difficulty metrics
+
+                # text_unk_percentage
+                s1_no_pad = [w for w in ex['sentence1'][id] if w != 0]
+                s2_no_pad = [w for w in ex['sentence2'][id] if w != 0]
+
+                s1_unk_percentage = sum([1. for w in s1_no_pad if w == used_vocab.unk]) / len(s1_no_pad)
+                s2_unk_percentage = sum([1. for w in s1_no_pad if w == used_vocab.unk]) / len(s2_no_pad)
+
+                # mean freq word
+                s1_mean_freq = np.mean([0 if w == data.vocab.unk else used_vocab._id_to_freq[w] for w in s1_no_pad])
+                s2_mean_freq = np.mean([0 if w == data.vocab.unk else used_vocab._id_to_freq[w] for w in s2_no_pad])
 
                 rows.append({"pred": label_pred[id], "true_label": ex['label'][id],
-                    "s1": ' '.join(s1),
-                    "s2": ' '.join(s2),
+                    "s1": ' '.join(s1_decoded),
+                    "s2": ' '.join(s2_decoded),
+                    "s1_unk_percentage": s1_unk_percentage,
+                    "s2_unk_percentage": s2_unk_percentage,
+                    "s1_mean_freq": s1_mean_freq,
+                    "s2_mean_freq": s2_mean_freq,
                     "p_0": prob[id, 0], "p_1": prob[id, 1], "p_2": prob[id, 2]})
 
         preds = pd.DataFrame(rows, columns=rows[0].keys())
@@ -654,6 +676,8 @@ def evaluate(c, tar_path, *args, **kwargs):
             logging.error("!!!")
 
         logging.info(results)
+
+        # Save useful plots
 
     json.dump(results, open(os.path.join(dest_path, prefix + '_results.json'), "w"))
 
