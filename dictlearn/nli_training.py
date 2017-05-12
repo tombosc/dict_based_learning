@@ -131,7 +131,7 @@ def _initialize_simple_model_and_data(c):
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
-    return simple, data, dict, retrieval
+    return simple, data, dict, retrieval, vocab
 
 def _initialize_esim_model_and_data(c):
 
@@ -470,18 +470,6 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
                     SimilarityWordEmbeddingEval(embedder=embedder, prefix=name, every_n_batches=c['mon_freq_valid'],
                         before_training=not fast_start))
 
-    extensions.extend([DumpCSVSummaries(
-        save_path,
-        every_n_batches=c['mon_freq'],
-        after_training=True),
-        DumpTensorflowSummaries(
-            save_path,
-            after_epoch=True,
-            every_n_batches=c['mon_freq'],
-            after_training=True),
-        Printing(every_n_batches=c['mon_freq']),
-        PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
-        FinishAfter(after_n_batches=c['n_batches'])])
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
         before_training=not fast_start,
@@ -498,6 +486,18 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         ['after_batch', 'after_epoch'],
         OnLogRecord(track_the_best.notification_name),
         (main_loop_best_val_path,)))
+    extensions.extend([DumpCSVSummaries(
+        save_path,
+        every_n_batches=c['mon_freq'],
+        after_training=True),
+        DumpTensorflowSummaries(
+            save_path,
+            after_epoch=True,
+            every_n_batches=c['mon_freq'],
+            after_training=True),
+        Printing(every_n_batches=c['mon_freq']),
+        PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
+        FinishAfter(after_n_batches=c['n_batches'])])
     logger.info(extensions)
 
     ### Run training ###
