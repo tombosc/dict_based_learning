@@ -43,10 +43,12 @@ class Dictionary(object):
         self._meta_data = {}
         self._path = path
         self._meta_path = path.replace(".json", "_meta.json")
-        self._tmp_path = os.path.join(os.path.dirname(path),
-                                         self._path + '.tmp')
-        self._meta_tmp_path = os.path.join(os.path.dirname(path),
-            self._meta_path + '.tmp')
+        #self._tmp_path = os.path.join(os.path.dirname(path),
+        #                              self._path + '.tmp')
+        #self._meta_tmp_path = os.path.join(os.path.dirname(path),
+        #    self._meta_path + '.tmp')
+        self._tmp_path = self._path + ".tmp"
+        self._meta_tmp_path = self._meta_path + ".tmp"
         if self._path:
             if os.path.exists(self._path):
                 self.load()
@@ -344,7 +346,7 @@ class Retrieval(object):
     def __init__(self, vocab_text, dictionary,
                  max_def_length=1000, exclude_top_k=None,
                  with_too_long_defs='drop', vocab_def=None,
-                 max_def_per_word=1000000):
+                 max_def_per_word=1000000, add_bod_eod=True):
         """Retrieves the definitions.
         vocab_text
             The vocabulary for text
@@ -361,6 +363,7 @@ class Retrieval(object):
             Pick at most max_n_def definitions for each word
         """
         self._vocab_text = vocab_text
+        self._add_bod_eod = add_bod_eod
         if vocab_def is None:
             self._vocab_def = self._vocab_text
         else:
@@ -454,10 +457,13 @@ class Retrieval(object):
                         else:
                             raise NotImplementedError()
 
-                        final_def_ = [self._vocab_def.bod]
+                        final_def_ = []
+                        if self._add_bod_eod:
+                            final_def_.append(self._vocab_def.bod)
                         for token in def_:
                             final_def_.append(self._vocab_def.word_to_id(token))
-                        final_def_.append(self._vocab_def.eod)
+                        if self._add_bod_eod:
+                            final_def_.append(self._vocab_def.eod)
                         word_def_indices[word].append(len(definitions))
                         definitions.append(final_def_)
 
