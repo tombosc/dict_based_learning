@@ -15,6 +15,7 @@ qa_config_registry.set_root_config({
     'batch_size' : 32,
     'batch_size_valid' : 32,
     'max_def_length' : 1000,
+    'with_too_long_defs' : 'drop',
     'exclude_top_k' : 0,
 
     # model

@@ -120,7 +120,8 @@ def initialize_data_and_model(config):
         data._retrieval = Retrieval(
             dict_vocab, Dictionary(
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
-            c['max_def_length'], c['exclude_top_k'])
+            c['max_def_length'], c['exclude_top_k'],
+            with_too_long_defs=c['with_too_long_defs'])
     qam = ExtractiveQAModel(
         c['dim'], c['emb_dim'], c['readout_dims'],
         c['num_input_words'], c['def_num_input_words'], data.vocab,
