@@ -109,10 +109,10 @@ class LanguageModel(Initializable):
 
         super(LanguageModel, self).__init__(children=children, **kwargs)
 
-    def set_frozen_embeddings(self, embeddings):
+    def set_def_embeddings(self, embeddings):
         self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
-    def get_frozen_embeddings_params(self):
+    def get_def_embeddings_params(self):
         return self._def_reader._def_lookup.parameters[0]
 
 

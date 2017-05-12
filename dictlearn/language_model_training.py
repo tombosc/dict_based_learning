@@ -13,6 +13,7 @@ import numpy
 import theano
 from theano import tensor
 
+import blocks
 from blocks.initialization import Uniform, Constant
 from blocks.algorithms import (
     Adam, GradientDescent, Adam, StepClipping, CompositeRule)
@@ -47,14 +48,17 @@ logger = logging.getLogger()
 
 
 def train_language_model(new_training_job, config, save_path, params,
-                         fast_start, fuel_server):
+                         fast_start, fuel_server):#, seed):
+    #if seed:
+    #    fuel.config.default_seed = seed
+    #    blocks.config.config.default_seed = seed
 
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
-    assert((c['dict_path'] and not c['embedding_path']) or 
-           (not c['dict_path'] and c['embedding_path']))
+    assert((not c['dict_path'] or 
+            (c['dict_path'] and not c['embedding_path'])))
 
     data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
@@ -71,7 +75,7 @@ def train_language_model(new_training_job, config, save_path, params,
         # load the embedding matrix and multiply every embedding by 3
         # indeed we'll use the mean def reader and there will be <bod> <eod> 
         # (zeros cause unknown) so we'll recover the true scale of embeddings
-        embedding_matrix = numpy.load(emb_full_path) * 3 
+        embedding_matrix = numpy.load(emb_full_path)
         idx_words = [i for i, e in enumerate(embedding_matrix) if numpy.any(e != 0)]
         words_w_emb = [data.vocab.words[i] for i in idx_words]
         # create a "tautological dict" which contains the non null word embs 
@@ -90,7 +94,7 @@ def train_language_model(new_training_job, config, save_path, params,
 
         retrieval = Retrieval(data.vocab, dict_frozen, max_def_length=1, 
                               exclude_top_k=c['exclude_top_k'],
-                              max_def_per_word=1)
+                              max_def_per_word=1, add_bod_eod=False)
 
     lm = LanguageModel(c['emb_dim'], c['dim'], c['num_input_words'],
                        c['num_output_words'], data.vocab, retrieval,
@@ -104,7 +108,7 @@ def train_language_model(new_training_job, config, save_path, params,
     lm.initialize()
     
     if c['embedding_path']:
-        lm.set_frozen_embeddings(embedding_matrix)
+        lm.set_def_embeddings(embedding_matrix)
         logger.debug("Embeddings loaded")
 
     words = tensor.ltensor3('words')
@@ -138,7 +142,7 @@ def train_language_model(new_training_job, config, save_path, params,
     if c['embedding_path']:
         logger.debug("Exclude word embeddings from the trained parameters")
         trained_parameters = [p for p in trained_parameters
-                              if not p == lm.get_frozen_embeddings_params()]
+                              if not p == lm.get_def_embeddings_params()]
 
     logger.info("Cost parameters" + "\n" +
                 pprint.pformat(
