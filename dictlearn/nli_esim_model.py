@@ -118,8 +118,6 @@ class ESIM(Initializable):
     def apply(self, application_call,
             s1_preunk, s1_mask, s2_preunk, s2_mask, def_mask=None,
             defs=None, s1_def_map=None, s2_def_map=None, train_phase=True):
-        application_call.metadata['training_mode'] = train_phase
-
         # Shortlist words (sometimes we want smaller vocab, especially when dict is small)
         s1 = (tensor.lt(s1_preunk, self._num_input_words) * s1_preunk
               + tensor.ge(s1_preunk, self._num_input_words) * self._vocab.unk)

@@ -13,6 +13,7 @@ from theano import tensor
 sys.path.append("..")
 
 from blocks.bricks.cost import MisclassificationRate
+from blocks.bricks.bn import BatchNormalization
 from blocks.filter import get_brick
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
@@ -45,12 +46,14 @@ from blocks.algorithms import (
     GradientDescent, Adam)
 from blocks.graph import ComputationGraph, apply_batch_normalization, get_batch_normalization_updates
 from blocks.model import Model
+from blocks.graph.bn import (
+    apply_batch_normalization, get_batch_normalization_updates,
+    batch_normalization)
 from blocks.extensions import FinishAfter, Timing, Printing
 from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
-
 from blocks.roles import WEIGHT
 from blocks.filter import VariableFilter
 
@@ -263,14 +266,18 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     cg = {}
     for train_phase in [True, False]:
-        pred = nli_model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
-            s2_def_map=s2_def_map, train_phase=train_phase)
+        # NOTE: Please don't change outputs of cg
+        if train_phase:
+            with batch_normalization(nli_model):
+                pred = nli_model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+                    s2_def_map=s2_def_map, train_phase=train_phase)
+        else:
+            pred = nli_model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+                s2_def_map=s2_def_map, train_phase=train_phase)
+
         cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
         error_rate = MisclassificationRate().apply(y.flatten(), pred)
-        # NOTE: Please don't change outputs of cg
         cg[train_phase] = ComputationGraph([cost, error_rate])
-        if c.get('bn', True):
-            cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
     if model == 'simple':
@@ -570,10 +577,9 @@ def evaluate(c, tar_path, *args, **kwargs):
         s2_def_map=s2_def_map, train_phase=False)
 
     cg = ComputationGraph([pred])
-    cg = apply_batch_normalization(cg)
 
     if c.get("bn", True):
-        bn_params = [p for p, update_p in get_batch_normalization_updates(cg)]
+        bn_params = [p for p in VariableFilter(bricks=[BatchNormalization])(cg) if hasattr(p, "set_value")]
     else:
         bn_params = []
 
