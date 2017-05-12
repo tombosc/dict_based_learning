@@ -93,7 +93,7 @@ class LanguageModel(Initializable):
             elif def_reader == 'mean':
                 self._def_reader = MeanPoolReadDefinitions(num_input_words, emb_dim,
                                                            dim, vocab, lookup, 
-                                                           translate=True, 
+                                                           translate=(emb_dim!=dim), 
                                                            normalize=False)
             else:
                 raise Exception("def reader not understood")

@@ -5,6 +5,7 @@ lm_config_registry.set_root_config({
     # data
     'data_path': 'onebillionword/',
     'dict_path' : "",
+    'vocab_path': "",
     'layout' : 'standard',
     'num_input_words' : 10000,
     'num_output_words': 10000,
@@ -195,3 +196,19 @@ c = lm_config_registry['obw_10k_dict2']
 c = new_dictify_addlemma(c)
 lm_config_registry['obw_10k_dict2_wnl'] = c
 
+c = lm_config_registry['obw_base_10k_slower']
+c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k.txt'
+c['num_input_words'] = 30000
+lm_config_registry['obw_base_10k_restr_wnl_30k'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['dict_path'] = 'onebillionword/dict_identity_lemma_lowercase.json'
+c['def_reader'] = 'mean'
+c['num_input_words'] = 10000
+c['compose_type'] = 'transform_and_sum'
+c['standalone_def_lookup'] = False
+lm_config_registry['obw_base_10k_lemma_lc'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['emb_dim'] = 300
+lm_config_registry['obw_base_10k_emb300'] = c

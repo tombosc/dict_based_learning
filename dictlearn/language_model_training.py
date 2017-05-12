@@ -41,6 +41,7 @@ from dictlearn.extensions import (
 
 from dictlearn.language_model import LanguageModel
 from dictlearn.retrieval import Retrieval, Dictionary
+from dictlearn.vocab import Vocabulary
 
 from tests.util import temporary_content_path
 
@@ -57,8 +58,12 @@ def train_language_model(new_training_job, config, save_path, params,
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
+    vocab=None
+    if c['vocab_path']:
+        vocab = Vocabulary(
+            os.path.join(fuel.config.data_path[0], c['vocab_path']))
 
-    data = LanguageModellingData(c['data_path'], c['layout'])
+    data = LanguageModellingData(c['data_path'], c['layout'], vocab=vocab)
     retrieval = None
     if c['dict_path'] and not c['embedding_path']:
         dict_full_path = os.path.join(fuel.config.data_path[0], c['dict_path'])
