@@ -47,16 +47,7 @@ from tests.util import temporary_content_path
 
 logger = logging.getLogger()
 
-
-def train_language_model(new_training_job, config, save_path, params,
-                         fast_start, fuel_server, seed):
-    if seed:
-        fuel.config.default_seed = seed
-        blocks.config.config.default_seed = seed
-
-    main_loop_path = os.path.join(save_path, 'main_loop.tar')
-    stream_path = os.path.join(save_path, 'stream.pkl')
-
+def initialize_data_and_model(config):
     c = config
     vocab=None
     if c['vocab_path']:
@@ -99,6 +90,19 @@ def train_language_model(new_training_job, config, save_path, params,
     if c['embedding_path']:
         lm.set_def_embeddings(embedding_matrix)
         logger.debug("Embeddings loaded")
+
+    return (data, lm)
+
+
+def train_language_model(new_training_job, config, save_path, params,
+                         fast_start, fuel_server, seed):
+    if seed:
+        fuel.config.default_seed = seed
+        blocks.config.config.default_seed = seed
+
+    data, lm = initialize_data_and_model(config)
+    main_loop_path = os.path.join(save_path, 'main_loop.tar')
+    stream_path = os.path.join(save_path, 'stream.pkl')
 
     words = tensor.ltensor3('words')
     words_mask = tensor.matrix('words_mask')
