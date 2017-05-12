@@ -167,11 +167,9 @@ class ESIM(Initializable):
             # s1_mask is (batch_size, seq_len)
             s2_i = s2_i.reshape((s2_i.shape[0], s2_i.shape[1], 1))
             s2_i = T.repeat(s2_i, 2, axis=2)
-            # s2_i is (batch_size, emb_dim, 1)
+            # s2_i is (batch_size, emb_dim, 2)
             score = T.batched_dot(s1_bilstm, s2_i) # (batch_size, seq_len, 1)
             score = score[:, :, 0].reshape((b_size, -1)) # (batch_size, seq_len)
-
-            score = theano.tensor.nnet.softmax(s1_mask * score)
             return score # E[i, :]
 
         # NOTE: No point in masking here
@@ -186,8 +184,11 @@ class ESIM(Initializable):
 
         def compute_tilde_vector(e_i, s, s_mask):
             # e_i is (batch_size, seq_len)
+            # s_mask is (batch_size, seq_len)
             # s_tilde_i = \sum e_ij b_j, (batch_size, seq_len)
-            s_tilde_i = (e_i.dimshuffle(0, 1, "x") * (s * s_mask.dimshuffle(0, 1, "x"))).sum(axis=1)
+            score = (e_i * s_mask.dimshuffle(0, 1, "x"))
+            score = theano.tensor.nnet.softmax(score)
+            s_tilde_i = (score * (s * s_mask.dimshuffle(0, 1, "x"))).sum(axis=1)
             return s_tilde_i
 
         # (batch_size, seq_len, def_dim)
