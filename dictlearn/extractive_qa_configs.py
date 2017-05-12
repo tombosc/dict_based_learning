@@ -26,6 +26,8 @@ qa_config_registry.set_root_config({
     'coattention' : True,
     'learning_rate' : 0.001,
     'momentum' : 0.9,
+    'annealing_learning_rate' : 0.0001,
+    'annealing_start_epoch' : 10,
     'grad_clip_threshold' : 5.0,
     'dropout' : 0.,
     'random_unk' : False,
