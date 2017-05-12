@@ -40,20 +40,21 @@ qa_config_registry.set_root_config({
     'n_batches' : 0,
     'monitor_parameters' : False
 })
+qar = qa_config_registry
 
-c = qa_config_registry['root']
+c = qar['root']
 c['data_path'] = 'squad/squad_from_scratch'
 c['layout'] = 'squad'
 c['mon_freq_train'] = 100
 c['grad_clip_threshold'] = 50.
-qa_config_registry['squad'] = c
+qar['squad'] = c
 
-c = qa_config_registry['squad']
+c = qar['squad']
 c['data_path'] = 'squad/squad_glove'
 c['emb_dim'] = 300
 c['embedding_path'] = 'squad/squad_glove/glove_w_specials.npy'
 c['num_input_words'] = 0
-qa_config_registry['squad_glove'] = c
+qar['squad_glove'] = c
 
 def from1to2(c):
     c['batch_size'] = 128
@@ -61,13 +62,13 @@ def from1to2(c):
     c['dim'] = 200
     return c
 
-c = qa_config_registry['squad']
+c = qar['squad']
 from1to2(c)
-qa_config_registry['squad2'] = c
+qar['squad2'] = c
 
-c = qa_config_registry['squad_glove']
+c = qar['squad_glove']
 from1to2(c)
-qa_config_registry['squad_glove2'] = c
+qar['squad_glove2'] = c
 
 def from2to3(c):
     c['max_def_length'] = 30
@@ -75,14 +76,14 @@ def from2to3(c):
     c['dict_path'] = 'squad/squad_from_scratch/dict.json'
     return c
 
-c = qa_config_registry['squad2']
+c = qar['squad2']
 from2to3(c)
-qa_config_registry['squad3'] = c
+qar['squad3'] = c
 
-c = qa_config_registry['squad_glove2']
+c = qar['squad_glove2']
 from2to3(c)
 c['num_input_words'] = 0
-qa_config_registry['squad_glove3'] = c
+qar['squad_glove3'] = c
 
 def from3to4(c):
     c['num_input_words'] = 3000
@@ -93,46 +94,68 @@ def from3to4(c):
     c['dict_path'] = 'squad/squad_from_scratch/dict2.json'
     return c
 
-c = qa_config_registry['squad3']
+c = qar['squad3']
 from3to4(c)
-qa_config_registry['squad4'] = c
+qar['squad4'] = c
 
-c = qa_config_registry['squad_glove3']
+c = qar['squad_glove3']
 from3to4(c)
 c['num_input_words'] = 0
-qa_config_registry['squad_glove4'] = c
+qar['squad_glove4'] = c
 
 def from4to5(c):
     c['dict_path'] = 'squad/squad_from_scratch/dict_wordnet3.2.json'
     c['batch_size'] = 32
     return c
 
-qa_config_registry['squad5'] = from4to5(qa_config_registry['squad4'])
-qa_config_registry['squad_glove5'] = from4to5(qa_config_registry['squad_glove4'])
+qar['squad5'] = from4to5(qar['squad4'])
+qar['squad_glove5'] = from4to5(qar['squad_glove4'])
 
 def tune_depth_and_dropout(c):
     c['readout_dims'] = [200]
     c['dropout'] = 0.2
     return c
 
-qa_config_registry['squad6'] = tune_depth_and_dropout(qa_config_registry['squad5'])
-c = tune_depth_and_dropout(qa_config_registry['squad_glove2'])
+
+qar['squad6'] = tune_depth_and_dropout(qar['squad5'])
+
+# a strong glove baseline
+c = tune_depth_and_dropout(qar['squad_glove2'])
 c['batch_size'] = 32
-qa_config_registry['squad_glove6'] = c
-qa_config_registry['squad_glove7'] = tune_depth_and_dropout(qa_config_registry['squad_glove5'])
+qar['squad_glove6'] = c
+
+# a strong glove+dict model
+c = tune_depth_and_dropout(qar['squad_glove5'])
+c['compose_type'] = 'gated_transform_and_sum'
+qar['squad_glove7'] = c
 
 # a better regularized baseline config
-c = qa_config_registry['squad2']
+c = qar['squad2']
 c['batch_size'] = 32
-qa_config_registry['squad7'] = c
+qar['squad7'] = c
 
 # spelling
 def change_dict_to_spelling(c):
     c['dict_path'] = 'squad/squad_from_scratch/dict_spelling2.json'
     c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_with_chars.txt'
     return c
-c = change_dict_to_spelling(qa_config_registry['squad5'])
+c = change_dict_to_spelling(qar['squad5'])
 # for some reason this was helpful
-# TODO: trying again without it
+# TODO: try again without it
 c['emb_dim'] = 200
-qa_config_registry['squad8'] = c
+qar['squad8'] = c
+
+# can we use separate embeddings for def reader?
+c = qar['squad_glove7']
+c['reuse_word_embeddings'] = False
+c['def_num_input_words'] = 3000
+c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_dict_wordnet3.2.txt'
+qar['squad_glove8'] = c
+
+# dict + spelling
+c = qar['squad5']
+c['dict_path'] = 'squad/squad_from_scratch/dict_wordnet4.3.json'
+c['vocab_path'] = 'squad/squad_from_scratch/vocab_with_chars.txt'
+c['num_input_words'] = 3100
+c['exclude_top_k'] = 3100
+qar['squad9'] = c

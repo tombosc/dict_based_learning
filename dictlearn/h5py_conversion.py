@@ -92,7 +92,9 @@ def squad_to_h5py_dataset(squad_path, dst_path, corenlp_url,
                             if exact_span:
                                 raise
                             logger.error("{} is not a starting position of a token".format(begin))
-                            begin = [pos for pos in context_positions if pos > begin][0]
+                            # just don't add this rubbish to the training set
+                            # and everything will be ok
+                            begin = 0
 
                         end = begin + len(answer_text)
                         answer_begins.append(begin)

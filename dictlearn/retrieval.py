@@ -428,8 +428,8 @@ class Retrieval(object):
                     word = vec2str(word)
                 word_id = self._vocab_text.word_to_id(word)
                 if (self._exclude_top_k
-                    and word_id != self._vocab_text.unk
-                    and word_id < self._exclude_top_k):
+                        and word_id != self._vocab_text.unk
+                        and word_id < self._exclude_top_k):
                     continue
 
                 if word not in word_def_indices:
