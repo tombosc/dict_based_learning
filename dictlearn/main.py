@@ -40,6 +40,8 @@ def main(config_registry, training_func, **training_func_kwargs):
                         help="Use standalone Fuel dataset server")
     parser.add_argument("--params",
                         help="Load parameters from a main loop")
+    parser.add_argument("--seed", type=int,
+                        help="The random seed")
     parser.add_argument("config", help="The configuration")
     parser.add_argument("save_path", help="The destination for saving")
     add_config_arguments(config_registry.get_root_config(), parser)
@@ -64,7 +66,8 @@ def main(config_registry, training_func, **training_func_kwargs):
         else:
             logger.info("Continue an existing job")
         training_func(new_training_job, config, args.save_path,
-                      args.params, args.fast_start, args.fuel_server, **training_func_kwargs)
+                      args.params, args.fast_start, args.fuel_server, args.seed,
+                      **training_func_kwargs)
     run_with_redirection(
         os.path.join(args.save_path, 'stdout.txt'),
         os.path.join(args.save_path, 'stderr.txt'),
@@ -74,8 +77,8 @@ def main(config_registry, training_func, **training_func_kwargs):
 def main_evaluate(config_registry, evaluate_func):
     parser = argparse.ArgumentParser("Evaluation script")
     parser.add_argument("--part", default='train', help="Part")
-    parser.add_argument("--dest", help="Destination for outputs")
-    parser.add_argument("--num-examples", type=int, help="Number of examples to read")
+    parser.add_argument("--dest", help="Destination for outputs", default="")
+    parser.add_argument("--num-examples", type=int, help="Number of examples to read", default=-1)
     parser.add_argument("config", help="The configuration")
     parser.add_argument("tar_path", help="The tar file with parameters")
     add_config_arguments(config_registry.get_root_config(), parser)
@@ -83,11 +86,15 @@ def main_evaluate(config_registry, evaluate_func):
     args = parser.parse_args()
 
     # Modify the configuration with the command line arguments
-    config = config_registry[args.config]
-    for key in config:
-        if getattr(args, key) is not None:
-            config[key] = getattr(args, key)
-    pprint.pprint(config)
+
+    if args.config.endswith("json"):
+        config = args.config
+    else:
+        config = config_registry[args.config]
+        for key in config:
+            if getattr(args, key) is not None:
+                config[key] = getattr(args, key)
+        pprint.pprint(config)
 
     # For now this script just runs the language model training.
     # More stuff to come.

@@ -18,6 +18,7 @@ import theano
 from theano import tensor
 from nltk.tokenize.moses import MosesDetokenizer
 
+import blocks
 from blocks.initialization import Uniform, Constant
 from blocks.bricks.recurrent import Bidirectional
 from blocks.bricks.simple import Rectifier
@@ -103,7 +104,7 @@ class DumpPredictions(SimpleExtension):
             json.dump(self._text_match_ratio.predictions, dst, indent=2, sort_keys=True)
 
 
-def _initialize_data_and_model(config):
+def initialize_data_and_model(config):
     c = config
     vocab = None
     if c['vocab_path']:
@@ -142,13 +143,17 @@ def _initialize_data_and_model(config):
 
 
 def train_extractive_qa(new_training_job, config, save_path,
-                              params, fast_start, fuel_server):
+                        params, fast_start, fuel_server, seed):
+    if seed:
+        fuel.config.default_seed = seed
+        blocks.config.config.default_seed = seed
+
     root_path = os.path.join(save_path, 'training_state')
     extension = '.tar'
     tar_path = root_path + extension
 
     c = config
-    data, qam = _initialize_data_and_model(c)
+    data, qam = initialize_data_and_model(c)
 
     if theano.config.compute_test_value != 'off':
         test_value_data = next(
@@ -332,7 +337,7 @@ def train_extractive_qa(new_training_job, config, save_path,
 
 def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     c = config
-    data, qam = _initialize_data_and_model(c)
+    data, qam = initialize_data_and_model(c)
     costs = qam.apply_with_default_vars()
     cg = Model(costs)
 
@@ -341,11 +346,13 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
 
     predicted_begins, = VariableFilter(name='predicted_begins')(cg)
     predicted_ends, = VariableFilter(name='predicted_ends')(cg)
-    compute = [predicted_begins[0], predicted_ends[0]]
+    compute = {'begins': predicted_begins, 'ends': predicted_ends}
     if c['coattention']:
         d2q_att_weights, = VariableFilter(name='d2q_att_weights')(cg)
         q2d_att_weights, = VariableFilter(name='q2d_att_weights')(cg)
-        compute.extend([d2q_att_weights, q2d_att_weights])
+        compute.update({'d2q': d2q_att_weights,
+                        'q2d': q2d_att_weights})
+    compute['costs'] = costs
     predict_func = theano.function(qam.input_vars.values(), compute)
 
     done_examples = 0
@@ -356,6 +363,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     d2q = []
     q2d = []
     predictions = {}
+    log = {}
 
     stream = data.get_stream(part, batch_size=1, shuffle=part == 'train',
                              raw_text=True, q_ids=True)
@@ -373,29 +381,42 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
         del feed['contexts_text_mask']
         result = predict_func(**feed)
         correct_answer_span = slice(example['answer_begins'], example['answer_ends'])
-        predicted_answer_span = slice(*result[:2])
+        predicted_answer_span = slice(result['begins'][0], result['ends'][0])
         correct_answer = detokenize(example['contexts_text'][0][correct_answer_span])
         answer = detokenize(example['contexts_text'][0][predicted_answer_span])
         is_correct = correct_answer_span == predicted_answer_span
+        context = detokenize(example['contexts_text'][0])
+        question = detokenize(example['questions_text'][0])
+        q_id = vec2str(example['q_ids'][0])
 
-        if c['coattention']:
-            d2q.append(result[-2])
-            q2d.append(result[-1])
-
-        done_examples += 1
-        num_correct += is_correct
-        predictions[vec2str(example['q_ids'][0])] = answer
-
-        result = 'correct' if is_correct else 'wrong'
+        # pretty print
+        outcome = 'correct' if is_correct else 'wrong'
         print('#{}'.format(done_examples))
-        print(u"CONTEXT:", detokenize(example['contexts_text'][0]))
-        print(u"QUESTION:", detokenize(example['questions_text'][0]))
+        print(u"CONTEXT:", context)
+        print(u"QUESTION:", question)
         print(u"RIGHT ANSWER: {}".format(correct_answer))
         print(u"ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
                                                     predicted_answer_span.stop,
-                                                    result),
+                                                    outcome),
               answer)
         print()
+
+        # update statistics
+        done_examples += 1
+        num_correct += is_correct
+
+        if c['coattention']:
+            d2q.append(result['d2q'][0])
+            q2d.append(result['q2d'][0])
+
+        # save the results
+        predictions[q_id] = answer
+        log_entry = {'context': context,
+                     'question': question,
+                     'answer': answer,
+                     'correct_answer': correct_answer,
+                     'cost' : float(result['costs'][0])}
+        log[q_id] = log_entry
 
         if done_examples % 100 == 0:
             print_stats()
@@ -403,5 +424,8 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
 
     # with open(os.path.join(save_path, 'attention.pkl'), 'w') as dst:
     #     cPickle.dump({'d2q': d2q, 'q2d': q2d}, dst)
+    save_path = os.path.dirname(dest_path)
+    with open(os.path.join(save_path, 'log.json'), 'w') as dst:
+        json.dump(log, dst, indent=2, sort_keys=True)
     with open(dest_path, 'w') as dst:
         json.dump(predictions, dst, indent=2, sort_keys=True)

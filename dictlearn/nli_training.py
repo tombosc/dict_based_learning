@@ -30,7 +30,9 @@ import time
 import atexit
 import signal
 import pprint
+import pandas as pd
 import subprocess
+import tqdm
 import json
 import numpy
 import theano
@@ -96,7 +98,7 @@ def _initialize_simple_model_and_data(c):
     else:
         retrieval = None
         dict = None
-        retrieval_vocab=None
+        retrieval_vocab = None
 
     # Initialize
     simple = NLISimple(
@@ -138,6 +140,9 @@ def _initialize_esim_model_and_data(c):
     # Load data
     data = SNLIData(path=c['data_path'], layout=c['layout'], vocab=vocab)
 
+    if vocab is None:
+        vocab = data.vocab
+
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
@@ -162,12 +167,12 @@ def _initialize_esim_model_and_data(c):
             def_reader = LSTMReadDefinitions(num_input_words=num_input_def_words,
                 weights_init=Uniform(width=0.1), translate=c['combiner_reader_translate'],
                 biases_init=Constant(0.), dim=c['def_dim'], emb_dim=def_emb_dim,
-                vocab=retrieval_vocab, lookup=None)
+                vocab=vocab, lookup=None)
         elif c['reader_type'] == "mean":
            def_reader = MeanPoolReadDefinitions(num_input_words=num_input_def_words,
-                translate=c['combiner_reader_translate'],
+                translate=c['combiner_reader_translate'], vocab=vocab,
                 weights_init=Uniform(width=0.1), lookup=None, dim=def_emb_dim,
-                biases_init=Constant(0.), emb_dim=def_emb_dim, vocab=retrieval_vocab)
+                biases_init=Constant(0.), emb_dim=def_emb_dim)
         else:
             raise NotImplementedError()
 
@@ -190,6 +195,7 @@ def _initialize_esim_model_and_data(c):
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
         num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
+        bn=c.get('bn', True),
 
         def_combiner=def_combiner, def_reader=def_reader,
 
@@ -209,7 +215,7 @@ def _initialize_esim_model_and_data(c):
 
     return simple, data, dict, retrieval
 
-def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, model='simple'):
+def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, seed, model='simple'):
     if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
         raise Exception("Some words have neither word nor def embedding")
 
@@ -260,7 +266,8 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         error_rate = MisclassificationRate().apply(y.flatten(), pred)
         # NOTE: Please don't change outputs of cg
         cg[train_phase] = ComputationGraph([cost, error_rate])
-        cg[train_phase] = apply_batch_normalization(cg[train_phase])
+        if c.get('bn', True):
+            cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
     if model == 'simple':
@@ -276,9 +283,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     final_cost.name = 'final_cost'
 
     # Add updates for population parameters
-    pop_updates = get_batch_normalization_updates(cg[True])
-    extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
-        for p, m in pop_updates]
+
+    if c.get("bn", True):
+        pop_updates = get_batch_normalization_updates(cg[True])
+        extra_updates = [(p, m * 0.1 + p * (1 - 0.1))
+            for p, m in pop_updates]
+    else:
+        pop_updates = []
+        extra_updates = []
 
     if params:
         logger.debug("Load parameters from {}".format(params))
@@ -362,7 +374,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     regular_training_stream = data.get_stream(
         'train', batch_size=c['batch_size'],
-        seed=numpy.random.randint(0, 10000000))
+        seed=seed)
 
     if fuel_server:
         # the port will be configured by the StartFuelServer extension
@@ -382,37 +394,42 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
             hwm=100,
             script_path=os.path.join(os.path.dirname(__file__), "../bin/start_fuel_server.py"),
             before_training=fuel_server),
-        Timing(every_n_batches=c['mon_freq_train']),
+        Timing(every_n_batches=c['mon_freq']),
         ProgressBar(),
         RetrievalPrintStats(retrieval=used_retrieval, every_n_batches=c['mon_freq_valid'],
             before_training=not fast_start),
         Timestamp(),
         TrainingDataMonitoring(
             train_monitored_vars, prefix="train",
-            every_n_batches=c['mon_freq_train']),
+            every_n_batches=c['mon_freq']),
     ]
 
     if c['layout'] == 'snli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=c['batch_size']),
-            prefix='valid').set_conditions(
+            data.get_stream('valid', batch_size=1, seed=seed),
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid'])
+            on_resumption=True,
+            after_training=True,
+            every_n_batches=c['mon_freq_valid'],
+            prefix='valid')
         extensions.append(validation)
     elif c['layout'] == 'mnli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_matched', batch_size=c['batch_size']),
-            prefix='valid_matched').set_conditions(
-            before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid'])
+            data.get_stream('valid_matched', batch_size=1, seed=seed),
+            every_n_batches=c['mon_freq_valid'],
+            on_resumption=True,
+            after_training=True,
+            prefix='valid_matched')
         validation_mismatched = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_mismatched', batch_size=c['batch_size']),
-            prefix='valid_mismatched').set_conditions(
+            data.get_stream('valid_mismatched', batch_size=1, seed=seed),
+            every_n_batches=c['mon_freq_valid'],
             before_training=not fast_start,
-            every_n_batches=c['mon_freq_valid'])
+            on_resumption=True,
+            after_training=True,
+            prefix='valid_mismatched')
         extensions.extend([validation, validation_mismatched])
     else:
         raise NotImplementedError()
@@ -452,29 +469,28 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     extensions.extend([DumpCSVSummaries(
         save_path,
-        every_n_batches=c['mon_freq_train'],
+        every_n_batches=c['mon_freq'],
         after_training=True),
         DumpTensorflowSummaries(
             save_path,
             after_epoch=True,
-            every_n_batches=c['mon_freq_train'],
+            every_n_batches=c['mon_freq'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
-        PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq_train']),
+        Printing(every_n_batches=c['mon_freq']),
+        PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
         FinishAfter(after_n_batches=c['n_batches'])])
-
     track_the_best = TrackTheBest(
         validation.record_name(val_acc),
         before_training=not fast_start,
-        every_n_batches=c['save_freq_batches'],
+        every_n_epochs=c['save_freq_epochs'],
         after_training=not fast_start,
-        choose_best=min).set_conditions( # Really it is misclassification, hence min
-        every_n_batches=c['mon_freq_valid'])
+        every_n_batches=c['mon_freq_valid'],
+        choose_best=min)
     extensions.append(track_the_best)
     extensions.append(Checkpoint(main_loop_path,
         parameters=cg[True].parameters + [p for p, m in pop_updates],
         before_training=not fast_start,
-        every_n_batches=c['save_freq_batches'],
+        every_n_epochs=c['save_freq_epochs'],
         after_training=not fast_start).add_condition(
         ['after_batch', 'after_epoch'],
         OnLogRecord(track_the_best.notification_name),
@@ -504,3 +520,141 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     assert os.path.exists(save_path)
     main_loop.run()
+
+def evaluate(c, tar_path, *args, **kwargs):
+    """
+    * Runs on valid and test given network
+    * Saves all predictions
+    * Saves results.json and predictions.csv
+    """
+
+    # Load and configure
+    model = kwargs['model']
+    assert c.endswith("json")
+    c = json.load(open(c))
+    # Very ugly absolute path fix
+    ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/"
+    from six import string_types
+    for k in c:
+        if isinstance(c[k], string_types):
+            if c[k].startswith(ABS_PATH):
+                c[k] = c[k][len(ABS_PATH):]
+    assert tar_path.endswith("tar")
+    dest_path = os.path.dirname(tar_path)
+    prefix = os.path.splitext(os.path.basename(tar_path))[0]
+
+    s1, s2 = T.lmatrix('sentence1'), T.lmatrix('sentence2')
+
+    if c['dict_path']:
+        s1_def_map, s2_def_map = T.lmatrix('sentence1_def_map'), T.lmatrix('sentence2_def_map')
+        def_mask = T.fmatrix("def_mask")
+        defs = T.lmatrix("defs")
+    else:
+        s1_def_map, s2_def_map = None, None
+        def_mask = None
+        defs = None
+
+    s1_mask, s2_mask = T.fmatrix('sentence1_mask'), T.fmatrix('sentence2_mask')
+
+    if model == 'simple':
+        model, data, used_dict, used_retrieval = _initialize_simple_model_and_data(c)
+    elif model == 'esim':
+        model, data, used_dict, used_retrieval = _initialize_esim_model_and_data(c)
+    else:
+        raise NotImplementedError()
+
+    pred = model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+        s2_def_map=s2_def_map, train_phase=False)
+
+    cg = ComputationGraph([pred])
+    cg = apply_batch_normalization(cg)
+
+    if c.get("bn", True):
+        bn_params = [p for p, update_p in get_batch_normalization_updates(cg)]
+    else:
+        bn_params = []
+
+    # cg = ComputationGraph([pred])
+
+    # Load model
+    model = Model(cg.outputs)
+    parameters = model.get_parameter_dict()  # Blocks version mismatch
+    logging.info("Trainable parameters" + "\n" +
+                pprint.pformat(
+                    [(key, parameters[key].get_value().shape)
+                        for key in sorted([get_brick(param).get_hierarchical_name(param) for param in cg.parameters])],
+                    width=120))
+    logging.info("# of parameters {}".format(
+        sum([np.prod(parameters[key].get_value().shape)
+            for key in sorted([get_brick(param).get_hierarchical_name(param) for param in cg.parameters])])))
+    with open(tar_path) as src:
+        params = load_parameters(src)
+
+        loaded_params_set = set(params.keys())
+        model_params_set = set([get_brick(param).get_hierarchical_name(param) for param in cg.parameters])
+
+        logging.info("Loaded extra parameters")
+        logging.info(loaded_params_set - model_params_set)
+        logging.info("Missing parameters")
+        logging.info(model_params_set - loaded_params_set)
+    model.set_parameter_values(params)
+
+    if c.get("bn", True):
+        logging.info("Loading " + str([get_brick(param).get_hierarchical_name(param) for param in bn_params]))
+        for param in bn_params:
+            param.set_value(params[get_brick(param).get_hierarchical_name(param)])
+        for p in bn_params:
+            model._parameter_dict[get_brick(p).get_hierarchical_name(p)] = p
+
+    # Read logs
+    logs = pd.read_csv(os.path.join(dest_path, "logs.csv"))
+    best_val_acc = logs['valid_misclassificationrate_apply_error_rate'].min()
+    logging.info("Best measured valid acc: " + str(best_val_acc))
+
+    # Predict
+    predict_fnc = theano.function(cg.inputs, pred)
+
+    results = {}
+
+    # TODO: Depends on batch_size?
+    batch_size = 15
+    for subset in ['valid', 'test']:
+        logging.info("Predicting on " + subset)
+        stream = data.get_stream(subset, batch_size=batch_size, seed=778)
+        it = stream.get_epoch_iterator()
+        rows = []
+        for ex in tqdm.tqdm(it, total=10000/batch_size):
+            ex = dict(zip(stream.sources, ex))
+            inp = [ex[v.name] for v in cg.inputs]
+            prob = predict_fnc(*inp)
+            label_pred = np.argmax(prob, axis=1)
+
+            for id in range(len(prob)):
+                s1 = data.vocab.decode(ex['sentence1'][id]).split()
+                s2 = data.vocab.decode(ex['sentence2'][id]).split()
+
+                s1 = ['*' + w + '*' if data.vocab.word_to_id(w) > c['num_input_words'] else w for w in s1]
+                s2 = ['*' + w + '*' if data.vocab.word_to_id(w) > c['num_input_words'] else w for w in s2]
+
+                rows.append({"pred": label_pred[id], "true_label": ex['label'][id],
+                    "s1": ' '.join(s1),
+                    "s2": ' '.join(s2),
+                    "p_0": prob[id, 0], "p_1": prob[id, 1], "p_2": prob[id, 2]})
+
+        preds = pd.DataFrame(rows, columns=rows[0].keys())
+        preds.to_csv(os.path.join(dest_path, prefix + '_predictions_{}.csv'.format(subset)))
+        results[subset] = {}
+        results[subset]['misclassification'] = 1 - np.mean(preds.pred == preds.true_label)
+
+        if subset == "valid" and np.abs(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc) > 0.001:
+            logging.error("!!!")
+            logging.error("Found different best_val_acc. Probably due to changed specification of the model class.")
+            # TODO: Why this discrepancy? It is around 0.5% usually
+            logging.error("Discrepancy {}".format(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc))
+            logging.error("!!!")
+
+        logging.info(results)
+
+    json.dump(results, open(os.path.join(dest_path, prefix + '_results.json'), "w"))
+
+

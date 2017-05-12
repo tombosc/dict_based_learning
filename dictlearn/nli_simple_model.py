@@ -35,7 +35,7 @@ class NLISimple(Initializable):
 
     def __init__(self, mlp_dim, translate_dim, emb_dim, vocab, num_input_words=-1,
             num_input_def_words=-1, dropout=0.2, encoder="sum",
-            n_layers=3, translate_after_emb=True,
+            n_layers=3, translate_after_emb=True, bn=True,
 
             # Dict lookup kwargs
             retrieval=None, reader_type="rnn", compose_type="sum", def_dim=300,
@@ -52,6 +52,7 @@ class NLISimple(Initializable):
             def_emb_dim = emb_dim
 
         self._vocab = vocab
+        self._bn = bn
         self._encoder = encoder
         self._dropout = dropout
         self._retrieval = retrieval
@@ -72,14 +73,13 @@ class NLISimple(Initializable):
         children = []
 
         if not disregard_word_embeddings:
-            self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
+            self._lookup = LookupTable(self._num_input_words, emb_dim)
             children.append(self._lookup)
 
         if retrieval:
             if share_def_lookup:
                 if emb_dim != def_emb_dim:
-                    self._translate_pre_def2 = Linear(input_dim=emb_dim, output_dim=def_emb_dim,
-                        weights_init=GlorotUniform(), biases_init=Constant(0))
+                    self._translate_pre_def2 = Linear(input_dim=emb_dim, output_dim=def_emb_dim)
                     children.append(self._translate_pre_def2)
                     def_lookup = Sequence([self._lookup, self._translate_pre_def2])
                 else:
@@ -89,29 +89,28 @@ class NLISimple(Initializable):
 
             if reader_type== "rnn":
                 self._def_reader = LSTMReadDefinitions(num_input_words=self._num_input_def_words,
-                    weights_init=Uniform(width=0.1),
-                    biases_init=Constant(0.), dim=def_dim,
+                    dim=def_dim,
                     emb_dim=def_emb_dim, vocab=def_vocab, lookup=def_lookup)
             elif reader_type == "mean":
                 if combiner_reader_translate:
                     logger.warning("Translate in MeanPoolReadDefinitions is redundant")
                 self._def_reader = MeanPoolReadDefinitions(num_input_words=self._num_input_def_words,
                     translate=combiner_reader_translate,
-                    weights_init=Uniform(width=0.1), lookup=def_lookup, dim=def_emb_dim,
-                    biases_init=Constant(0.), emb_dim=def_emb_dim, vocab=def_vocab)
+                    lookup=def_lookup, dim=def_emb_dim,
+                    emb_dim=def_emb_dim, vocab=def_vocab)
 
             self._combiner = MeanPoolCombiner(dim=def_dim, emb_dim=def_emb_dim,
                 dropout=combiner_dropout, dropout_type=combiner_dropout_type,
                 def_word_gating=combiner_gating,
-                shortcut_unk_and_excluded=combiner_shortcut, num_input_words=num_input_words, exclude_top_k=exclude_top_k, vocab=vocab,
+                shortcut_unk_and_excluded=combiner_shortcut, num_input_words=num_input_words,
+                exclude_top_k=exclude_top_k, vocab=vocab,
                 compose_type=compose_type)
             children.extend([self._def_reader, self._combiner])
 
             if self._encoder == "rnn":
-                self._rnn_fork = Linear(input_dim=def_emb_dim, output_dim=4 * translate_dim,
-                    weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._rnn_fork = Linear(input_dim=def_emb_dim, output_dim=4 * translate_dim)
                 # TODO(kudkudak): Better LSTM weight init
-                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.1))
+                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder')
                 children.append(self._rnn_fork)
                 children.append(self._rnn_encoder)
             elif self._encoder == "sum":
@@ -120,24 +119,21 @@ class NLISimple(Initializable):
                 raise NotImplementedError("Not implemented encoder")
 
             if def_emb_dim != emb_dim:
-                self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_dim,
-                    weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_dim)
                 children.append(self._translate_pre_def)
             else:
                 self._translate_pre_def = None
 
             if self._translate_after_emb:
-                self._translation = Linear(input_dim=def_dim, output_dim=translate_dim,
-                    weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._translation = Linear(input_dim=def_dim, output_dim=translate_dim)
                 self._translation_act = Rectifier()
                 children.append(self._translation)
                 children.append(self._translation_act)
         else:
             if self._encoder == "rnn":
-                self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim,
-                    weights_init=GlorotUniform(), biases_init=Constant(0))
+                self._translation = Linear(input_dim=emb_dim, output_dim=4 * translate_dim)
                 self._rnn_fork = self._translation
-                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder', weights_init=Uniform(width=0.01))
+                self._rnn_encoder = LSTM(dim=translate_dim, name='LSTM_encoder')
                 children.append(self._rnn_encoder)
                 children.append(self._translation)
             elif self._encoder == "sum":
@@ -151,9 +147,10 @@ class NLISimple(Initializable):
 
 
 
-        self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn", conserve_memory=False)
-        self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn", conserve_memory=False)
-        children += [self._hyp_bn, self._prem_bn]
+        if self._bn:
+            self._hyp_bn = BatchNormalization(input_dim=translate_dim, name="hyp_bn", conserve_memory=False)
+            self._prem_bn = BatchNormalization(input_dim=translate_dim, name="prem_bn", conserve_memory=False)
+            children += [self._hyp_bn, self._prem_bn]
 
         self._mlp = []
         current_dim = 2 * translate_dim  # Joint
@@ -164,13 +161,16 @@ class NLISimple(Initializable):
                 weights_init=GlorotUniform(), \
                 biases_init=Constant(0))
             current_dim = mlp_dim
-            bn = BatchNormalization(input_dim=current_dim, name="BN_" + str(i), conserve_memory=False)
-            children += [dense, rect, bn] #TODO: Strange place to put ReLU
+            if self._bn:
+                bn = BatchNormalization(input_dim=current_dim, name="BN_" + str(i), conserve_memory=False)
+                children.append(bn)
+            else:
+                bn = None
+
+            children += [dense, rect] #TODO: Strange place to put ReLU
             self._mlp.append([dense, rect, bn])
 
-        self._pred = MLP([Softmax()], [current_dim, 3], \
-            weights_init=GlorotUniform(), \
-            biases_init=Constant(0))
+        self._pred = MLP([Softmax()], [current_dim, 3])
         children.append(self._pred)
 
         super(NLISimple, self).__init__(children=children, **kwargs)
@@ -207,7 +207,6 @@ class NLISimple(Initializable):
                 s2_emb = self._translate_pre_def.apply(s2_emb)
                 s1_emb = s1_emb.reshape((s1_preunk.shape[0], s1_preunk.shape[1], -1))
                 s2_emb = s2_emb.reshape((s2_preunk.shape[0], s2_preunk.shape[1], -1))
-
 
             def_embs = self._def_reader.apply(defs, def_mask)
 
@@ -273,8 +272,9 @@ class NLISimple(Initializable):
             prem = self._rnn_encoder.apply(s1_transl.transpose(1, 0, 2), mask=s1_mask.transpose(1, 0))[0][-1]
             hyp = self._rnn_encoder.apply(s2_transl.transpose(1, 0, 2), mask=s2_mask.transpose(1, 0))[0][-1]
 
-        prem = self._prem_bn.apply(prem)
-        hyp = self._hyp_bn.apply(hyp)
+        if self._bn:
+            prem = self._prem_bn.apply(prem)
+            hyp = self._hyp_bn.apply(hyp)
 
         joint = T.concatenate([prem, hyp], axis=1)
         joint.name = "MLP_input"
@@ -291,6 +291,7 @@ class NLISimple(Initializable):
             if train_phase:
                 joint = apply_dropout(joint, drop_prob=self._dropout)
 
-            joint = bn.apply(joint)
+            if self._bn:
+                joint = bn.apply(joint)
 
         return self._pred.apply(joint)

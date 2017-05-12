@@ -24,7 +24,6 @@ def main():
     args = parser.parse_args()
 
     assert(args.vocab.endswith(".txt"))
-    assert((args.dict and not args.embedding) or (not args.dict and args.embedding))
 
     vocab = Vocabulary(args.vocab)
     words = vocab.words
@@ -34,6 +33,9 @@ def main():
     print("Cumulative distribution:")
     for i in range(args.step_size, args.step_size * (len(freqs) / args.step_size), args.step_size):
         print(i, coverage[i] * 100)
+
+    if not args.dict and not args.embedding:
+        return
 
     uncovered_file = io.open('/dev/null', 'w')
     if args.uncovered:

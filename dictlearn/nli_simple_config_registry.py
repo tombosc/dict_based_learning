@@ -10,6 +10,7 @@ snli_config_registry.set_root_config({
     # Lookup params
     'translate_dim': 300,
     'max_def_per_word': 100000,
+    'bn': True,
     'mlp_dim': 600,
     'emb_dim': 300, # Used for def and word lookup
     'dict_path': '',
@@ -49,8 +50,8 @@ snli_config_registry.set_root_config({
 
     # Misc
     'monitor_parameters': 0,
-    'mon_freq_train': 1000,
-    'save_freq_batches': 1000,
+    'mon_freq': 1000,
+    'save_freq_epochs': 1,
     'mon_freq_valid': 1000,
     'n_batches': 200000 # ~200 epochs of SNLI with batch size 500 (!
 })

@@ -93,19 +93,18 @@ class Dictionary(object):
             self._meta_data[word] = {"sourceDictionary": "identity"}
         self.save()
 
-    def add_spelling(self, vocab):
+    def add_spelling(self, vocab, only_if_no_def=True):
         for word in vocab.words:
             # only add spelling to the words without defs
-            if self._data[word]:
+            if only_if_no_def and self._data[word]:
                 continue
-            print(word)
-            def_ = word.decode('utf-8')
+            def_ = word
             if len(def_) > 10:
                 def_ = u"{}-{}".format(def_[:5], def_[-5:])
             # to avoid overlapping of the vocabularies, let's add a #
             # before each character
-            self._data[word] = [map(lambda char: u'#' + char, def_)]
-            self._meta_data[def_] = {"sourceDictionary": "spelling"}
+            self._data[word].append(map(lambda char: u'#' + char, def_))
+            self._meta_data[word] = {"sourceDictionary": "spelling"}
         self.save()
 
 
