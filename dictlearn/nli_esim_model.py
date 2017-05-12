@@ -158,8 +158,8 @@ class ESIM(Initializable):
         ### Encode ###
 
         # TODO: Share this bilstm?
-        s1_bilstm, _ = self._prem_bilstm.apply(s1_emb) # (batch_size, n_seq, 2 * dim)
-        s2_bilstm, _ = self._hyp_bilstm.apply(s2_emb) # (batch_size, n_seq, 2 * dim)
+        s1_bilstm, _ = self._prem_bilstm.apply(s1_emb, mask=s1_mask) # (batch_size, n_seq, 2 * dim)
+        s2_bilstm, _ = self._hyp_bilstm.apply(s2_emb, mask=s2_mask) # (batch_size, n_seq, 2 * dim)
 
         ### Attention ###
 
@@ -216,8 +216,8 @@ class ESIM(Initializable):
 
         # (batch_size, seq_len, 8 * dim)
         # TODO: Share this bilstm?
-        s1_comp_bilstm, _ = self._prem_bilstm2.apply(s1_comp)  # (batch_size, n_seq, 2 * dim)
-        s2_comp_bilstm, _ = self._hyp_bilstm2.apply(s2_comp)  # (batch_size, n_seq, 2 * dim)
+        s1_comp_bilstm, _ = self._prem_bilstm2.apply(s1_comp, mask=s1_mask)  # (batch_size, n_seq, 2 * dim)
+        s2_comp_bilstm, _ = self._hyp_bilstm2.apply(s2_comp, mask=s2_mask)  # (batch_size, n_seq, 2 * dim)
 
         ### Pooling Layer ###
 
