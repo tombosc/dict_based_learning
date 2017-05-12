@@ -57,12 +57,10 @@ def train_language_model(new_training_job, config, save_path, params,
     stream_path = os.path.join(save_path, 'stream.pkl')
 
     c = config
-    assert((not c['dict_path'] or 
-            (c['dict_path'] and not c['embedding_path'])))
 
     data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
-    if c['dict_path']:
+    if c['dict_path'] and not c['embedding_path']:
         dict_full_path = os.path.join(fuel.config.data_path[0], c['dict_path'])
         dict_ = Dictionary(dict_full_path)
         logger.debug("Loaded dictionary with {} entries".format(dict_.num_entries()))
@@ -70,29 +68,15 @@ def train_language_model(new_training_job, config, save_path, params,
                               c['max_def_length'], c['exclude_top_k'],
                               max_def_per_word=c['max_def_per_word'])
     elif c['embedding_path']:
+        assert(c['dict_path'])
         emb_full_path = os.path.join(fuel.config.data_path[0], c['embedding_path'])
-        # sleazy code ahead:
-        # load the embedding matrix and multiply every embedding by 3
-        # indeed we'll use the mean def reader and there will be <bod> <eod> 
-        # (zeros cause unknown) so we'll recover the true scale of embeddings
         embedding_matrix = numpy.load(emb_full_path)
-        idx_words = [i for i, e in enumerate(embedding_matrix) if numpy.any(e != 0)]
-        words_w_emb = [data.vocab.words[i] for i in idx_words]
-        # create a "tautological dict" which contains the non null word embs 
-        raw_dict_frozen = {w:w for w in words_w_emb}
-        with temporary_content_path(json.dumps(raw_dict_frozen), ".json") as path:
-            dict_frozen = Dictionary(path)
+        dict_full_path = os.path.join(fuel.config.data_path[0], c['dict_path'])
+        dict_ = Dictionary(dict_full_path) # should be key=value=word
         if not c['standalone_def_lookup']:
-            logger.warning("You've asked for a standalone def lookup. "
-                           "This is not happening as frozen embeddings will be "
-                           "loaded")
-            c['standalone_def_lookup'] = True
-        if c['def_reader'] != 'mean':
-            logger.warning("You've asked for a definition reader that's not "
-                           "mean. This will be ignored.")
-            c['def_reader'] = 'mean'
+            raise ValueError("Standalone def lookup mandatory")
 
-        retrieval = Retrieval(data.vocab, dict_frozen, max_def_length=1, 
+        retrieval = Retrieval(data.vocab, dict_, max_def_length=1, 
                               exclude_top_k=c['exclude_top_k'],
                               max_def_per_word=1, add_bod_eod=False)
 

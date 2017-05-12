@@ -39,8 +39,6 @@ lm_config_registry.set_root_config({
     'save_freq_batches' : 1000,
     'n_batches' : 0,
     'monitor_parameters' : False,
-
-    'seed': 0
 })
 
 
@@ -173,6 +171,7 @@ lm_config_registry['obw_10k_dict2_wn'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
+c['dict_path'] = 'onebillionword/dict_obw_identity.json'
 c['emb_dim'] = 300
 c['exclude_top_k'] = 10000
 c['def_reader'] = 'mean'
