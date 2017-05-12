@@ -151,3 +151,11 @@ c['reuse_word_embeddings'] = False
 c['def_num_input_words'] = 3000
 c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_dict_wordnet3.2.txt'
 qar['squad_glove8'] = c
+
+# dict + spelling
+c = qar['squad5']
+c['dict_path'] = 'squad/squad_from_scratch/dict_wordnet4.3.json'
+c['vocab_path'] = 'squad/squad_from_scratch/vocab_with_chars.txt'
+c['num_input_words'] = 3100
+c['exclude_top_k'] = 3100
+qar['squad9'] = c
