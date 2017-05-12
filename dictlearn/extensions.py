@@ -261,36 +261,32 @@ class DumpTensorflowSummaries(SimpleExtension):
 
 
 class DumpCSVSummaries(SimpleExtension):
-    def __init__(self, save_path, mode="w", **kwargs):
+    def __init__(self, save_path, **kwargs):
         self._save_path = save_path
-        self._mode = mode
 
-        if self._mode == "w":
-            # Clean up file
-            with open(os.path.join(self._save_path, "logs.csv"), "w") as f:
-                pass
+        if not os.path.exists(os.path.join(self._save_path, "logs.csv")):
             self._current_log = defaultdict(list)
         else:
-            self._current_log = pd.read_csv(os.path.join(self._save_path, "logs.csv")).to_dict()
+            self._current_log = pd.read_csv(os.path.join(self._save_path, "logs.csv"))
+            self._current_log = {col: list(self._current_log[col].values) for col in self._current_log.columns}
+            logging.warning("Loaded {} columns and {} rows from logs.csv".format(len(self._current_log), len(self._current_log.values()[0])))
 
         super(DumpCSVSummaries, self).__init__(**kwargs)
-
-    def __setstate__(self, state):
-        self.__dict__ = state
-        pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
-        return self
 
     def do(self, *args, **kwargs):
         for key, value in self.main_loop.log.current_row.items():
             try:
                 float_value = float(value)
-
-                if not key.startswith("val") and not key.startswith("train") and not key.startswith("test"):
-                    key = "train_" + key
-
-                self._current_log[key].append(float_value)
             except:
-                pass
+                continue
+
+            if not key.startswith("val") and not key.startswith("train") and not key.startswith("test"):
+                key = "train_" + key
+
+            if key not in self._current_log:
+                self._current_log[key] = []
+
+            self._current_log[key].append(float_value)
 
         # Make sure all logs have same length (for csv serialization)
         max_len = max([len(v) for v in self._current_log.values()])

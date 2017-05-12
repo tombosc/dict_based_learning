@@ -134,14 +134,17 @@ class ESIM(Initializable):
 
             def_embs = self._def_reader.apply(defs, def_mask)
 
-            s1_emb = self._combiner.apply(
+            s1_emb = self._def_combiner.apply(
                 s1_emb, s1_mask,
                 def_embs, s1_def_map, word_ids=s1, train_phase=train_phase, call_name="s1")
 
-            s2_emb = self._combiner.apply(
+            s2_emb = self._def_combiner.apply(
                 s2_emb, s2_mask,
                 def_embs, s2_def_map, word_ids=s2, train_phase=train_phase, call_name="s2")
         else:
+            application_call.add_auxiliary_variable(
+                1*s1_emb,
+                name='s1_word_embeddings')
             if train_phase and self._dropout > 0:
                 s1_emb = apply_dropout(s1_emb, drop_prob=self._dropout)
                 s2_emb = apply_dropout(s2_emb, drop_prob=self._dropout)
@@ -164,11 +167,9 @@ class ESIM(Initializable):
             # s1_mask is (batch_size, seq_len)
             s2_i = s2_i.reshape((s2_i.shape[0], s2_i.shape[1], 1))
             s2_i = T.repeat(s2_i, 2, axis=2)
-            # s2_i is (batch_size, emb_dim, 1)
+            # s2_i is (batch_size, emb_dim, 2)
             score = T.batched_dot(s1_bilstm, s2_i) # (batch_size, seq_len, 1)
             score = score[:, :, 0].reshape((b_size, -1)) # (batch_size, seq_len)
-
-            score = theano.tensor.nnet.softmax(s1_mask * score)
             return score # E[i, :]
 
         # NOTE: No point in masking here
@@ -183,8 +184,13 @@ class ESIM(Initializable):
 
         def compute_tilde_vector(e_i, s, s_mask):
             # e_i is (batch_size, seq_len)
+            # s_mask is (batch_size, seq_len)
             # s_tilde_i = \sum e_ij b_j, (batch_size, seq_len)
-            s_tilde_i = (e_i.dimshuffle(0, 1, "x") * (s * s_mask.dimshuffle(0, 1, "x"))).sum(axis=1)
+            score = (e_i * s_mask.dimshuffle(0, 1))
+            score = theano.tensor.nnet.softmax(score)
+            score = score.dimshuffle(0, 1, "x")
+
+            s_tilde_i = (score * (s * s_mask.dimshuffle(0, 1, "x"))).sum(axis=1)
             return s_tilde_i
 
         # (batch_size, seq_len, def_dim)
@@ -210,10 +216,12 @@ class ESIM(Initializable):
 
         ### Pooling Layer ###
 
-        s1_comp_bilstm_ave = T.mean((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
+        s1_comp_bilstm_ave = (s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm).sum(axis=1) \
+                            / s1_mask.sum(axis=1).dimshuffle(0, "x")
         s1_comp_bilstm_max = T.max((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
 
-        s2_comp_bilstm_ave = T.mean((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
+        s2_comp_bilstm_ave = (s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm).sum(axis=1) \
+                             / s2_mask.sum(axis=1).dimshuffle(0, "x")
         # (batch_size, dim)
         s2_comp_bilstm_max = T.max((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
 

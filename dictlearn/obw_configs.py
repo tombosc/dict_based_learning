@@ -33,13 +33,12 @@ lm_config_registry.set_root_config({
     'standalone_def_rnn' : False,
     'standalone_def_lookup': False,
 
-
     # monitoring and checkpointing
     'mon_freq_train' : 100,
     'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
     'n_batches' : 0,
-    'monitor_parameters' : False
+    'monitor_parameters' : False,
 })
 
 
@@ -158,7 +157,7 @@ c['num_input_words'] = 300005
 lm_config_registry['obw_base_300k_glove300k'] = c
 
 def new_dictify(c):
-    c['dict_path'] = 'onebillionword/wn/dict_obw.json'
+    c['dict_path'] = 'onebillionword/wn/dict_wn.json'
     c['max_def_per_word'] = 14
     c['max_def_length'] = 30
     return c
@@ -172,6 +171,7 @@ lm_config_registry['obw_10k_dict2_wn'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
+c['dict_path'] = 'onebillionword/dict_obw_identity.json'
 c['emb_dim'] = 300
 c['exclude_top_k'] = 10000
 c['def_reader'] = 'mean'
@@ -181,3 +181,17 @@ lm_config_registry['obw_base_10k_tr_glove_300k'] = c
 
 c['embedding_path']= 'onebillionword/wn/glove.840B.300d_300k_common.npy'
 lm_config_registry['obw_base_10k_tr_glove_300k_restr'] = c
+
+def new_dictify_addlemma(c):
+    c['dict_path'] = 'onebillionword/wn/dict_obw_wn.json'
+    c['max_def_per_word'] = 10 # covers > 95% (of defs, not occurences)
+    c['max_def_length'] = 30 # covers > 99%
+    return c
+
+c = lm_config_registry['obw_10k_dict1']
+c = new_dictify_addlemma(c)
+lm_config_registry['obw_10k_dict1_wnl'] = c
+c = lm_config_registry['obw_10k_dict2']
+c = new_dictify_addlemma(c)
+lm_config_registry['obw_10k_dict2_wnl'] = c
+
