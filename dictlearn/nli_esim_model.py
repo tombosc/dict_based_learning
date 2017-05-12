@@ -25,6 +25,12 @@ from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitializa
 from dictlearn.inits import GlorotUniform
 from dictlearn.theano_util import apply_dropout
 
+def masked_softmax(a, m, axis):
+    e_a = T.exp(a)
+    masked_e = e_a * m
+    sum_masked_e = T.sum(masked_e, axis, keepdims=True)
+    return masked_e / sum_masked_e
+
 class ESIM(Initializable):
     """
     ESIM model based on https://github.com/NYU-MLL/multiNLI/blob/master/python/models/esim.py
@@ -186,8 +192,7 @@ class ESIM(Initializable):
             # e_i is (batch_size, seq_len)
             # s_mask is (batch_size, seq_len)
             # s_tilde_i = \sum e_ij b_j, (batch_size, seq_len)
-            score = (e_i * s_mask.dimshuffle(0, 1))
-            score = theano.tensor.nnet.softmax(score)
+            score = masked_softmax(e_i, s_mask, axis=1)
             score = score.dimshuffle(0, 1, "x")
 
             s_tilde_i = (score * (s * s_mask.dimshuffle(0, 1, "x"))).sum(axis=1)
@@ -218,12 +223,15 @@ class ESIM(Initializable):
 
         s1_comp_bilstm_ave = (s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm).sum(axis=1) \
                             / s1_mask.sum(axis=1).dimshuffle(0, "x")
-        s1_comp_bilstm_max = T.max((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
+
+        s1_comp_bilstm_max = T.max( ((1 - s1_mask.dimshuffle(0, 1, "x")) * -10000) + \
+                                    (s1_mask.dimshuffle(0, 1, "x")) * s1_comp_bilstm, axis=1)
 
         s2_comp_bilstm_ave = (s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm).sum(axis=1) \
                              / s2_mask.sum(axis=1).dimshuffle(0, "x")
         # (batch_size, dim)
-        s2_comp_bilstm_max = T.max((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
+        s2_comp_bilstm_max = T.max(((1 - s2_mask.dimshuffle(0, 1, "x")) * -10000) + \
+                                   (s2_mask.dimshuffle(0, 1, "x")) * s2_comp_bilstm, axis=1)
 
         ### Final classifier ###
 
