@@ -48,10 +48,10 @@ logger = logging.getLogger()
 
 
 def train_language_model(new_training_job, config, save_path, params,
-                         fast_start, fuel_server):#, seed):
-    #if seed:
-    #    fuel.config.default_seed = seed
-    #    blocks.config.config.default_seed = seed
+                         fast_start, fuel_server, seed):
+    if seed:
+        fuel.config.default_seed = seed
+        blocks.config.config.default_seed = seed
 
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
