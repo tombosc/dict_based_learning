@@ -150,6 +150,8 @@ def _initialize_esim_model_and_data(c):
     if vocab is None:
         vocab = data.vocab
 
+    def_emb_dim = c['def_emb_dim'] if c['def_emb_dim'] > 0 else c['emb_dim']
+
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
@@ -167,7 +169,6 @@ def _initialize_esim_model_and_data(c):
         data.set_retrieval(retrieval)
 
         num_input_def_words = c['num_input_def_words'] if c['num_input_def_words'] > 0 else c['num_input_words']
-        def_emb_dim = c['def_emb_dim'] if c['def_emb_dim'] > 0 else c['emb_dim']
 
         # TODO: Refactor lookup passing to reader. Very incoventient ATM
         if c['reader_type'] == "rnn":
@@ -198,9 +199,11 @@ def _initialize_esim_model_and_data(c):
         def_reader = None
 
     # Initialize
+
     simple = ESIM(
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
+        def_emb_dim=def_emb_dim,
         num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
         bn=c.get('bn', True),
 
@@ -238,7 +241,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     # Make data paths nice
     for path in ['dict_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
-        if c[path]:
+        if c.get(path, ''):
             if not os.path.isabs(c[path]):
                 c[path] = os.path.join(fuel.config.data_path[0], c[path])
 
@@ -550,6 +553,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     model = kwargs['model']
     assert c.endswith("json")
     c = json.load(open(c))
+
     # Very ugly absolute path fix
     ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/"
     from six import string_types
@@ -557,6 +561,16 @@ def evaluate(c, tar_path, *args, **kwargs):
         if isinstance(c[k], string_types):
             if c[k].startswith(ABS_PATH):
                 c[k] = c[k][len(ABS_PATH):]
+
+    # Make data paths nice
+    for path in ['dict_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
+        if c.get(path, ''):
+            if not os.path.isabs(c[path]):
+                c[path] = os.path.join(fuel.config.data_path[0], c[path])
+
+    logging.info("Updating config with " + str(kwargs))
+    c.update(**kwargs)
+
     assert tar_path.endswith("tar")
     dest_path = os.path.dirname(tar_path)
     prefix = os.path.splitext(os.path.basename(tar_path))[0]
