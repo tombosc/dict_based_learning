@@ -80,7 +80,7 @@ def construct_embedder(theano_fnc, vocab):
     return _embedder
 
 
-def evaluate_similarity(w, X, y):
+def evaluate_similarity(w, X, y, restrict_to_words=None):
     """
     Calculate Spearman correlation between cosine similarity of the model
     and human rated similarity of word pairs

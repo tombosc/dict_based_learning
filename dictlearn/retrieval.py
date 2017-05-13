@@ -421,7 +421,6 @@ class Retrieval(object):
         def_map = []
         word_def_indices = defaultdict(list)
 
-
         for seq_pos, sequence in enumerate(batch):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
@@ -436,7 +435,6 @@ class Retrieval(object):
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
 
-                    # TODO(kudkudak): actually it wont count only once each word)
                     # Debug info
                     self._debug_info['N_words'] += 1
                     self._debug_info['N_missed_words'] += (len(word_defs) == 0)

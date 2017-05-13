@@ -1,13 +1,11 @@
 """
 Training loop for simple SNLI model that can use dict enchanced embeddings
-
-TODO: What's best way to refactor it. I think training loop taking model + cost would be good enough for us
-TODO: State CSV pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
 """
 
 import sys
 
 import numpy as np
+import matplotlib.pylab as plt
 from theano import tensor
 
 sys.path.append("..")
@@ -156,8 +154,10 @@ def _initialize_esim_model_and_data(c):
     if vocab is None:
         vocab = data.vocab
 
-    def_emb_dim = c['def_emb_dim'] if c['def_emb_dim'] > 0 else c['emb_dim']
-    def_emb_translate_dim = c['def_emb_translate_dim'] if c['def_emb_translate_dim'] > 0 else def_emb_dim
+    # def_emb_dim defaults to emb_dim
+    # def_emb_translate_dim default to def_emb_dim
+    def_emb_dim = c.get('def_emb_dim', 0) if c.get('def_emb_dim', 0) > 0 else c['emb_dim']
+    def_emb_translate_dim = c.get('def_emb_translate_dim', 0) if c.get('def_emb_translate_dim', 0) > 0 else def_emb_dim
 
     # Dict
     if c['dict_path']:
@@ -210,7 +210,7 @@ def _initialize_esim_model_and_data(c):
     simple = ESIM(
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
-        def_emb_dim=def_emb_dim,
+        def_emb_translate_dim=def_emb_translate_dim,
         num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
         bn=c.get('bn', True),
 
@@ -230,7 +230,7 @@ def _initialize_esim_model_and_data(c):
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
-    if c['embedding_def_path']:
+    if c.get('embedding_def_path', ''):
         embeddings = np.load(c['embedding_def_path'])
         simple.set_def_embeddings(embeddings.astype(theano.config.floatX))
 
@@ -357,6 +357,11 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         assert len(set(frozen_params) & set(train_params)) > 0
     else:
         frozen_params = []
+    if not c.get('train_def_emb', 1):
+        frozen_params_def = [p for E in nli_model.get_def_embeddings_lookups() for p in E.parameters]
+        train_params = [p for p in cg[True].parameters]
+        assert len(set(frozen_params_def) & set(train_params)) > 0
+        frozen_params += frozen_params_def
     train_params = [p for p in cg[True].parameters if p not in frozen_params]
     train_params_keys = [get_brick(p).get_hierarchical_name(p) for p in train_params]
 
@@ -478,9 +483,6 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
         variables = VariableFilter(name=name)(cg[False])
         if len(variables):
-            print(variables)
-            # TODO: Why is it 2?
-            # assert len(variables) == 1, "Shouldn't have more auxiliary variables of the same name"
             s1_emb = variables[0]
             logger.info("Adding similarity tracking for " + name)
             # A bit sloppy about downcast
@@ -553,10 +555,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     assert os.path.exists(save_path)
     main_loop.run()
 
+
 def evaluate(c, tar_path, *args, **kwargs):
     """
+    Performs rudimentary evaluation of SNLI/MNLI run
+
     * Runs on valid and test given network
     * Saves all predictions
+    * Saves embedding matrix
     * Saves results.json and predictions.csv
     """
 
@@ -608,15 +614,11 @@ def evaluate(c, tar_path, *args, **kwargs):
 
     pred = model.apply(s1_decoded, s1_mask, s2_decoded, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
         s2_def_map=s2_def_map, train_phase=False)
-
     cg = ComputationGraph([pred])
-
     if c.get("bn", True):
         bn_params = [p for p in VariableFilter(bricks=[BatchNormalization])(cg) if hasattr(p, "set_value")]
     else:
         bn_params = []
-
-    # cg = ComputationGraph([pred])
 
     # Load model
     model = Model(cg.outputs)
@@ -653,13 +655,33 @@ def evaluate(c, tar_path, *args, **kwargs):
     best_val_acc = logs['valid_misclassificationrate_apply_error_rate'].min()
     logging.info("Best measured valid acc: " + str(best_val_acc))
 
-    # Word embedding evaluation (restricted to only vocab in train)
-    # TODO
+    # NOTE(kudkudak): We need this to have comparable mean rank and embedding scores
+    reference_vocab = Vocabulary(os.path.join(fuel.config.data_path[0], c['data_path'], 'vocab.txt'))
+    vocab_all = Vocabulary(os.path.join(fuel.config.data_path[0], c['data_path'], 'vocab_all.txt')) # Can include OOV words, which is interesting
+    retrieval_all = Retrieval(vocab_text=used_vocab, dictionary=used_dict, max_def_length=c['max_def_length'],
+        exclude_top_k=0, max_def_per_word=c['max_def_per_word'])
+    # logging.info("Calculating dict and word embeddings for vocab.txt and vocab_all.txt")
+    # for name in ['s1_word_embeddings', 's1_dict_word_embeddings']:
+    #     variables = VariableFilter(name=name)(cg)
+    #     if len(variables):
+    #         s1_emb = variables[0]
+    #         # A bit sloppy about downcast
+    #
+    #         if "dict" in name:
+    #             embedder = construct_dict_embedder(
+    #                 theano.function([s1_decoded, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
+    #                 vocab=data.vocab, retrieval=retrieval_all)
+    #         else:
+    #             embedder = construct_embedder(theano.function([s1_decoded], s1_emb, allow_input_downcast=True),
+    #                 vocab=data.vocab)
+    #
+    #         for v_name, v in [("vocab_all", vocab_all), ("vocab", reference_vocab)]:
+    #             logging.info("Calculating {} embeddings for {}".format(name, v_name))
+
 
     # Predict
     predict_fnc = theano.function(cg.inputs, pred)
     results = {}
-    # TODO: Depends on batch_size?
     batch_size = 14
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
@@ -694,6 +716,14 @@ def evaluate(c, tar_path, *args, **kwargs):
                 s1_mean_freq = np.mean([0 if w == data.vocab.unk else used_vocab._id_to_freq[w] for w in s1_no_pad])
                 s2_mean_freq = np.mean([0 if w == data.vocab.unk else used_vocab._id_to_freq[w] for w in s2_no_pad])
 
+                # mean rank word (UNK is max rank)
+                # NOTE(kudkudak): Will break if we reindex unk between vocabs :P
+                s1_mean_rank = np.mean([reference_vocab.size() if reference_vocab.word_to_id(used_vocab.id_to_word(w)) == reference_vocab.unk else reference_vocab.word_to_id(used_vocab.id_to_word(w)) for w in s1_no_pad])
+
+                s2_mean_rank = np.mean([reference_vocab.size()
+                    if reference_vocab.word_to_id(used_vocab.id_to_word(w)) == reference_vocab.unk else
+                    reference_vocab.word_to_id(used_vocab.id_to_word(w)) for w in s2_no_pad])
+
                 rows.append({"pred": label_pred[id], "true_label": ex['label'][id],
                     "s1": ' '.join(s1_decoded),
                     "s2": ' '.join(s2_decoded),
@@ -701,6 +731,8 @@ def evaluate(c, tar_path, *args, **kwargs):
                     "s2_unk_percentage": s2_unk_percentage,
                     "s1_mean_freq": s1_mean_freq,
                     "s2_mean_freq": s2_mean_freq,
+                    "s1_mean_rank": s1_mean_rank,
+                    "s2_mean_rank": s2_mean_rank,
                     "p_0": prob[id, 0], "p_1": prob[id, 1], "p_2": prob[id, 2]})
 
         preds = pd.DataFrame(rows, columns=rows[0].keys())
@@ -711,13 +743,10 @@ def evaluate(c, tar_path, *args, **kwargs):
         if subset == "valid" and np.abs(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc) > 0.001:
             logging.error("!!!")
             logging.error("Found different best_val_acc. Probably due to changed specification of the model class.")
-            # TODO: Why this discrepancy? It is around 0.5% usually
             logging.error("Discrepancy {}".format(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc))
             logging.error("!!!")
 
         logging.info(results)
-
-        # Save useful plots
 
     json.dump(results, open(os.path.join(dest_path, prefix + '_results.json'), "w"))
 

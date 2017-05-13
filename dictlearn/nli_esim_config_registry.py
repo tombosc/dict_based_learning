@@ -15,11 +15,13 @@ nli_esim_config_registry.set_root_config({
     'dim': 300,
     'dict_path': '',
     'vocab': '',
+    'vocab_text': '', # Defaults to vocab. Use when original vocab cannot be used for frequency in dict
     'encoder': 'bilstm',
 
     # Also used in NYU-MLI
     'embedding_path': '',
     'train_emb': 1,
+    'train_def_emb': 1,
 
     # Dict params
     'vocab_def': '',
@@ -50,10 +52,10 @@ nli_esim_config_registry.set_root_config({
 
     # Misc. Monitor every 100% of epoch
     'monitor_parameters': 0,
-    'mon_freq': int((500000) / 32) / 3, # 3 times per epoch
+    'mon_freq': int((500000) / 32) / 2, # 2 times per epoch
     'save_freq_epochs': 1,
-    'mon_freq_valid': int((500000) / 32) / 3,
-    'n_batches': 200 * (500000 / 32) # ~200 epochs of SNLI
+    'mon_freq_valid': int((500000) / 32) / 2,
+    'n_batches': 50 * (500000 / 32) # ~50 epochs of SNLI
 })
 
 ### Establish baseline ###

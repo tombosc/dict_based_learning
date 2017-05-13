@@ -40,7 +40,7 @@ class ESIM(Initializable):
     """
 
     # seq_length, emb_dim, hidden_dim
-    def __init__(self, dim, emb_dim, vocab, def_emb_dim=-1, def_dim=-1, encoder='bilstm', bn=True,
+    def __init__(self, dim, emb_dim, vocab, def_emb_translate_dim=-1, def_dim=-1, encoder='bilstm', bn=True,
             def_reader=None, def_combiner=None, dropout=0.5, num_input_words=-1,
             # Others
             **kwargs):
@@ -54,10 +54,10 @@ class ESIM(Initializable):
         if encoder != 'bilstm':
             raise NotImplementedError()
 
-        if def_emb_dim < 0:
-            self._def_emb_dim = emb_dim
+        if def_emb_translate_dim < 0:
+            self.def_emb_translate_dim = emb_dim
         else:
-            self._def_emb_dim = def_emb_dim
+            self.def_emb_translate_dim = def_emb_translate_dim
 
         if def_dim < 0:
             self._def_dim = emb_dim
@@ -72,8 +72,8 @@ class ESIM(Initializable):
 
         children = []
 
-        if self._def_emb_dim != self._emb_dim:
-            self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_dim)
+        if self.def_emb_translate_dim != self._emb_dim:
+            self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_translate_dim)
             children.append(self._translate_pre_def)
         else:
             self._translate_pre_def = None
@@ -127,7 +127,7 @@ class ESIM(Initializable):
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
-    def get_def_embeddings(self):
+    def get_def_embeddings_lookups(self):
         return [self._def_reader._def_lookup]
 
     def set_def_embeddings(self, embeddings):

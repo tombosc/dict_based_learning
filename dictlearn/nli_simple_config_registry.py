@@ -125,4 +125,5 @@ snli_config_registry['rnn_small_dict_mnli'] = c
 
 ### Paper configs ###
 c = snli_config_registry['root']
-snli_config_registry['baseline'] = c
+c['num_input_words'] = 3000
+snli_config_registry['baseline_paper'] = c
