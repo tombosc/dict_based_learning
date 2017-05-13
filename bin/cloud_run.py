@@ -14,7 +14,7 @@ JOB_TEMPLATE = """
     "description": "squad",
     "dockerImage": "trydgx_mila/project2:16",
     "jobType": "BATCH",
-    "command": "su bahdanau; git clone git@github.com:tombosc/dict_based_learning.git; cd /data/cf9ffb48-61bd-40dc-a011-b2e7e5acfd72/models; /workspace/dict_based_learning/bin/cloud_train_extractive_qa.sh squad2 squad2 2>err.txt",
+    "command": "",
     "resources": {
       "gpus": 1,
       "systemMemory": 61440,
