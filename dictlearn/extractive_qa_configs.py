@@ -119,19 +119,6 @@ def tune_depth_and_dropout(c):
     c['dropout'] = 0.2
     return c
 
-
-qar['squad6'] = tune_depth_and_dropout(qar['squad5'])
-
-# a strong glove baseline
-c = tune_depth_and_dropout(qar['squad_glove2'])
-c['batch_size'] = 32
-qar['squad_glove6'] = c
-
-# a strong glove+dict model
-c = tune_depth_and_dropout(qar['squad_glove5'])
-c['compose_type'] = 'gated_transform_and_sum'
-qar['squad_glove7'] = c
-
 # a better regularized baseline config
 c = qar['squad2']
 c['batch_size'] = 32
@@ -148,12 +135,6 @@ c = change_dict_to_spelling(qar['squad5'])
 c['emb_dim'] = 200
 qar['squad8'] = c
 
-# can we use separate embeddings for def reader?
-c = qar['squad_glove7']
-c['reuse_word_embeddings'] = False
-c['def_num_input_words'] = 3000
-c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_dict_wordnet3.2.txt'
-qar['squad_glove8'] = c
 
 # dict + spelling
 c = qar['squad5']
@@ -162,3 +143,36 @@ c['vocab_path'] = 'squad/squad_from_scratch/vocab_with_chars.txt'
 c['num_input_words'] = 3100
 c['exclude_top_k'] = 3100
 qar['squad9'] = c
+
+# PAPER CONFIGS
+
+# the baseline without embeddings
+qar['squad10'] = tune_depth_and_dropout(qar['squad7'])
+# the baseline with spelling
+qar['squad11'] = tune_depth_and_dropout(qar['squad8'])
+# the baseline with the dictionary only
+qar['squad6'] = tune_depth_and_dropout(qar['squad5'])
+# dictionary + spelling
+qar['squad13'] = tune_depth_and_dropout(qar['squad9'])
+
+# the glove baseline
+c = tune_depth_and_dropout(qar['squad_glove2'])
+c['batch_size'] = 32
+qar['squad_glove6'] = c
+
+# glove + dictionary
+c = tune_depth_and_dropout(qar['squad_glove5'])
+c['compose_type'] = 'gated_transform_and_sum'
+qar['squad_glove7'] = c
+
+# can we use separate embeddings for def reader?
+c = qar['squad_glove7']
+c['reuse_word_embeddings'] = False
+c['def_num_input_words'] = 3000
+c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_dict_wordnet3.2.txt'
+qar['squad_glove8'] = c
+
+# possible todo:
+# glove + dict + spelling
+# recursion
+# bigrams
