@@ -113,10 +113,6 @@ c['num_input_def_words'] = 3000
 c['compose_type'] = 'sum'
 snli_config_registry['sum_small_dict'] = c
 
-### Small dict v.2 ###
-
-# TODO: Write down current best model as of 9.05
-
 ### RNN + Small dict ###
 c = snli_config_registry['sum_small_dict']
 c['reader_type'] = 'rnn'
@@ -126,3 +122,7 @@ c = snli_config_registry['sum_small_dict_mnli']
 c['reader_type'] = 'rnn'
 c['layout'] = 'mnli'
 snli_config_registry['rnn_small_dict_mnli'] = c
+
+### Paper configs ###
+c = snli_config_registry['root']
+snli_config_registry['baseline'] = c

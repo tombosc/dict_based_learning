@@ -351,10 +351,6 @@ class MeanPoolCombiner(Initializable):
             def_mean.copy(),
             name=call_name + '_dict_word_embeddings')
 
-        application_call.add_auxiliary_variable(
-            word_embs.copy(),
-            name=call_name + '_word_embeddings')
-
         if self._compose_type == 'sum':
             final_embeddings = word_embs + def_mean
         elif self._compose_type == 'transform_and_sum':

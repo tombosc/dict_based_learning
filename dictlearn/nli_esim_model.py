@@ -127,6 +127,12 @@ class ESIM(Initializable):
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
+    def get_def_embeddings(self):
+        return [self._def_reader._def_lookup]
+
+    def set_def_embeddings(self, embeddings):
+        self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
+
     @application
     def apply(self, application_call,
             s1_preunk, s1_mask, s2_preunk, s2_mask, def_mask=None,
@@ -141,6 +147,10 @@ class ESIM(Initializable):
 
         s1_emb = self._lookup.apply(s1)
         s2_emb = self._lookup.apply(s2)
+
+        application_call.add_auxiliary_variable(
+            1 * s1_emb,
+            name='s1_word_embeddings')
 
         if self._def_reader:
             assert defs is not None
@@ -164,9 +174,6 @@ class ESIM(Initializable):
                 s2_emb, s2_mask,
                 def_embs, s2_def_map, word_ids=s2, train_phase=train_phase, call_name="s2")
         else:
-            application_call.add_auxiliary_variable(
-                1*s1_emb,
-                name='s1_word_embeddings')
             if train_phase and self._dropout > 0:
                 s1_emb = apply_dropout(s1_emb, drop_prob=self._dropout)
                 s2_emb = apply_dropout(s2_emb, drop_prob=self._dropout)

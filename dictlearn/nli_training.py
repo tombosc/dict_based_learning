@@ -15,6 +15,8 @@ sys.path.append("..")
 from blocks.bricks.cost import MisclassificationRate
 from blocks.bricks.bn import BatchNormalization
 from blocks.filter import get_brick
+from blocks.bricks import Linear, Sequence
+from blocks.bricks.lookup import LookupTable
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
 from blocks.extensions.training import TrackTheBest
@@ -131,6 +133,10 @@ def _initialize_simple_model_and_data(c):
         simple._rnn_encoder.weights_init = Uniform(std=0.1)
     simple.initialize()
 
+    if c.get('embedding_def_path', ''):
+        embeddings = np.load(c['embedding_def_path'])
+        simple.set_def_embeddings(embeddings.astype(theano.config.floatX))
+
     if c['embedding_path']:
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
@@ -151,6 +157,7 @@ def _initialize_esim_model_and_data(c):
         vocab = data.vocab
 
     def_emb_dim = c['def_emb_dim'] if c['def_emb_dim'] > 0 else c['emb_dim']
+    def_emb_translate_dim = c['def_emb_translate_dim'] if c['def_emb_translate_dim'] > 0 else def_emb_dim
 
     # Dict
     if c['dict_path']:
@@ -179,12 +186,12 @@ def _initialize_esim_model_and_data(c):
         elif c['reader_type'] == "mean":
            def_reader = MeanPoolReadDefinitions(num_input_words=num_input_def_words,
                 translate=c['combiner_reader_translate'], vocab=vocab,
-                weights_init=Uniform(width=0.1), lookup=None, dim=def_emb_dim,
+                weights_init=Uniform(width=0.1), lookup=None, dim=def_emb_translate_dim,
                 biases_init=Constant(0.), emb_dim=def_emb_dim)
         else:
             raise NotImplementedError()
 
-        def_combiner = MeanPoolCombiner(dim=c['def_dim'], emb_dim=def_emb_dim,
+        def_combiner = MeanPoolCombiner(dim=c['def_dim'], emb_dim=def_emb_translate_dim,
             dropout=c['combiner_dropout'], dropout_type=c['combiner_dropout_type'],
             def_word_gating=c['combiner_gating'],
             shortcut_unk_and_excluded=c['combiner_shortcut'], num_input_words=num_input_def_words,
@@ -223,6 +230,10 @@ def _initialize_esim_model_and_data(c):
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
+    if c['embedding_def_path']:
+        embeddings = np.load(c['embedding_def_path'])
+        simple.set_def_embeddings(embeddings.astype(theano.config.floatX))
+
     return simple, data, dict, retrieval, vocab
 
 def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, seed, model='simple'):
@@ -240,7 +251,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         f.write(" ".join(sys.argv))
 
     # Make data paths nice
-    for path in ['dict_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
+    for path in ['dict_path', 'embedding_def_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
         if c.get(path, ''):
             if not os.path.isabs(c[path]):
                 c[path] = os.path.join(fuel.config.data_path[0], c[path])
@@ -563,7 +574,7 @@ def evaluate(c, tar_path, *args, **kwargs):
                 c[k] = c[k][len(ABS_PATH):]
 
     # Make data paths nice
-    for path in ['dict_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
+    for path in ['dict_path', 'embedding_def_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
         if c.get(path, ''):
             if not os.path.isabs(c[path]):
                 c[path] = os.path.join(fuel.config.data_path[0], c[path])
@@ -642,11 +653,12 @@ def evaluate(c, tar_path, *args, **kwargs):
     best_val_acc = logs['valid_misclassificationrate_apply_error_rate'].min()
     logging.info("Best measured valid acc: " + str(best_val_acc))
 
+    # Word embedding evaluation (restricted to only vocab in train)
+    # TODO
+
     # Predict
     predict_fnc = theano.function(cg.inputs, pred)
-
     results = {}
-
     # TODO: Depends on batch_size?
     batch_size = 14
     for subset in ['valid', 'test']:
