@@ -195,8 +195,8 @@ def _initialize_esim_model_and_data(c):
         # TODO: Refactor lookup passing to reader. Very incoventient ATM
         if c['reader_type'] == "rnn":
             def_reader = LSTMReadDefinitions(num_input_words=num_input_def_words,
-                weights_init=Uniform(width=0.1), translate=c['combiner_reader_translate'],
-                biases_init=Constant(0.), dim=c['def_dim'], emb_dim=def_emb_dim,
+                weights_init=Uniform(width=0.1), biases_init=Constant(0.), dim=c['def_dim'],
+                emb_dim=def_emb_dim,
                 vocab=vocab, lookup=None)
         elif c['reader_type'] == "mean":
            def_reader = MeanPoolReadDefinitions(num_input_words=num_input_def_words,
