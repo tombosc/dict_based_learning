@@ -7,6 +7,9 @@ import sys
 # 100x larger recursion limit is needed for ESIM
 sys.setrecursionlimit(100000)
 
+def flip01(x):
+    return x.transpose((1, 0, 2))
+
 import theano
 import theano.tensor as T
 from theano import tensor
@@ -24,6 +27,12 @@ from blocks.initialization import IsotropicGaussian, Constant, NdarrayInitializa
 
 from dictlearn.inits import GlorotUniform
 from dictlearn.theano_util import apply_dropout
+
+def masked_softmax(a, m, axis):
+    e_a = T.exp(a)
+    masked_e = e_a * m
+    sum_masked_e = T.sum(masked_e, axis, keepdims=True)
+    return masked_e / sum_masked_e
 
 class ESIM(Initializable):
     """
@@ -71,29 +80,22 @@ class ESIM(Initializable):
             self._final_emb_dim = self._emb_dim
 
         ## BiLSTM
-        _hyp_bidir_fork = Linear(emb_dim, 4 * dim, name='hyp_bidir_fork')
-        _hyp_bidir = Bidirectional(LSTM(dim), name='hyp_bidir')
-        _prem_bidir_fork = Linear(emb_dim, 4 * dim, name='prem_bidir_fork')
-        _prem_bidir = Bidirectional(LSTM(dim), name='prem_bidir')
-
-        self._prem_bilstm = Sequence([_prem_bidir_fork, _prem_bidir], name="prem_bilstm")
-        self._hyp_bilstm = Sequence([_hyp_bidir_fork, _hyp_bidir], name="hyp_bilstm")
-        children.extend([_hyp_bidir_fork, _hyp_bidir])
-        children.extend([_prem_bidir, _prem_bidir_fork])
-        children.extend([self._prem_bilstm, self._hyp_bilstm])
+        self._hyp_bidir_fork = Linear(emb_dim, 4 * dim, name='hyp_bidir_fork')
+        self._hyp_bidir = Bidirectional(LSTM(dim), name='hyp_bidir')
+        self._prem_bidir_fork = Linear(emb_dim, 4 * dim, name='prem_bidir_fork')
+        self._prem_bidir = Bidirectional(LSTM(dim), name='prem_bidir')
+        children.extend([self._hyp_bidir_fork, self._hyp_bidir])
+        children.extend([self._prem_bidir, self._prem_bidir_fork])
 
         ## BiLSTM no. 2 (encoded attentioned embeddings)
-        _hyp_bidir_fork = Linear(8 * dim, 4 * dim, name='hyp_bidir_fork2')
-        _hyp_bidir = Bidirectional(LSTM(dim), name='hyp_bidir2')
-        _prem_bidir_fork = Linear(8 * dim, 4 * dim, name='prem_bidir_fork2')
-        _prem_bidir = Bidirectional(LSTM(dim), name='prem_bidir2')
-        self._prem_bilstm2 = Sequence([_prem_bidir_fork, _prem_bidir], name="prem_bilstm2")
-        self._hyp_bilstm2 = Sequence([_hyp_bidir_fork, _hyp_bidir], name="hyp_bilstm2")
-        children.extend([_hyp_bidir_fork, _hyp_bidir])
-        children.extend([_prem_bidir, _prem_bidir_fork])
-        children.extend([self._prem_bilstm2, self._hyp_bilstm2])
+        self._hyp_bidir_fork2 = Linear(8 * dim, 4 * dim, name='hyp_bidir_fork2')
+        self._hyp_bidir2 = Bidirectional(LSTM(dim), name='hyp_bidir2')
+        self._prem_bidir_fork2 = Linear(8 * dim, 4 * dim, name='prem_bidir_fork2')
+        self._prem_bidir2 = Bidirectional(LSTM(dim), name='prem_bidir2')
+        children.extend([self._hyp_bidir_fork2, self._hyp_bidir2])
+        children.extend([self._prem_bidir2, self._prem_bidir_fork2])
 
-        self._rnns = [self._prem_bilstm2, self._hyp_bilstm2, self._prem_bilstm, self._hyp_bilstm]
+        self._rnns = [self._prem_bidir2, self._hyp_bidir2, self._prem_bidir, self._hyp_bidir]
 
         ## MLP
         if bn:
@@ -152,9 +154,12 @@ class ESIM(Initializable):
         ### Encode ###
 
         # TODO: Share this bilstm?
-        s1_bilstm, _ = self._prem_bilstm.apply(s1_emb) # (batch_size, n_seq, 2 * dim)
-        s2_bilstm, _ = self._hyp_bilstm.apply(s2_emb) # (batch_size, n_seq, 2 * dim)
-
+        s1_bilstm, _ = self._prem_bidir.apply(flip01(self._prem_bidir_fork.apply(s1_emb)),
+            mask=s1_mask.T) # (batch_size, n_seq, 2 * dim)
+        s2_bilstm, _ = self._hyp_bidir.apply(flip01(self._hyp_bidir_fork.apply(s2_emb)),
+            mask=s2_mask.T) # (batch_size, n_seq, 2 * dim)
+        s1_bilstm = flip01(s1_bilstm)
+        s2_bilstm = flip01(s2_bilstm)
         ### Attention ###
 
         # Compute E matrix (eq. 11)
@@ -165,9 +170,12 @@ class ESIM(Initializable):
             # s2_i is (batch_size, emb_dim)
             # s1_bilstm is (batch_size, seq_len, emb_dim)
             # s1_mask is (batch_size, seq_len)
-            s2_i = s2_i.reshape((s2_i.shape[0], s2_i.shape[1], 1))
+            # s2_i = s2_i.reshape((s2_i.shape[0], s2_i.shape[1], 1))
+            s2_i = s2_i.reshape((b_size, s2_i.shape[1], 1))
             s2_i = T.repeat(s2_i, 2, axis=2)
             # s2_i is (batch_size, emb_dim, 2)
+            assert s1_bilstm.ndim == 3
+            assert s2_i.ndim == 3
             score = T.batched_dot(s1_bilstm, s2_i) # (batch_size, seq_len, 1)
             score = score[:, :, 0].reshape((b_size, -1)) # (batch_size, seq_len)
             return score # E[i, :]
@@ -186,8 +194,7 @@ class ESIM(Initializable):
             # e_i is (batch_size, seq_len)
             # s_mask is (batch_size, seq_len)
             # s_tilde_i = \sum e_ij b_j, (batch_size, seq_len)
-            score = (e_i * s_mask.dimshuffle(0, 1))
-            score = theano.tensor.nnet.softmax(score)
+            score = masked_softmax(e_i, s_mask, axis=1)
             score = score.dimshuffle(0, 1, "x")
 
             s_tilde_i = (score * (s * s_mask.dimshuffle(0, 1, "x"))).sum(axis=1)
@@ -206,24 +213,27 @@ class ESIM(Initializable):
         # (batch_size, seq_len, 8 * dim)
         s1_comp = T.concatenate([s1_bilstm, s1_tilde, s1_bilstm - s1_tilde, s1_bilstm * s1_tilde], axis=2)
         s2_comp = T.concatenate([s2_bilstm, s2_tilde, s2_bilstm - s2_tilde, s2_bilstm * s2_tilde], axis=2)
-
         ### Encode (eq. 16 and 17) ###
 
         # (batch_size, seq_len, 8 * dim)
         # TODO: Share this bilstm?
-        s1_comp_bilstm, _ = self._prem_bilstm2.apply(s1_comp)  # (batch_size, n_seq, 2 * dim)
-        s2_comp_bilstm, _ = self._hyp_bilstm2.apply(s2_comp)  # (batch_size, n_seq, 2 * dim)
-
+        s1_comp_bilstm, _ = self._prem_bidir2.apply(self._prem_bidir_fork2.apply(flip01(s1_comp)), mask=s1_mask.T)  # (batch_size, n_seq, 2 * dim)
+        s2_comp_bilstm, _ = self._hyp_bidir2.apply(self._hyp_bidir_fork2.apply(flip01(s2_comp)), mask=s2_mask.T)  # (batch_size, n_seq, 2 * dim)
+        s1_comp_bilstm = flip01(s1_comp_bilstm)
+        s2_comp_bilstm = flip01(s2_comp_bilstm)
         ### Pooling Layer ###
 
         s1_comp_bilstm_ave = (s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm).sum(axis=1) \
                             / s1_mask.sum(axis=1).dimshuffle(0, "x")
-        s1_comp_bilstm_max = T.max((s1_mask.dimshuffle(0, 1, "x") * s1_comp_bilstm), axis=1)
+
+        s1_comp_bilstm_max = T.max( ((1 - s1_mask.dimshuffle(0, 1, "x")) * -10000) + \
+                                    (s1_mask.dimshuffle(0, 1, "x")) * s1_comp_bilstm, axis=1)
 
         s2_comp_bilstm_ave = (s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm).sum(axis=1) \
                              / s2_mask.sum(axis=1).dimshuffle(0, "x")
         # (batch_size, dim)
-        s2_comp_bilstm_max = T.max((s2_mask.dimshuffle(0, 1, "x") * s2_comp_bilstm), axis=1)
+        s2_comp_bilstm_max = T.max(((1 - s2_mask.dimshuffle(0, 1, "x")) * -10000) + \
+                                   (s2_mask.dimshuffle(0, 1, "x")) * s2_comp_bilstm, axis=1)
 
         ### Final classifier ###
 
