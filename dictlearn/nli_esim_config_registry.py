@@ -116,7 +116,6 @@ c['embedding_path'] = ''
 c['embedding_def_path'] = ''
 c['num_input_words'] = 3000
 c['compose_type'] = 'sum'
-# TODO: Reg
 nli_esim_config_registry['sum_small_dict'] = c
 
 #####################
@@ -124,3 +123,88 @@ nli_esim_config_registry['sum_small_dict'] = c
 #####################
 
 # A) "Normal" baselines
+
+c = nli_esim_config_registry['root']
+c['num_input_words'] = 3000
+c['emb_dim'] = 100
+nli_esim_config_registry['paper_baseline_3k'] = c
+
+c = nli_esim_config_registry['root']
+c['num_input_words'] = 5000
+c['emb_dim'] = 100
+nli_esim_config_registry['paper_baseline_5k'] = c
+
+c = nli_esim_config_registry['baseline']
+c['train_emb'] = 0
+c['n_batches'] = 100000
+c['translate_dim'] = 100
+c['vocab'] = 'snli/vocab_all.txt'
+c['num_input_words'] = -1
+c['embedding_path'] = 'snli/glove.840B.300d_all.npy'
+nli_esim_config_registry['paper_baseline_glove'] = c
+
+# B) Dict without glove
+
+## Less tuned fellow
+c = nli_esim_config_registry['root']
+c['emb_dim'] = 100
+c['def_emb_dim'] = 100
+c['def_dim'] = 100
+c['translate_dim'] = 100
+c['combiner_shortcut'] = False # Tune?
+c['combiner_reader_translate'] = False
+c['dict_path'] = 'snli/wordnet_dict_add_lower_lowerllemma.json'
+c['vocab_def'] = 'snli/wordnet_dict_add_lower_lowerllemma_vocab.txt'
+c['exclude_top_k'] = 3000
+c['share_def_lookup'] = False
+c['reader_type'] = 'mean' # Tune?
+c['max_def_per_word'] = 20
+c['combiner_dropout'] = 0.0
+c['embedding_path'] = ''
+c['num_input_words'] = 5000
+c['num_input_def_words'] = -1
+c['compose_type'] = 'sum'
+c['n_batches'] = 70 * (500000 / 32)
+c['train_emb'] = 1
+c['embedding_path'] = ''
+c['embedding_def_path'] = ''
+c['combiner_reader_translate'] = False
+nli_esim_config_registry['paper_dict_simple'] = c
+
+# C) "Dict" baselines: lowercase + spelling
+
+c = nli_esim_config_registry['paper_dict_simple']
+c['dict_path'] = 'snli/dict_all_spelling.json'
+c['n_batches'] = 100000
+c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
+nli_esim_config_registry['paper_baseline_spelling'] = c
+
+c = nli_esim_config_registry['paper_baseline_spelling']
+c['dict_path'] = 'snli/dict_all_only_lowercase.json'
+c['n_batches'] = 100000
+c['reader_type'] = 'mean'
+nli_esim_config_registry['paper_baseline_lowercase'] = c
+
+# D) Dict + glove
+
+# Note: I pick here one specific instance of glove init. It doesn't work anyways, and
+# it went closest to actual glove result
+
+def transform_glove(c):
+    c['embedding_path'] = "glove/glove_w_specials.npy"
+    c['embedding_def_path'] = "glove/glove_w_specials.npy"
+    c['vocab'] = 'glove/vocab.txt'
+    c['vocab_def'] = 'glove/vocab.txt'
+    c['vocab_test'] = 'data/vocab.txt'
+    c['train_emb'] = 0
+    c['train_def_emb'] = 0
+    c['combiner_reader_translate'] = True
+    c['def_emb_dim'] = 300
+    c['emb_dim'] = 300
+    c['def_emb_translate_dim'] = 100
+    c['def_dim'] = 100
+    c['num_input_def_words'] = -1
+    c['num_input_words'] = -1
+    return c
+
+nli_esim_config_registry['paper_dict_simple_glove'] = transform_glove(nli_esim_config_registry['paper_dict_simple'])

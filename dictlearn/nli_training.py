@@ -113,6 +113,9 @@ def _initialize_simple_model_and_data(c):
         dict = None
         retrieval_vocab = None
 
+    def_emb_dim = c.get('def_emb_dim', 0) if c.get('def_emb_dim', 0) > 0 else c['emb_dim']
+    def_emb_translate_dim = c.get('def_emb_translate_dim', 0) if c.get('def_emb_translate_dim', 0) > 0 else def_emb_dim
+
     # Initialize
     simple = NLISimple(
         # Baseline arguments
@@ -127,7 +130,7 @@ def _initialize_simple_model_and_data(c):
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
         combiner_reader_translate=c['combiner_reader_translate'], def_dim=c['def_dim'],
-        num_input_def_words=c['num_input_def_words'],
+        num_input_def_words=c['num_input_def_words'], def_emb_translate_dim=def_emb_translate_dim,
 
         # Init
         weights_init=GlorotUniform(), biases_init=Constant(0.0)

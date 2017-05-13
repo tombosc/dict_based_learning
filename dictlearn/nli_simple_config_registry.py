@@ -140,8 +140,11 @@ snli_config_registry['paper_baseline_glove'] = c
 ## Less tuned fellow
 c = snli_config_registry['root']
 c['emb_dim'] = 100
+c['def_emb_dim'] = 100
+c['def_dim'] = 100
 c['translate_dim'] = 100
 c['batch_size'] = 256
+c['combiner_shortcut'] = True
 c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma.json'
 c['data_path'] = 'snli/'
 c['exclude_top_k'] = 3000

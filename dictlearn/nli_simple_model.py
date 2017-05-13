@@ -120,8 +120,8 @@ class NLISimple(Initializable):
             else:
                 raise NotImplementedError("Not implemented encoder")
 
-            if def_emb_dim != emb_dim:
-                self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_dim)
+            if def_emb_translate_dim != emb_dim:
+                self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_translate_dim)
                 children.append(self._translate_pre_def)
             else:
                 self._translate_pre_def = None
@@ -183,7 +183,7 @@ class NLISimple(Initializable):
     def get_def_embeddings_lookups(self):
         return [self._def_reader._def_lookup]
 
-    def set_def_embeddings_lookups(self, embeddings):
+    def set_def_embeddings(self, embeddings):
         self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
     def set_embeddings(self, embeddings):
