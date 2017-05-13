@@ -417,7 +417,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     if c['layout'] == 'snli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=1, seed=seed),
+            data.get_stream('valid', batch_size=14, seed=seed),
             before_training=not fast_start,
             on_resumption=True,
             after_training=True,
@@ -427,14 +427,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     elif c['layout'] == 'mnli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_matched', batch_size=1, seed=seed),
+            data.get_stream('valid_matched', batch_size=14, seed=seed),
             every_n_batches=c['mon_freq_valid'],
             on_resumption=True,
             after_training=True,
             prefix='valid_matched')
         validation_mismatched = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_mismatched', batch_size=1, seed=seed),
+            data.get_stream('valid_mismatched', batch_size=14, seed=seed),
             every_n_batches=c['mon_freq_valid'],
             before_training=not fast_start,
             on_resumption=True,
