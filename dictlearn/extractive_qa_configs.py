@@ -172,6 +172,10 @@ c['def_num_input_words'] = 3000
 c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_dict_wordnet3.2.txt'
 qar['squad_glove8'] = c
 
+# a baseline: what if we use just lemmas as definitions?
+c = qar['squad_glove7']
+c['dict_path'] = 'squad/squad_from_scratch/dict_lemmalower.json'
+qar['squad_glove9'] = c
 # possible todo:
 # glove + dict + spelling
 # recursion
