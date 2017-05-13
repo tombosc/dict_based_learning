@@ -31,6 +31,7 @@ nli_esim_config_registry.set_root_config({
     'def_dim': 100,
     'def_emb_dim': -1,
     "combiner_dropout": 0.0,
+    'num_input_def_words': 0,
     "combiner_dropout_type": "per_unit",
     'with_too_long_defs': 'drop',
     "combiner_gating": "none",

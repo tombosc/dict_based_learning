@@ -237,13 +237,10 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         f.write(" ".join(sys.argv))
 
     # Make data paths nice
-    if c['dict_path']:
-        if not os.path.isabs(c['dict_path']):
-            c['dict_path'] = os.path.join(fuel.config.data_path[0], c['dict_path'])
-
-    if c['embedding_path']:
-        if not os.path.isabs(c['embedding_path']):
-            c['embedding_path'] = os.path.join(fuel.config.data_path[0], c['embedding_path'])
+    for path in ['dict_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
+        if c[path]:
+            if not os.path.isabs(c[path]):
+                c[path] = os.path.join(fuel.config.data_path[0], c[path])
 
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     main_loop_best_val_path = os.path.join(save_path, 'main_loop_best_val.tar')
