@@ -119,7 +119,6 @@ class Dictionary(object):
                 lower_defs = self._data.get(word_lower)
                 # This can be quite slow. But this code will not be used
                 # very often.
-
                 if not lower_defs:
                     if lower_defs is None:
                         # This can happen when API just dies (then vocab has, dict doesnt)

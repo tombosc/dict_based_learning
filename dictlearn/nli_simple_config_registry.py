@@ -62,7 +62,7 @@ snli_config_registry['baseline'] = c
 
 c = snli_config_registry['baseline']
 c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = 'data/snli/glove.840B.300d.npy'
+c['embedding_path'] = 'snli/glove.840B.300d.npy'
 snli_config_registry['baseline_glove'] = c
 
 c = snli_config_registry['root']
@@ -72,7 +72,7 @@ snli_config_registry['baseline_mnli'] = c
 
 c = snli_config_registry['root']
 c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = 'data/mnli/glove.840B.300d.npy'
+c['embedding_path'] = 'mnli/glove.840B.300d.npy'
 c['data_path'] = 'mnli/'
 c['layout'] = 'mnli'
 snli_config_registry['baseline_mnli_glove'] = c
@@ -81,7 +81,7 @@ snli_config_registry['baseline_mnli_glove'] = c
 
 # Looking up words from test/dev as well
 c = snli_config_registry['root']
-c['dict_path'] = 'data/mnli/dict_all_with_lowercase.json'
+c['dict_path'] = 'mnli/dict_all_with_lowercase.json'
 c['data_path'] = 'mnli/'
 c['layout'] = 'mnli'
 c['exclude_top_k'] = 2500
@@ -98,7 +98,7 @@ snli_config_registry['sum_small_dict_mnli'] = c
 
 # Looking up words from test/dev as well
 c = snli_config_registry['root']
-c['dict_path'] = 'data/snli/dict_all.json'
+c['dict_path'] = 'snli/dict_all.json'
 c['data_path'] = 'snli/'
 c['exclude_top_k'] = 2500
 c['share_def_lookup'] = False

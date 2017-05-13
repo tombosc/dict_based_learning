@@ -58,7 +58,7 @@ nli_esim_config_registry['baseline'] = c
 
 c = nli_esim_config_registry['root']
 c['train_emb'] = 0
-c['embedding_path'] = 'data/snli/glove.840B.300d.npy'
+c['embedding_path'] = 'snli/glove.840B.300d.npy'
 nli_esim_config_registry['baseline_glove'] = c
 
 c = nli_esim_config_registry['root']
@@ -68,8 +68,8 @@ nli_esim_config_registry['baseline_3k'] = c
 ### Dict configs ###
 
 c = nli_esim_config_registry['root']
-c['dict_path'] = 'data/snli/wordnet_dict_add_lower_lemma.json'
-c['vocab_def'] = 'data/snli/wordnet_dict_add_lower_lemma_vocab.txt'
+c['dict_path'] = 'snli/wordnet_dict_add_lower_lemma.json'
+c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_vocab.txt'
 c['num_input_def_words'] = 11000
 c['combiner_shortcut'] = True
 c['combiner_reader_translate'] = False
@@ -77,7 +77,7 @@ c['data_path'] = 'snli'
 c['def_dim'] = 100
 c['emb_dim'] = 100
 c['layout'] = 'snli'
-c['exclude_top_k'] = 1000
+c['-'] = 1000
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
 c['max_def_per_word'] = 20
