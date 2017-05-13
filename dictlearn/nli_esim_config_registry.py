@@ -28,9 +28,13 @@ nli_esim_config_registry.set_root_config({
     'disregard_word_embeddings': False,
     'exclude_top_k': -1,
     'max_def_length': 50,
+    'embedding_def_path': '',
     'def_dim': 100,
+    'combiner_reader_translate': False,
+    'def_emb_translate_dim': -1,
     'def_emb_dim': -1,
     "combiner_dropout": 0.0,
+    'num_input_def_words': 0,
     "combiner_dropout_type": "per_unit",
     'with_too_long_defs': 'drop',
     "combiner_gating": "none",
@@ -58,7 +62,7 @@ nli_esim_config_registry['baseline'] = c
 
 c = nli_esim_config_registry['root']
 c['train_emb'] = 0
-c['embedding_path'] = 'data/snli/glove.840B.300d.npy'
+c['embedding_path'] = 'snli/glove.840B.300d.npy'
 nli_esim_config_registry['baseline_glove'] = c
 
 c = nli_esim_config_registry['root']
@@ -67,17 +71,39 @@ nli_esim_config_registry['baseline_3k'] = c
 
 ### Dict configs ###
 
+# Simple dict
 c = nli_esim_config_registry['root']
-c['dict_path'] = 'data/snli/wordnet_dict_add_lower_lemma.json'
-c['vocab_def'] = 'data/snli/wordnet_dict_add_lower_lemma_vocab.txt'
+c['dict_path'] = 'snli/wordnet_dict_add_lower_lowerllemma.json'
+c['num_input_def_words'] = 11000
+c['combiner_shortcut'] = False
+c['combiner_reader_translate'] = False
+c['data_path'] = 'snli'
+c['def_dim'] = 100
+c['def_emb_dim'] = 100
+c['emb_dim'] = 100
+c['layout'] = 'snli'
+c['reader_type'] = 'mean'
+c['max_def_per_word'] = 20
+c['embedding_def_path'] = ''
+c['combiner_dropout'] = 0.0
+c['with_too_long_defs'] = 'drop'
+c['train_emb'] = 1
+c['embedding_path'] = ''
+c['num_input_words'] = 3000
+c['compose_type'] = 'sum'
+nli_esim_config_registry['sum_small_dict_simple'] = c
+
+c = nli_esim_config_registry['root']
+c['dict_path'] = 'snli/wordnet_dict_add_lower_lowerllemma.json'
+c['vocab_def'] = 'snli/wordnet_dict_add_lower_lowerllemma_vocab.txt'
 c['num_input_def_words'] = 11000
 c['combiner_shortcut'] = True
 c['combiner_reader_translate'] = False
 c['data_path'] = 'snli'
 c['def_dim'] = 100
+c['def_emb_dim'] = 100
 c['emb_dim'] = 100
 c['layout'] = 'snli'
-c['exclude_top_k'] = 1000
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean'
 c['max_def_per_word'] = 20
@@ -85,6 +111,7 @@ c['combiner_dropout'] = 0.0
 c['with_too_long_defs'] = 'drop'
 c['train_emb'] = 1
 c['embedding_path'] = ''
+c['embedding_def_path'] = ''
 c['num_input_words'] = 3000
 c['compose_type'] = 'sum'
 # TODO: Reg

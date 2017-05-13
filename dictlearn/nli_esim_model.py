@@ -40,7 +40,7 @@ class ESIM(Initializable):
     """
 
     # seq_length, emb_dim, hidden_dim
-    def __init__(self, dim, emb_dim, vocab, def_dim=-1, encoder='bilstm', bn=True,
+    def __init__(self, dim, emb_dim, vocab, def_emb_dim=-1, def_dim=-1, encoder='bilstm', bn=True,
             def_reader=None, def_combiner=None, dropout=0.5, num_input_words=-1,
             # Others
             **kwargs):
@@ -53,6 +53,11 @@ class ESIM(Initializable):
 
         if encoder != 'bilstm':
             raise NotImplementedError()
+
+        if def_emb_dim < 0:
+            self._def_emb_dim = emb_dim
+        else:
+            self._def_emb_dim = def_emb_dim
 
         if def_dim < 0:
             self._def_dim = emb_dim
@@ -67,6 +72,12 @@ class ESIM(Initializable):
 
         children = []
 
+        if self._def_emb_dim != self._emb_dim:
+            self._translate_pre_def = Linear(input_dim=emb_dim, output_dim=def_emb_dim)
+            children.append(self._translate_pre_def)
+        else:
+            self._translate_pre_def = None
+
         ## Embedding
         self._lookup = LookupTable(self._num_input_words, emb_dim, weights_init=GlorotUniform())
         children.append(self._lookup)
@@ -80,9 +91,9 @@ class ESIM(Initializable):
             self._final_emb_dim = self._emb_dim
 
         ## BiLSTM
-        self._hyp_bidir_fork = Linear(emb_dim, 4 * dim, name='hyp_bidir_fork')
+        self._hyp_bidir_fork = Linear(self._def_dim if def_reader else self._emb_dim, 4 * dim, name='hyp_bidir_fork')
         self._hyp_bidir = Bidirectional(LSTM(dim), name='hyp_bidir')
-        self._prem_bidir_fork = Linear(emb_dim, 4 * dim, name='prem_bidir_fork')
+        self._prem_bidir_fork = Linear(self._def_dim if def_reader else self._emb_dim, 4 * dim, name='prem_bidir_fork')
         self._prem_bidir = Bidirectional(LSTM(dim), name='prem_bidir')
         children.extend([self._hyp_bidir_fork, self._hyp_bidir])
         children.extend([self._prem_bidir, self._prem_bidir_fork])
@@ -116,6 +127,12 @@ class ESIM(Initializable):
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
+    def get_def_embeddings(self):
+        return [self._def_reader._def_lookup]
+
+    def set_def_embeddings(self, embeddings):
+        self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
+
     @application
     def apply(self, application_call,
             s1_preunk, s1_mask, s2_preunk, s2_mask, def_mask=None,
@@ -131,10 +148,23 @@ class ESIM(Initializable):
         s1_emb = self._lookup.apply(s1)
         s2_emb = self._lookup.apply(s2)
 
+        application_call.add_auxiliary_variable(
+            1 * s1_emb,
+            name='s1_word_embeddings')
+
         if self._def_reader:
             assert defs is not None
 
             def_embs = self._def_reader.apply(defs, def_mask)
+
+            if self._translate_pre_def:
+                logger.info("Translate pre def")
+                s1_emb = s1_emb.reshape((s1_emb.shape[0] * s1_emb.shape[1], s1_emb.shape[2]))
+                s2_emb = s2_emb.reshape((s2_emb.shape[0] * s2_emb.shape[1], s2_emb.shape[2]))
+                s1_emb = self._translate_pre_def.apply(s1_emb)
+                s2_emb = self._translate_pre_def.apply(s2_emb)
+                s1_emb = s1_emb.reshape((s1_preunk.shape[0], s1_preunk.shape[1], -1))
+                s2_emb = s2_emb.reshape((s2_preunk.shape[0], s2_preunk.shape[1], -1))
 
             s1_emb = self._def_combiner.apply(
                 s1_emb, s1_mask,
@@ -144,9 +174,6 @@ class ESIM(Initializable):
                 s2_emb, s2_mask,
                 def_embs, s2_def_map, word_ids=s2, train_phase=train_phase, call_name="s2")
         else:
-            application_call.add_auxiliary_variable(
-                1*s1_emb,
-                name='s1_word_embeddings')
             if train_phase and self._dropout > 0:
                 s1_emb = apply_dropout(s1_emb, drop_prob=self._dropout)
                 s2_emb = apply_dropout(s2_emb, drop_prob=self._dropout)
