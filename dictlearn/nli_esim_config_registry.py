@@ -98,8 +98,8 @@ nli_esim_config_registry['sum_small_dict_simple'] = c
 c = nli_esim_config_registry['root']
 c['dict_path'] = 'snli/wordnet_dict_add_lower_lowerllemma.json'
 c['vocab_def'] = 'snli/wordnet_dict_add_lower_lowerllemma_vocab.txt'
-c['num_input_def_words'] = 11000
-c['combiner_shortcut'] = True
+c['num_input_def_words'] = -1
+c['combiner_shortcut'] = False
 c['combiner_reader_translate'] = False
 c['data_path'] = 'snli'
 c['def_dim'] = 100
@@ -118,3 +118,9 @@ c['num_input_words'] = 3000
 c['compose_type'] = 'sum'
 # TODO: Reg
 nli_esim_config_registry['sum_small_dict'] = c
+
+#####################
+### Paper configs ###
+#####################
+
+# A) "Normal" baselines

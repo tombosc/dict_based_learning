@@ -87,16 +87,22 @@ def _initialize_simple_model_and_data(c):
     if vocab is None:
         vocab = data.vocab
 
+    if c.get('vocab_text', ''):
+        vocab_text = Vocabulary(c['vocab_text'])
+    else:
+        vocab_text = vocab
+
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
+        logging.info("Loaded dict with {} entries".format(dict.num_entries()))
 
         if len(c['vocab_def']):
             retrieval_vocab = Vocabulary(c['vocab_def'])
         else:
             retrieval_vocab = data.vocab
 
-        retrieval = Retrieval(vocab_text=data.vocab, vocab_def=retrieval_vocab,
+        retrieval = Retrieval(vocab_text=vocab_text, vocab_def=retrieval_vocab,
             dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
@@ -154,6 +160,11 @@ def _initialize_esim_model_and_data(c):
     if vocab is None:
         vocab = data.vocab
 
+    if c.get('vocab_text', ''):
+        vocab_text = Vocabulary(c['vocab_text'])
+    else:
+        vocab_text = vocab
+
     # def_emb_dim defaults to emb_dim
     # def_emb_translate_dim default to def_emb_dim
     def_emb_dim = c.get('def_emb_dim', 0) if c.get('def_emb_dim', 0) > 0 else c['emb_dim']
@@ -162,13 +173,14 @@ def _initialize_esim_model_and_data(c):
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
+        logging.info("Loaded dict with {} entries".format(dict.num_entries()))
 
         if len(c['vocab_def']):
             retrieval_vocab = Vocabulary(c['vocab_def'])
         else:
             retrieval_vocab = data.vocab
 
-        retrieval = Retrieval(vocab_text=data.vocab, vocab_def=retrieval_vocab,
+        retrieval = Retrieval(vocab_text=vocab_text, vocab_def=retrieval_vocab,
             dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
@@ -239,7 +251,6 @@ def _initialize_esim_model_and_data(c):
 def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, seed, model='simple'):
     if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
         raise Exception("Some words have neither word nor def embedding")
-
     c = config
     logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
     if not os.path.exists(save_path):
@@ -472,7 +483,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         raise NotImplementedError()
 
     # Similarity trackers for embeddings
-    if len(c['vocab_def']):
+    if len(c.get('vocab_def', '')):
         retrieval_vocab = Vocabulary(c['vocab_def'])
     else:
         retrieval_vocab = data.vocab
@@ -519,14 +530,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         (main_loop_best_val_path,)))
     extensions.extend([DumpCSVSummaries(
         save_path,
-        every_n_batches=c['mon_freq'],
+        every_n_batches=c['mon_freq_valid'],
         after_training=True),
         DumpTensorflowSummaries(
             save_path,
             after_epoch=True,
-            every_n_batches=c['mon_freq'],
+            every_n_batches=c['mon_freq_valid'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq']),
+        Printing(every_n_batches=c['mon_freq_valid']),
         PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
         FinishAfter(after_n_batches=c['n_batches'])])
     logger.info(extensions)
