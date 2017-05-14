@@ -5,6 +5,7 @@ lm_config_registry.set_root_config({
     # data
     'data_path': 'onebillionword/',
     'dict_path' : "",
+    'vocab_path': "",
     'layout' : 'standard',
     'num_input_words' : 10000,
     'num_output_words': 10000,
@@ -13,11 +14,11 @@ lm_config_registry.set_root_config({
     'batch_size_valid' : 64,
     'max_def_length' : 100,
     'max_def_per_word': 1000,
-    'exclude_top_k' : -1,
-    'top_k_words' : -1,
+    'exclude_top_k' : 0,
 
     # model
     'emb_dim' : 500,
+    'emb_def_dim': 500,
     'dim' : 500,
     'compose_type' : 'sum',
     'disregard_word_embeddings' : False,
@@ -150,6 +151,7 @@ lm_config_registry['obw_10k_dict2_n'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
+c['emb_def_dim'] = 300
 c['emb_dim'] = 300
 lm_config_registry['obw_base_10k_glove300k'] = c
 
@@ -173,6 +175,7 @@ c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
 c['dict_path'] = 'onebillionword/dict_obw_identity.json'
 c['emb_dim'] = 300
+c['emb_def_dim'] = 300
 c['exclude_top_k'] = 10000
 c['def_reader'] = 'mean'
 c['standalone_def_lookup'] = True
@@ -194,4 +197,56 @@ lm_config_registry['obw_10k_dict1_wnl'] = c
 c = lm_config_registry['obw_10k_dict2']
 c = new_dictify_addlemma(c)
 lm_config_registry['obw_10k_dict2_wnl'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k.txt'
+c['num_input_words'] = 30000
+lm_config_registry['obw_base_10k_restr_wnl_30k'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['dict_path'] = 'onebillionword/dict_identity_lemma_lowercase.json'
+c['def_reader'] = 'mean'
+c['num_input_words'] = 10000
+c['compose_type'] = 'transform_and_sum'
+c['standalone_def_lookup'] = False
+c['exclude_top_k'] = 10000
+lm_config_registry['obw_base_10k_lemma_lc'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['emb_dim'] = 300
+lm_config_registry['obw_base_10k_emb300'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['num_input_words'] = 100
+c['num_output_words']= 25
+c['batch_size'] = 1
+c['batch_size_valid'] = 1
+# model
+c['emb_dim'] = 7
+c['dim'] = 9
+c['compose_type'] = 'sum'
+# monitoring and checkpointing
+c['mon_freq_train'] = 1
+c['mon_freq_valid'] = 100000
+c['save_freq_batches'] = 1000
+lm_config_registry['debug_1'] = c
+
+c['batch_size'] = 32
+c['batch_size_valid'] = 32
+c['mon_freq_train'] = 10
+c['mon_freq_valid'] = 100
+c['save_freq_batches'] = 100
+lm_config_registry['debug_2'] = c
+
+c['emb_def_dim'] = 3
+lm_config_registry['debug_3'] = c
+
+c = lm_config_registry['obw_10k_dict2_wnl']
+
+c = lm_config_registry['obw_10k_dict2_wnl']
+c['max_def_per_word'] = 20 # covers > 99% of the defs
+lm_config_registry['obw_10k_dict2_wnl2'] = c
+
+c = lm_config_registry['obw_base_10k_tr_glove_300k']
+c['emb_def_dim'] = 300
 
