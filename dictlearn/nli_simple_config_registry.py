@@ -138,22 +138,25 @@ snli_config_registry['paper_baseline_glove'] = c
 # B) Dict without glove
 
 ## Less tuned fellow
+## Should be same as results_snli_2_05_sum_small_dict_3k_exclude1k_shortcut_transl_new_dict_all
 c = snli_config_registry['root']
-c['emb_dim'] = 100
-c['def_emb_dim'] = 100
-c['def_dim'] = 100
-c['translate_dim'] = 100
-c['batch_size'] = 256
+c['batch_size'] = 512
+c['dropout'] = 0.3
+c['emb_dim'] = 300
+c['def_emb_dim'] = 300
+c['def_dim'] = 300
+c['batch_size'] = 512
 c['combiner_shortcut'] = True
 c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma.json'
 c['data_path'] = 'snli/'
-c['exclude_top_k'] = 3000
+c['exclude_top_k'] = 1000
 c['combiner_shortcut'] = True
 c['share_def_lookup'] = False
 c['layout'] = 'snli'
 c['reader_type'] = 'mean'
 c['max_def_per_word'] = 20
 c['combiner_dropout'] = 0.0
+c['translate_dim'] = 300
 c['train_emb'] = 1
 c['embedding_path'] = ''
 c['num_input_words'] = 3000
@@ -164,12 +167,19 @@ c['combiner_reader_translate'] = False
 snli_config_registry['paper_dict_simple'] = c
 
 ## More tuned fellow
+## Should be same as results_snli_8_05_sum_small_dict_3k_exclude1k_embdim=100_udrop=0.2_bs256_noreg
 c = snli_config_registry['paper_dict_simple']
+c['def_dim'] = 100
+c['def_emb_dim'] = 100
+c['emb_dim'] = 100
+c['translate_dim'] = 300
+c['batch_size'] = 256
+c['combiner_dropout'] = 0.2
+c['combiner_dropout_type'] = 'per_unit'
 c['num_input_def_words'] = 11000
 c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_vocab.txt'
 c['dropout'] = 0.15
 c['l2'] = 0.0
-c['translate_dim'] = 100
 c['combiner_reader_translate'] = False
 snli_config_registry['paper_dict_tuned'] = c
 
