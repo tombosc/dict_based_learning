@@ -104,6 +104,25 @@ class DumpPredictions(SimpleExtension):
             json.dump(self._text_match_ratio.predictions, dst, indent=2, sort_keys=True)
 
 
+class Annealing(SimpleExtension):
+
+    def __init__(self, annealing_learning_rate, *args, **kwargs):
+        self._annealing_learning_rate = annealing_learning_rate
+        kwargs['before_training'] = True
+        super(Annealing, self).__init__(*args, **kwargs)
+
+    def do(self, which_callback, *args, **kwargs):
+        if which_callback == 'before_training':
+            cg = ComputationGraph(self.main_loop.algorithm.total_step_norm)
+            self._learning_rate_var, = VariableFilter(theano_name='learning_rate')(cg)
+            logger.debug("Annealing extension is initialized")
+        elif which_callback == 'after_epoch':
+            logger.debug("Annealing the learning rate to {}".format(self._annealing_learning_rate))
+            self._learning_rate_var.set_value(self._annealing_learning_rate)
+        else:
+            raise ValueError("don't know what to do")
+
+
 def initialize_data_and_model(config):
     c = config
     vocab = None
@@ -120,7 +139,8 @@ def initialize_data_and_model(config):
         data._retrieval = Retrieval(
             dict_vocab, Dictionary(
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
-            c['max_def_length'], c['exclude_top_k'])
+            c['max_def_length'], c['exclude_top_k'],
+            with_too_long_defs=c['with_too_long_defs'])
     qam = ExtractiveQAModel(
         c['dim'], c['emb_dim'], c['readout_dims'],
         c['num_input_words'], c['def_num_input_words'], data.vocab,
@@ -151,6 +171,7 @@ def train_extractive_qa(new_training_job, config, save_path,
     root_path = os.path.join(save_path, 'training_state')
     extension = '.tar'
     tar_path = root_path + extension
+    best_tar_path = root_path + '_best' + extension
 
     c = config
     data, qam = initialize_data_and_model(c)
@@ -313,18 +334,22 @@ def train_extractive_qa(new_training_job, config, save_path,
             .add_condition(
                 ['after_batch', 'after_epoch'],
                  OnLogRecord(track_the_best_text.notification_name),
-                 (root_path + "_best" + extension,)),
+                 (best_tar_path,)),
         DumpTensorflowSummaries(
             save_path,
             after_epoch=True,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
-        #RetrievalPrintStats(
-        #    retrieval=data._retrieval, every_n_batches=c['mon_freq_train'],
-        #    before_training=not fast_start),
+        RetrievalPrintStats(
+            retrieval=data._retrieval, every_n_batches=c['mon_freq_train'],
+            before_training=not fast_start),
         Printing(after_epoch=True,
                  every_n_batches=c['mon_freq_train']),
-        FinishAfter(after_n_batches=c['n_batches'])
+        FinishAfter(after_n_batches=c['n_batches']),
+        Annealing(c['annealing_learning_rate'],
+                  after_n_epochs=c['annealing_start_epoch']),
+        LoadNoUnpickling(best_tar_path,
+                         after_n_epochs=c['annealing_start_epoch'])
     ])
 
     main_loop = MainLoop(
@@ -336,6 +361,10 @@ def train_extractive_qa(new_training_job, config, save_path,
 
 
 def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
+    if not dest_path:
+        dest_path = os.path.join(os.path.dirname(tar_path), 'predictions.json')
+    save_path = os.path.dirname(dest_path)
+
     c = config
     data, qam = initialize_data_and_model(c)
     costs = qam.apply_with_default_vars()
@@ -382,49 +411,46 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
         result = predict_func(**feed)
         correct_answer_span = slice(example['answer_begins'], example['answer_ends'])
         predicted_answer_span = slice(result['begins'][0], result['ends'][0])
-        correct_answer = detokenize(example['contexts_text'][0][correct_answer_span])
-        answer = detokenize(example['contexts_text'][0][predicted_answer_span])
+        correct_answer = example['contexts_text'][0][correct_answer_span]
+        answer = example['contexts_text'][0][predicted_answer_span]
         is_correct = correct_answer_span == predicted_answer_span
-        context = detokenize(example['contexts_text'][0])
-        question = detokenize(example['questions_text'][0])
+        context = example['contexts_text'][0]
+        question = example['questions_text'][0]
         q_id = vec2str(example['q_ids'][0])
 
         # pretty print
         outcome = 'correct' if is_correct else 'wrong'
         print('#{}'.format(done_examples))
-        print(u"CONTEXT:", context)
-        print(u"QUESTION:", question)
-        print(u"RIGHT ANSWER: {}".format(correct_answer))
+        print(u"CONTEXT:", detokenize(context))
+        print(u"QUESTION:", detokenize(question))
+        print(u"RIGHT ANSWER: {}".format(detokenize(correct_answer)))
         print(u"ANSWER (span=[{}, {}], {}):".format(predicted_answer_span.start,
                                                     predicted_answer_span.stop,
                                                     outcome),
-              answer)
+              detokenize(answer))
         print()
 
         # update statistics
         done_examples += 1
         num_correct += is_correct
 
-        if c['coattention']:
-            d2q.append(result['d2q'][0])
-            q2d.append(result['q2d'][0])
 
         # save the results
-        predictions[q_id] = answer
+        predictions[q_id] = detokenize(answer)
         log_entry = {'context': context,
                      'question': question,
                      'answer': answer,
                      'correct_answer': correct_answer,
                      'cost' : float(result['costs'][0])}
+        if c['coattention']:
+            log_entry['d2q'] = cPickle.dumps(result['d2q'][0])
+            log_entry['q2d'] = cPickle.dumps(result['q2d'][0])
         log[q_id] = log_entry
 
         if done_examples % 100 == 0:
             print_stats()
     print_stats()
 
-    # with open(os.path.join(save_path, 'attention.pkl'), 'w') as dst:
-    #     cPickle.dump({'d2q': d2q, 'q2d': q2d}, dst)
-    save_path = os.path.dirname(dest_path)
     with open(os.path.join(save_path, 'log.json'), 'w') as dst:
         json.dump(log, dst, indent=2, sort_keys=True)
     with open(dest_path, 'w') as dst:

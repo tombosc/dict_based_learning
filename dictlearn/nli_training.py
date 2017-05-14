@@ -1,19 +1,20 @@
 """
 Training loop for simple SNLI model that can use dict enchanced embeddings
-
-TODO: What's best way to refactor it. I think training loop taking model + cost would be good enough for us
-TODO: State CSV pd.DataFrame(self._current_log).to_csv(os.path.join(self._save_path, "logs.csv"))
 """
 
 import sys
 
 import numpy as np
+import matplotlib.pylab as plt
 from theano import tensor
 
 sys.path.append("..")
 
 from blocks.bricks.cost import MisclassificationRate
+from blocks.bricks.bn import BatchNormalization
 from blocks.filter import get_brick
+from blocks.bricks import Linear, Sequence
+from blocks.bricks.lookup import LookupTable
 from blocks.bricks.cost import CategoricalCrossEntropy
 from blocks.extensions import ProgressBar, Timestamp
 from blocks.extensions.training import TrackTheBest
@@ -29,6 +30,7 @@ from dictlearn.inits import GlorotUniform
 import os
 import time
 import atexit
+import fuel
 import signal
 import pprint
 import pandas as pd
@@ -45,12 +47,14 @@ from blocks.algorithms import (
     GradientDescent, Adam)
 from blocks.graph import ComputationGraph, apply_batch_normalization, get_batch_normalization_updates
 from blocks.model import Model
+from blocks.graph.bn import (
+    apply_batch_normalization, get_batch_normalization_updates,
+    batch_normalization)
 from blocks.extensions import FinishAfter, Timing, Printing
 from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
-
 from blocks.roles import WEIGHT
 from blocks.filter import VariableFilter
 
@@ -83,16 +87,22 @@ def _initialize_simple_model_and_data(c):
     if vocab is None:
         vocab = data.vocab
 
+    if c.get('vocab_text', ''):
+        vocab_text = Vocabulary(c['vocab_text'])
+    else:
+        vocab_text = vocab
+
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
+        logging.info("Loaded dict with {} entries".format(dict.num_entries()))
 
         if len(c['vocab_def']):
             retrieval_vocab = Vocabulary(c['vocab_def'])
         else:
             retrieval_vocab = data.vocab
 
-        retrieval = Retrieval(vocab_text=data.vocab, vocab_def=retrieval_vocab,
+        retrieval = Retrieval(vocab_text=vocab_text, vocab_def=retrieval_vocab,
             dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
@@ -102,6 +112,9 @@ def _initialize_simple_model_and_data(c):
         retrieval = None
         dict = None
         retrieval_vocab = None
+
+    def_emb_dim = c.get('def_emb_dim', 0) if c.get('def_emb_dim', 0) > 0 else c['emb_dim']
+    def_emb_translate_dim = c.get('def_emb_translate_dim', 0) if c.get('def_emb_translate_dim', 0) > 0 else def_emb_dim
 
     # Initialize
     simple = NLISimple(
@@ -117,7 +130,7 @@ def _initialize_simple_model_and_data(c):
         combiner_dropout_type=c['combiner_dropout_type'], combiner_bn=c['combiner_bn'],
         combiner_gating=c['combiner_gating'], combiner_shortcut=c['combiner_shortcut'],
         combiner_reader_translate=c['combiner_reader_translate'], def_dim=c['def_dim'],
-        num_input_def_words=c['num_input_def_words'],
+        num_input_def_words=c['num_input_def_words'], def_emb_translate_dim=def_emb_translate_dim,
 
         # Init
         weights_init=GlorotUniform(), biases_init=Constant(0.0)
@@ -126,6 +139,10 @@ def _initialize_simple_model_and_data(c):
     if c['encoder'] == 'rnn':
         simple._rnn_encoder.weights_init = Uniform(std=0.1)
     simple.initialize()
+
+    if c.get('embedding_def_path', ''):
+        embeddings = np.load(c['embedding_def_path'])
+        simple.set_def_embeddings(embeddings.astype(theano.config.floatX))
 
     if c['embedding_path']:
         embeddings = np.load(c['embedding_path'])
@@ -146,16 +163,27 @@ def _initialize_esim_model_and_data(c):
     if vocab is None:
         vocab = data.vocab
 
+    if c.get('vocab_text', ''):
+        vocab_text = Vocabulary(c['vocab_text'])
+    else:
+        vocab_text = vocab
+
+    # def_emb_dim defaults to emb_dim
+    # def_emb_translate_dim default to def_emb_dim
+    def_emb_dim = c.get('def_emb_dim', 0) if c.get('def_emb_dim', 0) > 0 else c['emb_dim']
+    def_emb_translate_dim = c.get('def_emb_translate_dim', 0) if c.get('def_emb_translate_dim', 0) > 0 else def_emb_dim
+
     # Dict
     if c['dict_path']:
         dict = Dictionary(c['dict_path'])
+        logging.info("Loaded dict with {} entries".format(dict.num_entries()))
 
         if len(c['vocab_def']):
             retrieval_vocab = Vocabulary(c['vocab_def'])
         else:
             retrieval_vocab = data.vocab
 
-        retrieval = Retrieval(vocab_text=data.vocab, vocab_def=retrieval_vocab,
+        retrieval = Retrieval(vocab_text=vocab_text, vocab_def=retrieval_vocab,
             dictionary=dict, max_def_length=c['max_def_length'],
             with_too_long_defs=c['with_too_long_defs'],
             exclude_top_k=c['exclude_top_k'], max_def_per_word=c['max_def_per_word'])
@@ -163,23 +191,22 @@ def _initialize_esim_model_and_data(c):
         data.set_retrieval(retrieval)
 
         num_input_def_words = c['num_input_def_words'] if c['num_input_def_words'] > 0 else c['num_input_words']
-        def_emb_dim = c['def_emb_dim'] if c['def_emb_dim'] > 0 else c['emb_dim']
 
         # TODO: Refactor lookup passing to reader. Very incoventient ATM
         if c['reader_type'] == "rnn":
             def_reader = LSTMReadDefinitions(num_input_words=num_input_def_words,
-                weights_init=Uniform(width=0.1), translate=c['combiner_reader_translate'],
-                biases_init=Constant(0.), dim=c['def_dim'], emb_dim=def_emb_dim,
+                weights_init=Uniform(width=0.1), biases_init=Constant(0.), dim=c['def_dim'],
+                emb_dim=def_emb_dim,
                 vocab=vocab, lookup=None)
         elif c['reader_type'] == "mean":
            def_reader = MeanPoolReadDefinitions(num_input_words=num_input_def_words,
                 translate=c['combiner_reader_translate'], vocab=vocab,
-                weights_init=Uniform(width=0.1), lookup=None, dim=def_emb_dim,
+                weights_init=Uniform(width=0.1), lookup=None, dim=def_emb_translate_dim,
                 biases_init=Constant(0.), emb_dim=def_emb_dim)
         else:
             raise NotImplementedError()
 
-        def_combiner = MeanPoolCombiner(dim=c['def_dim'], emb_dim=def_emb_dim,
+        def_combiner = MeanPoolCombiner(dim=c['def_dim'], emb_dim=def_emb_translate_dim,
             dropout=c['combiner_dropout'], dropout_type=c['combiner_dropout_type'],
             def_word_gating=c['combiner_gating'],
             shortcut_unk_and_excluded=c['combiner_shortcut'], num_input_words=num_input_def_words,
@@ -194,9 +221,11 @@ def _initialize_esim_model_and_data(c):
         def_reader = None
 
     # Initialize
+
     simple = ESIM(
         # Baseline arguments
         emb_dim=c['emb_dim'], vocab=data.vocab, encoder=c['encoder'], dropout=c['dropout'],
+        def_emb_translate_dim=def_emb_translate_dim,
         num_input_words=c['num_input_words'], def_dim=c['def_dim'], dim=c['dim'],
         bn=c.get('bn', True),
 
@@ -216,12 +245,15 @@ def _initialize_esim_model_and_data(c):
         embeddings = np.load(c['embedding_path'])
         simple.set_embeddings(embeddings.astype(theano.config.floatX))
 
+    if c.get('embedding_def_path', ''):
+        embeddings = np.load(c['embedding_def_path'])
+        simple.set_def_embeddings(embeddings.astype(theano.config.floatX))
+
     return simple, data, dict, retrieval, vocab
 
 def train_snli_model(new_training_job, config, save_path, params, fast_start, fuel_server, seed, model='simple'):
     if config['exclude_top_k'] > config['num_input_words'] and config['num_input_words'] > 0:
         raise Exception("Some words have neither word nor def embedding")
-
     c = config
     logger = configure_logger(name="snli_baseline_training", log_file=os.path.join(save_path, "log.txt"))
     if not os.path.exists(save_path):
@@ -231,6 +263,13 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         logger.info("Continue an existing job")
     with open(os.path.join(save_path, "cmd.txt"), "w") as f:
         f.write(" ".join(sys.argv))
+
+    # Make data paths nice
+    for path in ['dict_path', 'embedding_def_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
+        if c.get(path, ''):
+            if not os.path.isabs(c[path]):
+                c[path] = os.path.join(fuel.config.data_path[0], c[path])
+
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     main_loop_best_val_path = os.path.join(save_path, 'main_loop_best_val.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
@@ -263,14 +302,18 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
 
     cg = {}
     for train_phase in [True, False]:
-        pred = nli_model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
-            s2_def_map=s2_def_map, train_phase=train_phase)
+        # NOTE: Please don't change outputs of cg
+        if train_phase:
+            with batch_normalization(nli_model):
+                pred = nli_model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+                    s2_def_map=s2_def_map, train_phase=train_phase)
+        else:
+            pred = nli_model.apply(s1, s1_mask, s2, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
+                s2_def_map=s2_def_map, train_phase=train_phase)
+
         cost = CategoricalCrossEntropy().apply(y.flatten(), pred)
         error_rate = MisclassificationRate().apply(y.flatten(), pred)
-        # NOTE: Please don't change outputs of cg
         cg[train_phase] = ComputationGraph([cost, error_rate])
-        if c.get('bn', True):
-            cg[train_phase] = apply_batch_normalization(cg[train_phase])
 
     # Weight decay (TODO: Make it less bug prone)
     if model == 'simple':
@@ -328,6 +371,11 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         assert len(set(frozen_params) & set(train_params)) > 0
     else:
         frozen_params = []
+    if not c.get('train_def_emb', 1):
+        frozen_params_def = [p for E in nli_model.get_def_embeddings_lookups() for p in E.parameters]
+        train_params = [p for p in cg[True].parameters]
+        assert len(set(frozen_params_def) & set(train_params)) > 0
+        frozen_params += frozen_params_def
     train_params = [p for p in cg[True].parameters if p not in frozen_params]
     train_params_keys = [get_brick(p).get_hierarchical_name(p) for p in train_params]
 
@@ -410,7 +458,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     if c['layout'] == 'snli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid', batch_size=1, seed=seed),
+            data.get_stream('valid', batch_size=14, seed=seed),
             before_training=not fast_start,
             on_resumption=True,
             after_training=True,
@@ -420,14 +468,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     elif c['layout'] == 'mnli':
         validation = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_matched', batch_size=1, seed=seed),
+            data.get_stream('valid_matched', batch_size=14, seed=seed),
             every_n_batches=c['mon_freq_valid'],
             on_resumption=True,
             after_training=True,
             prefix='valid_matched')
         validation_mismatched = DataStreamMonitoring(
             monitored_vars,
-            data.get_stream('valid_mismatched', batch_size=1, seed=seed),
+            data.get_stream('valid_mismatched', batch_size=14, seed=seed),
             every_n_batches=c['mon_freq_valid'],
             before_training=not fast_start,
             on_resumption=True,
@@ -438,7 +486,7 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         raise NotImplementedError()
 
     # Similarity trackers for embeddings
-    if len(c['vocab_def']):
+    if len(c.get('vocab_def', '')):
         retrieval_vocab = Vocabulary(c['vocab_def'])
     else:
         retrieval_vocab = data.vocab
@@ -449,9 +497,6 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     for name in ['s1_word_embeddings', 's1_dict_word_embeddings', 's1_translated_word_embeddings']:
         variables = VariableFilter(name=name)(cg[False])
         if len(variables):
-            print(variables)
-            # TODO: Why is it 2?
-            # assert len(variables) == 1, "Shouldn't have more auxiliary variables of the same name"
             s1_emb = variables[0]
             logger.info("Adding similarity tracking for " + name)
             # A bit sloppy about downcast
@@ -488,14 +533,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         (main_loop_best_val_path,)))
     extensions.extend([DumpCSVSummaries(
         save_path,
-        every_n_batches=c['mon_freq'],
+        every_n_batches=c['mon_freq_valid'],
         after_training=True),
         DumpTensorflowSummaries(
             save_path,
             after_epoch=True,
-            every_n_batches=c['mon_freq'],
+            every_n_batches=c['mon_freq_valid'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq']),
+        Printing(every_n_batches=c['mon_freq_valid']),
         PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
         FinishAfter(after_n_batches=c['n_batches'])])
     logger.info(extensions)
@@ -524,10 +569,14 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     assert os.path.exists(save_path)
     main_loop.run()
 
+
 def evaluate(c, tar_path, *args, **kwargs):
     """
+    Performs rudimentary evaluation of SNLI/MNLI run
+
     * Runs on valid and test given network
     * Saves all predictions
+    * Saves embedding matrix
     * Saves results.json and predictions.csv
     """
 
@@ -535,6 +584,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     model = kwargs['model']
     assert c.endswith("json")
     c = json.load(open(c))
+
     # Very ugly absolute path fix
     ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/"
     from six import string_types
@@ -542,6 +592,16 @@ def evaluate(c, tar_path, *args, **kwargs):
         if isinstance(c[k], string_types):
             if c[k].startswith(ABS_PATH):
                 c[k] = c[k][len(ABS_PATH):]
+
+    # Make data paths nice
+    for path in ['dict_path', 'embedding_def_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
+        if c.get(path, ''):
+            if not os.path.isabs(c[path]):
+                c[path] = os.path.join(fuel.config.data_path[0], c[path])
+
+    logging.info("Updating config with " + str(kwargs))
+    c.update(**kwargs)
+
     assert tar_path.endswith("tar")
     dest_path = os.path.dirname(tar_path)
     prefix = os.path.splitext(os.path.basename(tar_path))[0]
@@ -568,16 +628,11 @@ def evaluate(c, tar_path, *args, **kwargs):
 
     pred = model.apply(s1_decoded, s1_mask, s2_decoded, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
         s2_def_map=s2_def_map, train_phase=False)
-
     cg = ComputationGraph([pred])
-    cg = apply_batch_normalization(cg)
-
     if c.get("bn", True):
-        bn_params = [p for p, update_p in get_batch_normalization_updates(cg)]
+        bn_params = [p for p in VariableFilter(bricks=[BatchNormalization])(cg) if hasattr(p, "set_value")]
     else:
         bn_params = []
-
-    # cg = ComputationGraph([pred])
 
     # Load model
     model = Model(cg.outputs)
@@ -614,12 +669,33 @@ def evaluate(c, tar_path, *args, **kwargs):
     best_val_acc = logs['valid_misclassificationrate_apply_error_rate'].min()
     logging.info("Best measured valid acc: " + str(best_val_acc))
 
+    # NOTE(kudkudak): We need this to have comparable mean rank and embedding scores
+    reference_vocab = Vocabulary(os.path.join(fuel.config.data_path[0], c['data_path'], 'vocab.txt'))
+    vocab_all = Vocabulary(os.path.join(fuel.config.data_path[0], c['data_path'], 'vocab_all.txt')) # Can include OOV words, which is interesting
+    retrieval_all = Retrieval(vocab_text=used_vocab, dictionary=used_dict, max_def_length=c['max_def_length'],
+        exclude_top_k=0, max_def_per_word=c['max_def_per_word'])
+    # logging.info("Calculating dict and word embeddings for vocab.txt and vocab_all.txt")
+    # for name in ['s1_word_embeddings', 's1_dict_word_embeddings']:
+    #     variables = VariableFilter(name=name)(cg)
+    #     if len(variables):
+    #         s1_emb = variables[0]
+    #         # A bit sloppy about downcast
+    #
+    #         if "dict" in name:
+    #             embedder = construct_dict_embedder(
+    #                 theano.function([s1_decoded, defs, def_mask, s1_def_map], s1_emb, allow_input_downcast=True),
+    #                 vocab=data.vocab, retrieval=retrieval_all)
+    #         else:
+    #             embedder = construct_embedder(theano.function([s1_decoded], s1_emb, allow_input_downcast=True),
+    #                 vocab=data.vocab)
+    #
+    #         for v_name, v in [("vocab_all", vocab_all), ("vocab", reference_vocab)]:
+    #             logging.info("Calculating {} embeddings for {}".format(name, v_name))
+
+
     # Predict
     predict_fnc = theano.function(cg.inputs, pred)
-
     results = {}
-
-    # TODO: Depends on batch_size?
     batch_size = 14
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
@@ -654,6 +730,14 @@ def evaluate(c, tar_path, *args, **kwargs):
                 s1_mean_freq = np.mean([0 if w == data.vocab.unk else used_vocab._id_to_freq[w] for w in s1_no_pad])
                 s2_mean_freq = np.mean([0 if w == data.vocab.unk else used_vocab._id_to_freq[w] for w in s2_no_pad])
 
+                # mean rank word (UNK is max rank)
+                # NOTE(kudkudak): Will break if we reindex unk between vocabs :P
+                s1_mean_rank = np.mean([reference_vocab.size() if reference_vocab.word_to_id(used_vocab.id_to_word(w)) == reference_vocab.unk else reference_vocab.word_to_id(used_vocab.id_to_word(w)) for w in s1_no_pad])
+
+                s2_mean_rank = np.mean([reference_vocab.size()
+                    if reference_vocab.word_to_id(used_vocab.id_to_word(w)) == reference_vocab.unk else
+                    reference_vocab.word_to_id(used_vocab.id_to_word(w)) for w in s2_no_pad])
+
                 rows.append({"pred": label_pred[id], "true_label": ex['label'][id],
                     "s1": ' '.join(s1_decoded),
                     "s2": ' '.join(s2_decoded),
@@ -661,6 +745,8 @@ def evaluate(c, tar_path, *args, **kwargs):
                     "s2_unk_percentage": s2_unk_percentage,
                     "s1_mean_freq": s1_mean_freq,
                     "s2_mean_freq": s2_mean_freq,
+                    "s1_mean_rank": s1_mean_rank,
+                    "s2_mean_rank": s2_mean_rank,
                     "p_0": prob[id, 0], "p_1": prob[id, 1], "p_2": prob[id, 2]})
 
         preds = pd.DataFrame(rows, columns=rows[0].keys())
@@ -671,13 +757,10 @@ def evaluate(c, tar_path, *args, **kwargs):
         if subset == "valid" and np.abs(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc) > 0.001:
             logging.error("!!!")
             logging.error("Found different best_val_acc. Probably due to changed specification of the model class.")
-            # TODO: Why this discrepancy? It is around 0.5% usually
             logging.error("Discrepancy {}".format(( 1 - np.mean(preds.pred == preds.true_label)) - best_val_acc))
             logging.error("!!!")
 
         logging.info(results)
-
-        # Save useful plots
 
     json.dump(results, open(os.path.join(dest_path, prefix + '_results.json'), "w"))
 

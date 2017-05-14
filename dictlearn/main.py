@@ -77,7 +77,7 @@ def main(config_registry, training_func, **training_func_kwargs):
 def main_evaluate(config_registry, evaluate_func):
     parser = argparse.ArgumentParser("Evaluation script")
     parser.add_argument("--part", default='train', help="Part")
-    parser.add_argument("--dest", help="Destination for outputs", default="")
+    parser.add_argument("--dest", help="Destination for outputs")
     parser.add_argument("--num-examples", type=int, help="Number of examples to read", default=-1)
     parser.add_argument("config", help="The configuration")
     parser.add_argument("tar_path", help="The tar file with parameters")

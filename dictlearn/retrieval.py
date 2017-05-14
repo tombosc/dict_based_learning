@@ -119,7 +119,6 @@ class Dictionary(object):
                 lower_defs = self._data.get(word_lower)
                 # This can be quite slow. But this code will not be used
                 # very often.
-
                 if not lower_defs:
                     if lower_defs is None:
                         # This can happen when API just dies (then vocab has, dict doesnt)
@@ -428,22 +427,18 @@ class Retrieval(object):
                     word = vec2str(word)
                 word_id = self._vocab_text.word_to_id(word)
                 if (self._exclude_top_k
-                    and word_id != self._vocab_text.unk
-                    and word_id < self._exclude_top_k):
+                        and word_id != self._vocab_text.unk
+                        and word_id < self._exclude_top_k):
                     continue
 
                 if word not in word_def_indices:
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
 
-                    # TODO(kudkudak): actually it wont count only once each word)
                     # Debug info
                     self._debug_info['N_words'] += 1
                     self._debug_info['N_missed_words'] += (len(word_defs) == 0)
                     # End of debug info
-
-                    if not word_defs:
-                        continue
 
                     for i, def_ in enumerate(word_defs):
                         self._debug_info['N_def'] += 1
