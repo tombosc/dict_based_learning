@@ -37,7 +37,8 @@ from dictlearn.util import rename, masked_root_mean_square, get_free_port
 from dictlearn.theano_util import parameter_stats
 from dictlearn.data import LanguageModellingData
 from dictlearn.extensions import (
-    DumpTensorflowSummaries, StartFuelServer, RetrievalPrintStats)
+    DumpTensorflowSummaries, StartFuelServer, LoadNoUnpickling,
+    RetrievalPrintStats)
 
 from dictlearn.language_model import LanguageModel
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -53,25 +54,31 @@ def train_language_model(new_training_job, config, save_path, params,
         fuel.config.default_seed = seed
         blocks.config.config.default_seed = seed
 
+    # full main loop can be saved...
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
+    # or only state (log + params) which can be useful not to pickle embeddings
+    state_path = os.path.join(save_path, 'training_state.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
+    best_tar_path = os.path.join(save_path, "best_model.tar")
 
     c = config
+    fuel_path = fuel.config.data_path[0]
 
     data = LanguageModellingData(c['data_path'], c['layout'])
     retrieval = None
     if c['dict_path'] and not c['embedding_path']:
-        dict_full_path = os.path.join(fuel.config.data_path[0], c['dict_path'])
+        dict_full_path = os.path.join(fuel_path, c['dict_path'])
         dict_ = Dictionary(dict_full_path)
-        logger.debug("Loaded dictionary with {} entries".format(dict_.num_entries()))
+        logger.debug("Loaded dictionary with {} entries"
+                     .format(dict_.num_entries()))
         retrieval = Retrieval(data.vocab, dict_,
                               c['max_def_length'], c['exclude_top_k'],
                               max_def_per_word=c['max_def_per_word'])
     elif c['embedding_path']:
         assert(c['dict_path'])
-        emb_full_path = os.path.join(fuel.config.data_path[0], c['embedding_path'])
+        emb_full_path = os.path.join(fuel_path, c['embedding_path'])
         embedding_matrix = numpy.load(emb_full_path)
-        dict_full_path = os.path.join(fuel.config.data_path[0], c['dict_path'])
+        dict_full_path = os.path.join(fuel_path, c['dict_path'])
         dict_ = Dictionary(dict_full_path) # should be key=value=word
         if not c['standalone_def_lookup']:
             raise ValueError("Standalone def lookup mandatory")
@@ -184,17 +191,46 @@ def train_language_model(new_training_job, config, save_path, params,
             before_training=True,
             after_epoch=True,
             every_n_batches=c['mon_freq_valid'])
-    extensions = [
-        Load(main_loop_path, load_iteration_state=True, load_log=True)
-            .set_conditions(before_training=not new_training_job),
-        StartFuelServer(original_training_stream,
-                        stream_path,
-                        before_training=fuel_server),
-        Timing(every_n_batches=c['mon_freq_train'])]
+   
+
+    # when loading frozen embeddings, we don't save them in the main loop
+    if c['embedding_path']:
+        load = LoadNoUnpickling(state_path, load_iteration_state=True, load_log=True)
+                   .set_conditions(before_training=not new_training_job),
+        checkpoint = Checkpoint(state_path,
+                                parameters=trained_parameters,
+                                save_main_loop=False,
+                                save_separately=['log','iteration_state'],
+                                before_training=not fast_start,
+                                every_n_batches=c['save_freq_batches'],
+                                after_training=not fast_start)
+    else:
+        load = Load(main_loop_path, load_iteration_state=True, load_log=True)
+                    .set_conditions(before_training=not new_training_job))
+        checkpoint = Checkpoint(main_loop_path,
+                                save_separately=['iteration_state'],
+                                before_training=not fast_start,
+                                every_n_batches=c['save_freq_batches'],
+                                after_training=not fast_start)
+
+    checkpoint = checkpoint.add_condition(
+                                ['after_batch', 'after_epoch'],
+                                OnLogRecord(track_the_best.notification_name),
+                                (best_tar_path,))
+
+    extensions = [
+            load,
+            StartFuelServer(original_training_stream,
+                            stream_path,
+                            before_training=fuel_server),
+            Timing(every_n_batches=c['mon_freq_train'])
+        ]
+
     if retrieval: 
-        extensions.append(RetrievalPrintStats(retrieval=retrieval,
-                          every_n_batches=c['mon_freq_valid'],
-                          before_training=not fast_start))
+        extensions.append(
+            RetrievalPrintStats(retrieval=retrieval,
+                                every_n_batches=c['mon_freq_valid'],
+                                before_training=not fast_start))
 
     extensions.extend([
         TrainingDataMonitoring(
@@ -202,31 +238,24 @@ def train_language_model(new_training_job, config, save_path, params,
             every_n_batches=c['mon_freq_train']),
         validation,
         track_the_best,
-        Checkpoint(main_loop_path,
-                   save_separately=['iteration_state'],
-                   before_training=not fast_start,
-                   every_n_batches=c['save_freq_batches'],
-                   after_training=not fast_start)
-            .add_condition(
-                ['after_batch', 'after_epoch'],
-                 OnLogRecord(track_the_best.notification_name),
-                 (os.path.join(save_path, "best_model.tar"),)),
+        checkpoint,
         DumpTensorflowSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
         Printing(every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
-        ])
+    ])
+
     logger.info("monitored variables during training:" + "\n" +
                 pprint.pformat(train_monitored_vars, width=120))
     logger.info("monitored variables during valid:" + "\n" +
                 pprint.pformat(monitored_vars, width=120))
-
 
     main_loop = MainLoop(
         algorithm,
         training_stream,
         model=Model(cost),
         extensions=extensions)
+
     main_loop.run()
