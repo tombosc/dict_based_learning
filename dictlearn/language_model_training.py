@@ -76,7 +76,7 @@ def initialize_data_and_model(config):
                               exclude_top_k=c['exclude_top_k'],
                               max_def_per_word=1, add_bod_eod=False)
 
-    lm = LanguageModel(c['emb_dim'], c['dim'], c['num_input_words'],
+    lm = LanguageModel(c['emb_dim'], c['emb_def_dim'], c['dim'], c['num_input_words'],
                        c['num_output_words'], data.vocab, retrieval,
                        c['def_reader'],
                        c['standalone_def_lookup'],
@@ -91,16 +91,17 @@ def initialize_data_and_model(config):
         lm.set_def_embeddings(embedding_matrix)
         logger.debug("Embeddings loaded")
 
-    return (data, lm)
+    return (data, lm, retrieval)
 
 
 def train_language_model(new_training_job, config, save_path, params,
                          fast_start, fuel_server, seed):
+    c = config
     if seed:
         fuel.config.default_seed = seed
         blocks.config.config.default_seed = seed
 
-    data, lm = initialize_data_and_model(config)
+    data, lm, retrieval = initialize_data_and_model(config)
     main_loop_path = os.path.join(save_path, 'main_loop.tar')
     stream_path = os.path.join(save_path, 'stream.pkl')
 
@@ -186,11 +187,12 @@ def train_language_model(new_training_job, config, save_path, params,
         valid_stream,
         prefix="valid").set_conditions(
             before_first_epoch=not fast_start,
+            on_resumption = True,
             every_n_batches=c['mon_freq_valid'])
     track_the_best = TrackTheBest(
             validation.record_name(perplexity),
             choose_best=min).set_conditions(
-            before_training=True,
+            on_resumption = True,
             after_epoch=True,
             every_n_batches=c['mon_freq_valid'])
     extensions = [
@@ -224,7 +226,8 @@ def train_language_model(new_training_job, config, save_path, params,
             save_path,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
-        Printing(every_n_batches=c['mon_freq_train']),
+        Printing(on_resumption=True,
+                 every_n_batches=c['mon_freq_train']),
         FinishAfter(after_n_batches=c['n_batches'])
         ])
     logger.info("monitored variables during training:" + "\n" +
