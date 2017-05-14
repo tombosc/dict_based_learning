@@ -50,7 +50,7 @@ class LanguageModel(Initializable):
         If 'fully_connected_tanh', ...
 
     """
-    def __init__(self, emb_dim, dim, num_input_words, num_output_words,
+    def __init__(self, emb_dim, emb_def_dim, dim, num_input_words, num_output_words,
                  vocab, retrieval=None,
                  def_reader='LSTM',
                  standalone_def_lookup=True,
@@ -79,6 +79,8 @@ class LanguageModel(Initializable):
             if standalone_def_lookup:
                 lookup = None
             else:
+                if emb_dim != emb_def_dim:
+                    raise ValueError("emb_dim != emb_def_dim: cannot share lookup")
                 lookup = self._main_lookup
 
             if def_reader == 'LSTM':
@@ -86,14 +88,14 @@ class LanguageModel(Initializable):
                     fork_and_rnn = None
                 else:
                     fork_and_rnn = (self._main_fork, self._main_rnn)
-                self._def_reader = LSTMReadDefinitions(num_input_words, emb_dim,
+                self._def_reader = LSTMReadDefinitions(num_input_words, emb_def_dim,
                                                        dim, vocab, lookup,
                                                        fork_and_rnn)
             
             elif def_reader == 'mean':
-                self._def_reader = MeanPoolReadDefinitions(num_input_words, emb_dim,
+                self._def_reader = MeanPoolReadDefinitions(num_input_words, emb_def_dim,
                                                            dim, vocab, lookup, 
-                                                           translate=True, 
+                                                           translate=(emb_def_dim!=dim), 
                                                            normalize=False)
             else:
                 raise Exception("def reader not understood")
@@ -191,6 +193,9 @@ class LanguageModel(Initializable):
         # The first token is not predicted
         logits = self._pre_softmax.apply(main_rnn_states[:-1])
         targets = output_word_ids.T[1:]
+        out_softmax = self._softmax.apply(logits, extra_ndim=1)
+        application_call.add_auxiliary_variable(
+                out_softmax.copy(), name="proba_out")
         minus_logs = self._softmax.categorical_cross_entropy(
             targets, logits, extra_ndim=1)
 
