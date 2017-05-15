@@ -276,3 +276,10 @@ c['standalone_def_lookup'] = True
 c['compose_type'] = 'transform_and_sum'
 lm_config_registry['10k_glove_lin'] = c
 
+c = lm_config_registry['obw_base_10k_slower']
+c['emb_dim'] = 500
+c['emb_def_dim'] = 500
+c['dim'] = 500
+c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
+c['num_input_words'] = 803808
+lm_config_registry['train_where_def'] = c
