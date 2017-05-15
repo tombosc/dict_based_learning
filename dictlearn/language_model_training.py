@@ -80,7 +80,8 @@ def initialize_data_and_model(config):
                               max_def_per_word=1, add_bod_eod=False)
 
     lm = LanguageModel(c['emb_dim'], c['emb_def_dim'], c['dim'], c['num_input_words'],
-                       c['num_output_words'], data.vocab, retrieval,
+                       c['def_num_input_words'], c['num_output_words'], data.vocab,
+                       retrieval,
                        c['def_reader'],
                        c['standalone_def_lookup'],
                        c['standalone_def_rnn'],

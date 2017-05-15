@@ -50,7 +50,8 @@ class LanguageModel(Initializable):
         If 'fully_connected_tanh', ...
 
     """
-    def __init__(self, emb_dim, emb_def_dim, dim, num_input_words, num_output_words,
+    def __init__(self, emb_dim, emb_def_dim, dim, num_input_words, def_num_input_words,
+                 num_output_words,
                  vocab, retrieval=None,
                  def_reader='LSTM',
                  standalone_def_lookup=True,
@@ -58,6 +59,19 @@ class LanguageModel(Initializable):
                  disregard_word_embeddings=False,
                  compose_type='sum',
                  **kwargs):
+        # TODO(tombosc): document
+        if emb_dim == 0:
+            emb_dim = dim
+        if emb_def_dim == 0:
+            emb_def_dim = emb_dim
+        if num_input_words == 0:
+            num_input_words = vocab.size()
+        if def_num_input_words == 0:
+            def_num_input_words = num_input_words
+
+        if (num_input_words != def_num_input_words) and (not standalone_def_lookup):
+            raise NotImplementedError()
+
         self._num_input_words = num_input_words
         self._num_output_words = num_output_words
         self._vocab = vocab
@@ -88,12 +102,12 @@ class LanguageModel(Initializable):
                     fork_and_rnn = None
                 else:
                     fork_and_rnn = (self._main_fork, self._main_rnn)
-                self._def_reader = LSTMReadDefinitions(num_input_words, emb_def_dim,
+                self._def_reader = LSTMReadDefinitions(def_num_input_words, emb_def_dim,
                                                        dim, vocab, lookup,
                                                        fork_and_rnn)
             
             elif def_reader == 'mean':
-                self._def_reader = MeanPoolReadDefinitions(num_input_words, emb_def_dim,
+                self._def_reader = MeanPoolReadDefinitions(def_num_input_words, emb_def_dim,
                                                            dim, vocab, lookup, 
                                                            translate=(emb_def_dim!=dim), 
                                                            normalize=False)
