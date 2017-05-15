@@ -87,9 +87,9 @@ class Dictionary(object):
             logger.debug("sleep until quota reset")
             time.sleep(60.)
 
-    def setup_identity_mapping(self, vocab):
+    def add_identity_mapping(self, vocab):
         for word in vocab.words:
-            self._data[word] = [[word]]
+            self._data[word].append([word])
             self._meta_data[word] = {"sourceDictionary": "identity"}
         self.save()
 
@@ -419,12 +419,14 @@ class Retrieval(object):
         """
         definitions = []
         def_map = []
-        word_def_indices = defaultdict(list)
+        word_def_indices = {}
 
         for seq_pos, sequence in enumerate(batch):
             for word_pos, word in enumerate(sequence):
                 if isinstance(word, numpy.ndarray):
                     word = vec2str(word)
+                if not word:
+                    continue
                 word_id = self._vocab_text.word_to_id(word)
                 if (self._exclude_top_k
                         and word_id != self._vocab_text.unk
@@ -432,6 +434,7 @@ class Retrieval(object):
                     continue
 
                 if word not in word_def_indices:
+                    word_def_indices[word] = []
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
 
