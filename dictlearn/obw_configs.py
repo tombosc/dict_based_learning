@@ -149,15 +149,6 @@ c['dict_path'] = 'dict_obw.json'
 c['max_def_per_word'] = 3
 lm_config_registry['obw_10k_dict2_n'] = c
 
-c = lm_config_registry['obw_base_10k_slower']
-c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['emb_def_dim'] = 300
-c['emb_dim'] = 300
-lm_config_registry['obw_base_10k_glove300k'] = c
-
-c['num_input_words'] = 300005
-lm_config_registry['obw_base_300k_glove300k'] = c
-
 def new_dictify(c):
     c['dict_path'] = 'onebillionword/wn/dict_wn.json'
     c['max_def_per_word'] = 14
@@ -170,6 +161,24 @@ lm_config_registry['obw_10k_dict1_wn'] = c
 c = lm_config_registry['obw_10k_dict2']
 c = new_dictify(c)
 lm_config_registry['obw_10k_dict2_wn'] = c
+
+# BEGIN OLD GLOVE
+# these use same embedding size for GloVe and trainable which is a problem
+# to compare with baselines which use emb_dim=500
+# also they use huge vocab and thus huge embedding matrix, that's why they are 
+# restricted to 300k
+# the 2 first are not trainable (i.e. there isn't a core of 10k trainable 
+# embeddings, they only use the frozen embeddings)
+# They used old implem where the dict was generated on the fly, so can't run 
+# them anymore
+c = lm_config_registry['obw_base_10k_slower']
+c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
+c['emb_def_dim'] = 300
+c['emb_dim'] = 300
+lm_config_registry['obw_base_10k_glove300k'] = c
+
+c['num_input_words'] = 300005
+lm_config_registry['obw_base_300k_glove300k'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
@@ -185,6 +194,21 @@ lm_config_registry['obw_base_10k_tr_glove_300k'] = c
 c['embedding_path']= 'onebillionword/wn/glove.840B.300d_300k_common.npy'
 lm_config_registry['obw_base_10k_tr_glove_300k_restr'] = c
 
+# The following is a baseline for these (emb_dim=300)
+c = lm_config_registry['obw_base_10k_slower']
+c['emb_dim'] = 300
+lm_config_registry['obw_base_10k_emb300'] = c
+
+# This one is basically 30k trainable restricted to vocab that's also in glove 
+# in the 0-30 range... 
+# TODO(tombosc): double check and delete
+c = lm_config_registry['obw_base_10k_slower']
+c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k.txt'
+c['num_input_words'] = 30000
+lm_config_registry['obw_base_10k_restr_wnl_30k'] = c
+
+# END OLD GLOVE
+
 def new_dictify_addlemma(c):
     c['dict_path'] = 'onebillionword/wn/dict_obw_wn.json'
     c['max_def_per_word'] = 10 # covers > 95% (of defs, not occurences)
@@ -198,10 +222,6 @@ c = lm_config_registry['obw_10k_dict2']
 c = new_dictify_addlemma(c)
 lm_config_registry['obw_10k_dict2_wnl'] = c
 
-c = lm_config_registry['obw_base_10k_slower']
-c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k.txt'
-c['num_input_words'] = 30000
-lm_config_registry['obw_base_10k_restr_wnl_30k'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['dict_path'] = 'onebillionword/dict_identity_lemma_lowercase.json'
@@ -212,9 +232,6 @@ c['standalone_def_lookup'] = False
 c['exclude_top_k'] = 10000
 lm_config_registry['obw_base_10k_lemma_lc'] = c
 
-c = lm_config_registry['obw_base_10k_slower']
-c['emb_dim'] = 300
-lm_config_registry['obw_base_10k_emb300'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['num_input_words'] = 100
@@ -242,11 +259,27 @@ c['emb_def_dim'] = 3
 lm_config_registry['debug_3'] = c
 
 c = lm_config_registry['obw_10k_dict2_wnl']
-
-c = lm_config_registry['obw_10k_dict2_wnl']
 c['max_def_per_word'] = 20 # covers > 99% of the defs
 lm_config_registry['obw_10k_dict2_wnl2'] = c
 
-c = lm_config_registry['obw_base_10k_tr_glove_300k']
+# NEW GLOVE
+c = lm_config_registry['obw_base_10k_slower']
+c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
+c['embedding_path']= 'onebillionword/glove.840B.300d.fitvocab10k.npy'
+# the following dict contains more than needed but that's all right, right?
+c['dict_path'] = 'onebillionword/dict_obw_identity.json'
+c['emb_dim'] = 500
 c['emb_def_dim'] = 300
+c['exclude_top_k'] = 10000
+c['def_reader'] = 'mean'
+c['standalone_def_lookup'] = True
+c['compose_type'] = 'transform_and_sum'
+lm_config_registry['10k_glove_lin'] = c
 
+c = lm_config_registry['obw_base_10k_slower']
+c['emb_dim'] = 500
+c['emb_def_dim'] = 500
+c['dim'] = 500
+c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
+c['num_input_words'] = 803808
+lm_config_registry['train_where_def'] = c

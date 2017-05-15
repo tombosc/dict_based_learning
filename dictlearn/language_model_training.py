@@ -207,8 +207,8 @@ def train_language_model(new_training_job, config, save_path, params,
 
     # when loading frozen embeddings, we don't save them in the main loop
     if c['embedding_path']:
-        load = LoadNoUnpickling(state_path, load_iteration_state=True, load_log=True)
-                   .set_conditions(before_training=not new_training_job),
+        load = (LoadNoUnpickling(state_path, load_iteration_state=True, load_log=True)
+            .set_conditions(before_training=not new_training_job))
         checkpoint = Checkpoint(state_path,
                                 parameters=trained_parameters,
                                 save_main_loop=False,
@@ -217,8 +217,8 @@ def train_language_model(new_training_job, config, save_path, params,
                                 every_n_batches=c['save_freq_batches'],
                                 after_training=not fast_start)
     else:
-        load = Load(main_loop_path, load_iteration_state=True, load_log=True)
-                    .set_conditions(before_training=not new_training_job))
+        load = (Load(main_loop_path, load_iteration_state=True, load_log=True)
+            .set_conditions(before_training=not new_training_job))
         checkpoint = Checkpoint(main_loop_path,
                                 save_separately=['iteration_state'],
                                 before_training=not fast_start,
@@ -230,7 +230,7 @@ def train_language_model(new_training_job, config, save_path, params,
                                 OnLogRecord(track_the_best.notification_name),
                                 (best_tar_path,))
 
-    extensions = [
+    extensions = [
             load,
             StartFuelServer(original_training_stream,
                             stream_path,
