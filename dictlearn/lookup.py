@@ -326,21 +326,20 @@ class MeanPoolCombiner(Initializable):
                 # TODO: Maybe we also want to have possibility of including both (like in per_example)
                 pass # TODO: implement
             elif self._dropout_type == "per_word":
-                # TODO(kudkudak): This dropout doesn't really work for me
-
-                # Drop with dropout percentage. If dropout -> selects at random word vs df
+                # First select if to perform dropout at all
                 mask_higher = T.ones((batch_shape[0], batch_shape[1]))
                 mask_higher = apply_dropout(mask_higher, drop_prob=self._dropout)
                 mask_higher = mask_higher.dimshuffle(0, 1, "x")
 
                 logger.info("Apply per_word dropou on dict and normal emb")
+                # And if yes just 50% word vs 50% def
                 mask = T.ones((batch_shape[0], batch_shape[1]))
                 mask = apply_dropout(mask, drop_prob=0.5)
                 mask = mask.dimshuffle(0, 1, "x")
 
                 # Competitive
                 def_mean = mask_higher * def_mean + (1 - mask_higher) * mask * def_mean
-                word_embs = word_embs * def_mean + (1 - mask_higher) * (1 - mask) * word_embs
+                word_embs = mask_higher * word_embs + (1 - mask_higher) * (1 - mask) * word_embs
 
                 # TODO: Smarter weighting (at least like divisor in dropout)
 
