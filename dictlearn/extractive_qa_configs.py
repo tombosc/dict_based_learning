@@ -40,7 +40,8 @@ qa_config_registry.set_root_config({
     'mon_freq_train' : 10,
     'save_freq_batches' : 1000,
     'save_freq_epochs' : 1,
-    'n_batches' : 0,
+    # that corresponds to about 12 epochs
+    'n_batches' : 33000,
     'monitor_parameters' : False
 })
 qar = qa_config_registry
