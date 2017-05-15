@@ -182,7 +182,7 @@ lm_config_registry['obw_base_300k_glove300k'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['dict_path'] = 'onebillionword/dict_obw_identity.json'
+c['dict_path'] = 'onebillionword/dict_obw_identity_300k.json'
 c['emb_dim'] = 300
 c['emb_def_dim'] = 300
 c['exclude_top_k'] = 10000
@@ -222,9 +222,9 @@ c = lm_config_registry['obw_10k_dict2']
 c = new_dictify_addlemma(c)
 lm_config_registry['obw_10k_dict2_wnl'] = c
 
-
+# Lemma lowercase restricted to 300k
 c = lm_config_registry['obw_base_10k_slower']
-c['dict_path'] = 'onebillionword/dict_identity_lemma_lowercase.json'
+c['dict_path'] = 'onebillionword/dict_identity_lemma_lowercase_300k.json'
 c['def_reader'] = 'mean'
 c['num_input_words'] = 10000
 c['compose_type'] = 'transform_and_sum'
@@ -232,6 +232,8 @@ c['standalone_def_lookup'] = False
 c['exclude_top_k'] = 10000
 lm_config_registry['obw_base_10k_lemma_lc'] = c
 
+c['dict_path'] = 'onebillionword/dict_obw_identity_lemma_lc.json'
+lm_config_registry['obw_base_10k_lemma_lcf'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['num_input_words'] = 100
@@ -280,6 +282,6 @@ c = lm_config_registry['obw_base_10k_slower']
 c['emb_dim'] = 500
 c['emb_def_dim'] = 500
 c['dim'] = 500
-c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
-c['num_input_words'] = 803808
+c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k_wm.txt'
+c['num_input_words'] = 199312
 lm_config_registry['train_where_def'] = c
