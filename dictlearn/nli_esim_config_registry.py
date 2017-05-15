@@ -200,7 +200,7 @@ def transform_glove(c):
     c['embedding_def_path'] = "glove/glove_w_specials.npy"
     c['vocab'] = 'glove/vocab.txt'
     c['vocab_def'] = 'glove/vocab.txt'
-    c['vocab_test'] = 'data/vocab.txt'
+    c['vocab_text'] = 'snli/vocab.txt'
     c['train_emb'] = 0
     c['train_def_emb'] = 0
     c['combiner_reader_translate'] = True

@@ -26,6 +26,7 @@ from blocks.initialization import Constant, Uniform
 
 from dictlearn.vocab import Vocabulary
 from dictlearn.inits import GlorotUniform
+from dictlearn.extensions import LoadNoUnpickling
 
 import os
 import time
@@ -438,8 +439,8 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
     ### Build extensions ###
 
     extensions = [
-        Load(main_loop_path, load_iteration_state=True, load_log=True)
-            .set_conditions(before_training=not new_training_job),
+        # Load(main_loop_path, load_iteration_state=True, load_log=True)
+        #     .set_conditions(before_training=not new_training_job),
         StartFuelServer(regular_training_stream,
             stream_path,
             hwm=100,
@@ -523,14 +524,34 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
         every_n_batches=c['mon_freq_valid'],
         choose_best=min)
     extensions.append(track_the_best)
-    extensions.append(Checkpoint(main_loop_path,
-        parameters=cg[True].parameters + [p for p, m in pop_updates],
-        before_training=not fast_start,
-        every_n_epochs=c['save_freq_epochs'],
-        after_training=not fast_start).add_condition(
-        ['after_batch', 'after_epoch'],
-        OnLogRecord(track_the_best.notification_name),
-        (main_loop_best_val_path,)))
+
+    # Special care for serializing embeddings
+    if len(c.get('embedding_path', '')) or len(c.get('embedding_def_path', '')):
+        extensions.insert(0, LoadNoUnpickling(main_loop_path, load_iteration_state=True, load_log=True)
+            .set_conditions(before_training=not new_training_job))
+        extensions.append(Checkpoint(main_loop_path,
+            parameters=train_params +  [p for p, m in pop_updates],
+            save_main_loop=False,
+            save_separately=['log', 'iteration_state'],
+            before_training=not fast_start,
+            every_n_epochs=c['save_freq_epochs'],
+            after_training=not fast_start).add_condition(
+            ['after_batch', 'after_epoch'],
+            OnLogRecord(track_the_best.notification_name),
+            (main_loop_best_val_path,)))
+    else:
+        extensions.insert(0, Load(main_loop_path, load_iteration_state=True, load_log=True)
+            .set_conditions(before_training=not new_training_job))
+        extensions.append(Checkpoint(main_loop_path,
+            parameters=cg[True].parameters + [p for p, m in pop_updates],
+            before_training=not fast_start,
+            every_n_epochs=c['save_freq_epochs'],
+            after_training=not fast_start).add_condition(
+            ['after_batch', 'after_epoch'],
+            OnLogRecord(track_the_best.notification_name),
+            (main_loop_best_val_path,)))
+
+
     extensions.extend([DumpCSVSummaries(
         save_path,
         every_n_batches=c['mon_freq_valid'],
