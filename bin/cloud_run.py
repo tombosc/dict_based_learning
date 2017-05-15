@@ -12,7 +12,7 @@ JOB_TEMPLATE = """
     "name": "squad",
     "clusterId": 249,
     "description": "squad",
-    "dockerImage": "trydgx_mila/project2:17",
+    "dockerImage": "trydgx_mila/project2:21",
     "jobType": "BATCH",
     "command": "",
     "resources": {
