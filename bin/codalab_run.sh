@@ -12,4 +12,5 @@ mkdir -p data/squad
 ln -s $HOME/codalab_squad/squad_from_scratch data/squad/
 ln -s $HOME/codalab_squad/squad_glove data/squad
 
-/workspace/dict_based_learning/bin/eval_extractive_qa.py --part dev $@ model/training_state_best.tar
+/workspace/dict_based_learning/pack_to_hdf5.py --type=squad --relaxed-span $1 test.h5
+/workspace/dict_based_learning/bin/eval_extractive_qa.py --dataset test.h5 $2 model/training_state_best.tar
