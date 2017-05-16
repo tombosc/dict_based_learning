@@ -63,7 +63,14 @@ def initialize_data_and_model(config):
         dict_ = Dictionary(dict_full_path)
         logger.debug("Loaded dictionary with {} entries"
                      .format(dict_.num_entries()))
-        retrieval = Retrieval(data.vocab, dict_,
+        vocab_dict = data.vocab
+        if c['dict_vocab_path']:
+            if not c['standalone_def_lookup']:
+                raise ValueError("Standalone def lookup mandatory with separate vocabs")
+            vocab_dict = Vocabulary(
+                os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
+                
+        retrieval = Retrieval(vocab_dict, dict_,
                               c['max_def_length'], c['exclude_top_k'],
                               max_def_per_word=c['max_def_per_word'])
     elif c['embedding_path']:

@@ -6,6 +6,7 @@ lm_config_registry.set_root_config({
     'data_path': 'onebillionword/',
     'dict_path' : "",
     'vocab_path': "",
+    'dict_vocab_path': "",
     'layout' : 'standard',
     'num_input_words' : 10000,
     'def_num_input_words' : 0, #0 => num_input_words
@@ -287,3 +288,11 @@ c['dim'] = 500
 c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k_wm.txt'
 c['num_input_words'] = 199312
 lm_config_registry['train_where_def'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['exclude_top_k'] = 10000
+c['vocab_path'] = '' # vocab.txt
+c['def_num_input_words'] = 1000
+c['dict_path'] = 'onebillionword/dict_obw_spelling_cut11.json' #max_def_len=11
+c['dict_vocab_path'] = 'onebillionword/vocab_spelling_dict_weighted.txt'
+lm_config_registry['10k_spelling'] = c
