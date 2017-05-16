@@ -213,8 +213,8 @@ def train_language_model(new_training_job, config, save_path, params,
             every_n_batches=c['mon_freq_valid'])
    
 
-    # when loading frozen embeddings, we don't save them in the main loop
-    if c['embedding_path']:
+    # don't save them the entire main loop to avoid pickling everything
+    if c['fast_checkpoint']:
         load = (LoadNoUnpickling(state_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job))
         checkpoint = Checkpoint(state_path,
