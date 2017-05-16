@@ -187,6 +187,10 @@ class LanguageModel(Initializable):
         output_word_ids = (tensor.lt(word_ids, self._num_output_words) * word_ids
                           + tensor.ge(word_ids, self._num_output_words) * self._vocab.unk)
 
+        application_call.add_auxiliary_variable(
+            unk_ratio(input_word_ids, mask, self._vocab.unk),
+            name='unk_ratio')
+
         # Run the main rnn with combined inputs
         word_embs = self._main_lookup.apply(input_word_ids)
         application_call.add_auxiliary_variable(
