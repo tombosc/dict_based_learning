@@ -277,7 +277,7 @@ c['exclude_top_k'] = 10000
 c['def_reader'] = 'mean'
 c['standalone_def_lookup'] = True
 c['compose_type'] = 'transform_and_sum'
-c['def_num_input_words'] = 199312
+c['def_num_input_words'] = 803808
 lm_config_registry['10k_glove_lin'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
