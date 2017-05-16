@@ -9,7 +9,10 @@ try:
     import tensorflow
 except ImportError:
     pass
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pass
 import scipy
 import numpy
 import numpy as np
