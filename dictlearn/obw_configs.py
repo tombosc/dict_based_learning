@@ -313,10 +313,10 @@ lm_config_registry['10k_spelling'] = c
 
 # we will augment dict2 with a separate lookup and a separate dict_vocab
 c = lm_config_registry['obw_10k_dict2_wnl']
-c['dict_vocab_path'] = 'onebillionword/vocab_spelling_dict_weighted.txt'
+c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_weighted.txt' 
 c['def_num_input_words'] = 10000
 c['standalone_def_lookup'] = True
 c['standalone_def_rnn'] = True
 c['fast_checkpoint'] = True
-c['max_def_per_word'] = 10
+c['max_def_per_word'] = 20
 lm_config_registry['obw_10k_dict5_wn'] = c
