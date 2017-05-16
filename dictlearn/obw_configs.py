@@ -6,8 +6,10 @@ lm_config_registry.set_root_config({
     'data_path': 'onebillionword/',
     'dict_path' : "",
     'vocab_path': "",
+    'dict_vocab_path': "",
     'layout' : 'standard',
     'num_input_words' : 10000,
+    'def_num_input_words' : 0, #0 => num_input_words
     'num_output_words': 10000,
     'max_length' : 100,
     'batch_size' : 64,
@@ -182,7 +184,7 @@ lm_config_registry['obw_base_300k_glove300k'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['dict_path'] = 'onebillionword/dict_obw_identity.json'
+c['dict_path'] = 'onebillionword/dict_obw_identity_300k.json'
 c['emb_dim'] = 300
 c['emb_def_dim'] = 300
 c['exclude_top_k'] = 10000
@@ -222,9 +224,9 @@ c = lm_config_registry['obw_10k_dict2']
 c = new_dictify_addlemma(c)
 lm_config_registry['obw_10k_dict2_wnl'] = c
 
-
+# Lemma lowercase restricted to 300k
 c = lm_config_registry['obw_base_10k_slower']
-c['dict_path'] = 'onebillionword/dict_identity_lemma_lowercase.json'
+c['dict_path'] = 'onebillionword/dict_identity_lemma_lowercase_300k.json'
 c['def_reader'] = 'mean'
 c['num_input_words'] = 10000
 c['compose_type'] = 'transform_and_sum'
@@ -232,6 +234,8 @@ c['standalone_def_lookup'] = False
 c['exclude_top_k'] = 10000
 lm_config_registry['obw_base_10k_lemma_lc'] = c
 
+c['dict_path'] = 'onebillionword/dict_obw_identity_lemma_lc.json'
+lm_config_registry['obw_base_10k_lemma_lcf'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['num_input_words'] = 100
@@ -266,7 +270,6 @@ lm_config_registry['obw_10k_dict2_wnl2'] = c
 c = lm_config_registry['obw_base_10k_slower']
 c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
 c['embedding_path']= 'onebillionword/glove.840B.300d.fitvocab10k.npy'
-# the following dict contains more than needed but that's all right, right?
 c['dict_path'] = 'onebillionword/dict_obw_identity.json'
 c['emb_dim'] = 500
 c['emb_def_dim'] = 300
@@ -274,12 +277,27 @@ c['exclude_top_k'] = 10000
 c['def_reader'] = 'mean'
 c['standalone_def_lookup'] = True
 c['compose_type'] = 'transform_and_sum'
+c['def_num_input_words'] = 803808
 lm_config_registry['10k_glove_lin'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
 c['emb_dim'] = 500
 c['emb_def_dim'] = 500
 c['dim'] = 500
-c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
-c['num_input_words'] = 803808
+c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k_wm.txt'
+c['num_input_words'] = 199312
 lm_config_registry['train_where_def'] = c
+
+c = lm_config_registry['10k_glove_lin']
+c['vocab_path'] = 'onebillionword/vocab_glove_10k_restr_wnll.txt'
+c['embedding_path'] = 'onebillionword/glove.840B.300d.10k_restr_wnll.npy'
+c['def_num_input_words'] = 184045
+lm_config_registry['10k_glove_where_def'] = c
+
+c = lm_config_registry['obw_base_10k_slower']
+c['exclude_top_k'] = 10000
+c['vocab_path'] = '' # vocab.txt
+c['def_num_input_words'] = 1000
+c['dict_path'] = 'onebillionword/dict_obw_spelling_cut11.json' #max_def_len=11
+c['dict_vocab_path'] = 'onebillionword/vocab_spelling_dict_weighted.txt'
+lm_config_registry['10k_spelling'] = c
