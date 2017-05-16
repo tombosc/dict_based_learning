@@ -40,6 +40,7 @@ lm_config_registry.set_root_config({
     'mon_freq_train' : 100,
     'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
+    'very_rare_threshold': 170000, # less than 1% of occurences are ranked above
     'n_batches' : 0,
     'monitor_parameters' : False,
     'fast_checkpoint' : False
