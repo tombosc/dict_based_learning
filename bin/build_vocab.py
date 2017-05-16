@@ -50,9 +50,11 @@ def main():
             dict_ = json.load(open(f_name, "r"))
             for word, list_defs in dict_.items():
                 text_vocab_id = vocab_text.word_to_id(word)
+
                 if (text_vocab_id != vocab_text.unk
                         and text_vocab_id < args.exclude_top_k):
                     continue
+
                 for def_ in list_defs:
                     if args.weight_dict_entries:
                         for def_word in def_:

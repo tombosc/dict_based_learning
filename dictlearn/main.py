@@ -79,6 +79,7 @@ def main_evaluate(config_registry, evaluate_func):
     parser.add_argument("--part", default='train', help="Part")
     parser.add_argument("--dest", help="Destination for outputs")
     parser.add_argument("--num-examples", type=int, help="Number of examples to read", default=-1)
+    parser.add_argument("--qids", type=str, help="Comma-separate qids")
     parser.add_argument("config", help="The configuration")
     parser.add_argument("tar_path", help="The tar file with parameters")
     add_config_arguments(config_registry.get_root_config(), parser)
@@ -98,4 +99,7 @@ def main_evaluate(config_registry, evaluate_func):
 
     # For now this script just runs the language model training.
     # More stuff to come.
-    evaluate_func(config, args.tar_path, args.part, args.num_examples, args.dest)
+    kwargs = {}
+    if args.qids:
+        kwargs['qids'] = args.qids
+    evaluate_func(config, args.tar_path, args.part, args.num_examples, args.dest, **kwargs)

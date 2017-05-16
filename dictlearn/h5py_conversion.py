@@ -3,7 +3,10 @@ import logging
 import traceback
 import h5py
 import json
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pass
 import tqdm
 import h5py
 import numpy as np

@@ -141,6 +141,7 @@ def initialize_data_and_model(config):
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
             c['max_def_length'], c['exclude_top_k'],
             with_too_long_defs=c['with_too_long_defs'])
+    logger.debug("Data loaded")
     qam = ExtractiveQAModel(
         c['dim'], c['emb_dim'], c['readout_dims'],
         c['num_input_words'], c['def_num_input_words'], data.vocab,
@@ -360,10 +361,13 @@ def train_extractive_qa(new_training_job, config, save_path,
     main_loop.run()
 
 
-def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
+def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path, qids=None):
     if not dest_path:
         dest_path = os.path.join(os.path.dirname(tar_path), 'predictions.json')
-    save_path = os.path.dirname(dest_path)
+    log_path = os.path.splitext(dest_path)[0] + '_log.json'
+
+    if qids:
+        qids = qids.split(',')
 
     c = config
     data, qam = initialize_data_and_model(c)
@@ -383,14 +387,13 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
                         'q2d': q2d_att_weights})
     compute['costs'] = costs
     predict_func = theano.function(qam.input_vars.values(), compute)
+    logger.debug("Ready to evaluate")
 
     done_examples = 0
     num_correct = 0
     def print_stats():
         print('EXACT MATCH RATIO: {}'.format(num_correct / float(done_examples)))
 
-    d2q = []
-    q2d = []
     predictions = {}
     log = {}
 
@@ -399,6 +402,10 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
     for example in stream.get_epoch_iterator(as_dict=True):
         if done_examples == num_examples:
             break
+        q_id = vec2str(example['q_ids'][0])
+        if qids and not q_id in qids:
+            continue
+
         example['contexts_text'] = [
             map(vec2str, example['contexts_text'][0])]
         example['questions_text'] = [
@@ -416,7 +423,6 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
         is_correct = correct_answer_span == predicted_answer_span
         context = example['contexts_text'][0]
         question = example['questions_text'][0]
-        q_id = vec2str(example['q_ids'][0])
 
         # pretty print
         outcome = 'correct' if is_correct else 'wrong'
@@ -451,7 +457,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path):
             print_stats()
     print_stats()
 
-    with open(os.path.join(save_path, 'log.json'), 'w') as dst:
+    with open(log_path, 'w') as dst:
         json.dump(log, dst, indent=2, sort_keys=True)
     with open(dest_path, 'w') as dst:
         json.dump(predictions, dst, indent=2, sort_keys=True)
