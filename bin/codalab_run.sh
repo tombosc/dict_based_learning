@@ -1,3 +1,5 @@
+set -x
+
 export NLTK_DATA=/workspace/nltk_data 
 export PYTHONIOENCODING=utf-8 
 export PYTHONPATH=/workspace/dict_based_learning 
