@@ -63,7 +63,14 @@ def initialize_data_and_model(config):
         dict_ = Dictionary(dict_full_path)
         logger.debug("Loaded dictionary with {} entries"
                      .format(dict_.num_entries()))
-        retrieval = Retrieval(data.vocab, dict_,
+        vocab_dict = data.vocab
+        if c['dict_vocab_path']:
+            if not c['standalone_def_lookup']:
+                raise ValueError("Standalone def lookup mandatory with separate vocabs")
+            vocab_dict = Vocabulary(
+                os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
+                
+        retrieval = Retrieval(vocab_dict, dict_,
                               c['max_def_length'], c['exclude_top_k'],
                               max_def_per_word=c['max_def_per_word'])
     elif c['embedding_path']:
@@ -75,12 +82,13 @@ def initialize_data_and_model(config):
         if not c['standalone_def_lookup']:
             raise ValueError("Standalone def lookup mandatory")
 
-        retrieval = Retrieval(data.vocab, dict_, max_def_length=1, 
+        retrieval = Retrieval(data.vocab, dict_, max_def_length=1,
                               exclude_top_k=c['exclude_top_k'],
                               max_def_per_word=1, add_bod_eod=False)
 
     lm = LanguageModel(c['emb_dim'], c['emb_def_dim'], c['dim'], c['num_input_words'],
-                       c['num_output_words'], data.vocab, retrieval,
+                       c['def_num_input_words'], c['num_output_words'], data.vocab,
+                       retrieval,
                        c['def_reader'],
                        c['standalone_def_lookup'],
                        c['standalone_def_rnn'],
@@ -89,7 +97,7 @@ def initialize_data_and_model(config):
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
-    
+
     if c['embedding_path']:
         lm.set_def_embeddings(embedding_matrix)
         logger.debug("Embeddings loaded")
@@ -203,7 +211,7 @@ def train_language_model(new_training_job, config, save_path, params,
             on_resumption = True,
             after_epoch=True,
             every_n_batches=c['mon_freq_valid'])
-   
+
 
     # when loading frozen embeddings, we don't save them in the main loop
     if c['embedding_path']:
@@ -238,10 +246,10 @@ def train_language_model(new_training_job, config, save_path, params,
             Timing(every_n_batches=c['mon_freq_train'])
         ]
 
-    if retrieval: 
+    if retrieval:
         extensions.append(
             RetrievalPrintStats(retrieval=retrieval,
-                                every_n_batches=c['mon_freq_valid'],
+                                every_n_batches=c['mon_freq_train'],
                                 before_training=not fast_start))
 
     extensions.extend([
