@@ -12,4 +12,4 @@ mkdir -p data/squad
 ln -s squad_from_scratch data/squad/
 ln -s squad_glove data/squad
 
-/workspace/dict_based_learning/bin/eval_extractive_qa.py --part dev $1 model/training_state_best.tar
+/workspace/dict_based_learning/bin/eval_extractive_qa.py --part dev $@ model/training_state_best.tar
