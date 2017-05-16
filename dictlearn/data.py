@@ -240,11 +240,12 @@ class ExtractiveQAData(Data):
         self._retrieval = retrieval
 
     def get_stream(self, part, batch_size=None, shuffle=False, max_length=None,
-                   raw_text=False, q_ids=False, seed=None):
+                   raw_text=False, q_ids=False, seed=None, dataset=None):
         if not seed:
             seed = fuel.config.default_seed
         rng = numpy.random.RandomState(seed)
-        dataset = self.get_dataset(part)
+        if not dataset:
+            dataset = self.get_dataset(part)
         if shuffle:
             stream = DataStream(
                 dataset,

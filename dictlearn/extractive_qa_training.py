@@ -49,6 +49,7 @@ from dictlearn.util import (
     copy_streams_to_file, run_with_redirection)
 from dictlearn.theano_util import parameter_stats, unk_ratio
 from dictlearn.data import ExtractiveQAData
+from dictlearn.datasets import SQuADDataset
 from dictlearn.extensions import (
     DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer,
     RetrievalPrintStats)
@@ -361,13 +362,17 @@ def train_extractive_qa(new_training_job, config, save_path,
     main_loop.run()
 
 
-def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path, qids=None):
+def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path,
+                           qids=None, dataset=None):
     if not dest_path:
         dest_path = os.path.join(os.path.dirname(tar_path), 'predictions.json')
     log_path = os.path.splitext(dest_path)[0] + '_log.json'
 
     if qids:
         qids = qids.split(',')
+
+    if dataset:
+        dataset = SQuADDataset(dataset, ('all',))
 
     c = config
     data, qam = initialize_data_and_model(c)
@@ -398,7 +403,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path, qids
     log = {}
 
     stream = data.get_stream(part, batch_size=1, shuffle=part == 'train',
-                             raw_text=True, q_ids=True)
+                             raw_text=True, q_ids=True, dataset=dataset)
     for example in stream.get_epoch_iterator(as_dict=True):
         if done_examples == num_examples:
             break
