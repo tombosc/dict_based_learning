@@ -9,8 +9,8 @@ export THEANO_FLAGS=floatX=float32
 export CLASSPATH=/workspace/stanford-corenlp-full-2016-10-31/*
 
 mkdir -p data/squad
-ln -s $HOME/codalab_squad/squad_from_scratch data/squad/
-ln -s $HOME/codalab_squad/squad_glove data/squad
+ln -s $HOME/squad_data/squad_from_scratch data/squad/
+ln -s $HOME/squad_data/squad_glove data/squad
 
 JSON=$1
 shift
