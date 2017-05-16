@@ -5,8 +5,14 @@ import subprocess
 import atexit
 import logging
 import cPickle
-import tensorflow
-import pandas as pd
+try:
+    import tensorflow
+except ImportError:
+    pass
+try:
+    import pandas as pd
+except ImportError:
+    pass
 import scipy
 import numpy
 import numpy as np

@@ -82,7 +82,7 @@ def initialize_data_and_model(config):
         if not c['standalone_def_lookup']:
             raise ValueError("Standalone def lookup mandatory")
 
-        retrieval = Retrieval(data.vocab, dict_, max_def_length=1, 
+        retrieval = Retrieval(data.vocab, dict_, max_def_length=1,
                               exclude_top_k=c['exclude_top_k'],
                               max_def_per_word=1, add_bod_eod=False)
 
@@ -97,7 +97,7 @@ def initialize_data_and_model(config):
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
-    
+
     if c['embedding_path']:
         lm.set_def_embeddings(embedding_matrix)
         logger.debug("Embeddings loaded")
@@ -211,10 +211,10 @@ def train_language_model(new_training_job, config, save_path, params,
             on_resumption = True,
             after_epoch=True,
             every_n_batches=c['mon_freq_valid'])
-   
 
-    # when loading frozen embeddings, we don't save them in the main loop
-    if c['embedding_path']:
+
+    # don't save them the entire main loop to avoid pickling everything
+    if c['fast_checkpoint']:
         load = (LoadNoUnpickling(state_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job))
         checkpoint = Checkpoint(state_path,
@@ -246,10 +246,10 @@ def train_language_model(new_training_job, config, save_path, params,
             Timing(every_n_batches=c['mon_freq_train'])
         ]
 
-    if retrieval: 
+    if retrieval:
         extensions.append(
             RetrievalPrintStats(retrieval=retrieval,
-                                every_n_batches=c['mon_freq_valid'],
+                                every_n_batches=c['mon_freq_train'],
                                 before_training=not fast_start))
 
     extensions.extend([

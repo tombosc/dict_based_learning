@@ -32,7 +32,7 @@ def main():
         help="Adds dictionary name to definition")
     parser.add_argument("--wordnet", action="store_true",
         help="Crawl WordNet")
-    parser.add_argument("--identity", action="store_true",
+    parser.add_argument("--add-identity", action="store_true",
                         help="Identity mapping dictionary")
     parser.add_argument("--add-spelling-if-no-def", action="store_true",
                         help="Add spelling if there is no definition")
@@ -77,8 +77,8 @@ def main():
             dict_.crawl_lemmas(vocab)
         elif args.just_lowercase:
             dict_.crawl_lowercase(vocab)
-        elif args.identity:
-            dict_.setup_identity_mapping(vocab)
+        elif args.add_identity:
+            dict_.add_identity_mapping(vocab)
         else:
             raise ValueError("don't know what to do")
     finally:
