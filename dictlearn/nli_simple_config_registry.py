@@ -187,6 +187,7 @@ snli_config_registry['paper_dict_tuned'] = c
 
 c = snli_config_registry['paper_dict_simple']
 c['dict_path'] = 'snli/dict_all_spelling.json'
+c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
 c['n_batches'] = 100000
 c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
 snli_config_registry['paper_baseline_spelling'] = c
@@ -207,7 +208,7 @@ def transform_glove(c):
     c['embedding_def_path'] = "glove/glove_w_specials.npy"
     c['vocab'] = 'glove/vocab.txt'
     c['vocab_def'] = 'glove/vocab.txt'
-    c['vocab_test'] = 'data/vocab.txt'
+    c['vocab_text'] = 'data/vocab.txt'
     c['train_emb'] = 0
     c['train_def_emb'] = 0
     c['combiner_reader_translate'] = True
