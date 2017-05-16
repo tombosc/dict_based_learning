@@ -416,7 +416,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path, qids
         del feed['questions_text']
         del feed['contexts_text_mask']
         result = predict_func(**feed)
-        correct_answer_span = slice(example['answer_begins'], example['answer_ends'])
+        correct_answer_span = slice(example['answer_begins'][0], example['answer_ends'][0])
         predicted_answer_span = slice(result['begins'][0], result['ends'][0])
         correct_answer = example['contexts_text'][0][correct_answer_span]
         answer = example['contexts_text'][0][predicted_answer_span]
