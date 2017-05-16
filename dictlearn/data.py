@@ -122,7 +122,8 @@ class Data(object):
         if self._layout == 'standard':
             part_map = {'train': 'train.txt',
                         'valid': 'valid.txt',
-                        'test': 'test.txt'}
+                        'test': 'test.txt',
+                        'test_unseen': 'test_unseen.txt'}
         elif self._layout == 'lambada':
             part_map = {'train' : 'train.h5',
                         'valid' : 'lambada_development_plain_text.txt',
