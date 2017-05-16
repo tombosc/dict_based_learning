@@ -269,7 +269,6 @@ lm_config_registry['obw_10k_dict2_wnl2'] = c
 c = lm_config_registry['obw_base_10k_slower']
 c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
 c['embedding_path']= 'onebillionword/glove.840B.300d.fitvocab10k.npy'
-# the following dict contains more than needed but that's all right, right?
 c['dict_path'] = 'onebillionword/dict_obw_identity.json'
 c['emb_dim'] = 500
 c['emb_def_dim'] = 300
@@ -287,3 +286,9 @@ c['dim'] = 500
 c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k_wm.txt'
 c['num_input_words'] = 199312
 lm_config_registry['train_where_def'] = c
+
+c = lm_config_registry['10k_glove_lin']
+c['vocab_path'] = 'onebillionword/vocab_glove_10k_restr_wnll.txt'
+c['embedding_path'] = 'onebillionword/glove.840B.300d.10k_restr_wnll.npy'
+c['def_num_input_words'] = 184045
+lm_config_registry['10k_glove_where_def'] = c
