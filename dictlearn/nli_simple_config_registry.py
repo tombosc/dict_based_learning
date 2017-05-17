@@ -55,61 +55,6 @@ snli_config_registry.set_root_config({
     'n_batches': 200000 # ~200 epochs of SNLI with batch size 500 (!
 })
 
-### Establish baselines ###
-c = snli_config_registry['root']
-snli_config_registry['baseline'] = c
-
-c = snli_config_registry['baseline']
-c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = 'snli/glove.840B.300d.npy'
-snli_config_registry['baseline_glove'] = c
-
-c = snli_config_registry['root']
-c['data_path'] = 'mnli/'
-c['layout'] = 'mnli'
-snli_config_registry['baseline_mnli'] = c
-
-c = snli_config_registry['root']
-c['train_emb'] = 0 # Following Squad convention
-c['embedding_path'] = 'mnli/glove.840B.300d.npy'
-c['data_path'] = 'mnli/'
-c['layout'] = 'mnli'
-snli_config_registry['baseline_mnli_glove'] = c
-
-### Small dict ###
-
-c = snli_config_registry['root']
-c['dict_path'] = 'mnli/dict_all_with_lowercase.json'
-c['data_path'] = 'mnli/'
-c['layout'] = 'mnli'
-c['exclude_top_k'] = 2500
-c['share_def_lookup'] = False
-c['reader_type'] = 'mean'
-c['max_def_per_word'] = 20 # Allows to have strict calculation on memory consumption
-c['combiner_dropout'] = 0.0
-c['train_emb'] = 1
-c['embedding_path'] = ''
-c['num_input_words'] = 3000
-c['num_input_def_words'] = 3000
-c['compose_type'] = 'sum'
-snli_config_registry['sum_small_dict_mnli'] = c
-
-c = snli_config_registry['root']
-c['dict_path'] = 'snli/dict_all.json'
-c['data_path'] = 'snli/'
-c['exclude_top_k'] = 2500
-c['share_def_lookup'] = False
-c['layout'] = 'snli'
-c['reader_type'] = 'mean'
-c['max_def_per_word'] = 20
-c['combiner_dropout'] = 0.0
-c['train_emb'] = 1
-c['embedding_path'] = ''
-c['num_input_words'] = 3000
-c['num_input_def_words'] = 3000
-c['compose_type'] = 'sum'
-snli_config_registry['sum_small_dict'] = c
-
 #####################
 ### Paper configs ###
 #####################
@@ -126,7 +71,7 @@ c['num_input_words'] = 5000
 c['emb_dim'] = 100
 snli_config_registry['paper_baseline_5k'] = c
 
-c = snli_config_registry['baseline']
+c = snli_config_registry['root']
 c['train_emb'] = 0
 c['n_batches'] = 100000
 c['translate_dim'] = 300
@@ -147,7 +92,8 @@ c['def_emb_dim'] = 300
 c['def_dim'] = 300
 c['batch_size'] = 512
 c['combiner_shortcut'] = True
-c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma.json'
+# c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma.json'
+c['dict_path'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma.json' # For consistency with the rest of the experiemnts
 c['data_path'] = 'snli/'
 c['exclude_top_k'] = 1000
 c['combiner_shortcut'] = True
@@ -161,7 +107,7 @@ c['train_emb'] = 1
 c['embedding_path'] = ''
 c['num_input_words'] = 3000
 c['num_input_def_words'] = 3000
-c['compose_type'] = 'sum'
+c['compose_type'] = 'gated_transform_and_sum' # For consistency with the rest of the experiemnts
 c['n_batches'] = 200000
 c['combiner_reader_translate'] = False
 snli_config_registry['paper_dict_simple'] = c
@@ -176,18 +122,21 @@ c['batch_size'] = 256
 c['combiner_dropout'] = 0.2
 c['combiner_dropout_type'] = 'per_unit'
 c['num_input_def_words'] = 11000
-c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma_add_all.json'
-c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_vocab.txt'
+# c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma_add_all.json'
+# c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_vocab.txt'
+c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma_vocab.txt' # For consistency with the rest of the experiemnts
 c['dropout'] = 0.15
 c['l2'] = 0.0
 c['combiner_reader_translate'] = False
 snli_config_registry['paper_dict_tuned'] = c
 
 c = snli_config_registry['paper_dict_tuned']
-c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_spelling.json'
-c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_spelling_vocab.txt'
+# c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_spelling.json'
+# c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_spelling_vocab.txt'
+c['dict_path'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma_spelling.json' # For consistency with the rest of the experiemnts
+c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma_spelling_vocab.txt' # For consistency with the rest of the experiemnts
 c['combiner_reader_translate'] = False
-snli_config_registry['paper_dict_tuned_with_spelling'] = c
+snli_config_registry['paper_dict_tuned_spelling'] = c
 
 # C) "Dict" baselines: lowercase + spelling
 
@@ -237,3 +186,4 @@ def transform_glove(c):
 
 snli_config_registry['paper_dict_simple_glove'] = transform_glove(snli_config_registry['paper_dict_simple'])
 snli_config_registry['paper_dict_tuned_glove'] = transform_glove(snli_config_registry['paper_dict_tuned'])
+snli_config_registry['paper_dict_tuned_spelling_glove'] = transform_glove(snli_config_registry['paper_dict_tuned_spelling'])

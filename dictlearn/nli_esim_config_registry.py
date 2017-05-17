@@ -136,11 +136,6 @@ c['num_input_words'] = 5000
 c['emb_dim'] = 100
 nli_esim_config_registry['paper_baseline_5k'] = c
 
-c = nli_esim_config_registry['root']
-c['num_input_words'] = 10000
-c['emb_dim'] = 100
-nli_esim_config_registry['paper_baseline_10k'] = c
-
 c = nli_esim_config_registry['baseline']
 c['train_emb'] = 0
 c['n_batches'] = 150 * (500000 / c['batch_size'])
@@ -178,7 +173,9 @@ c['embedding_def_path'] = ''
 c['combiner_reader_translate'] = False
 nli_esim_config_registry['paper_dict_simple'] = c
 
-# C) "Dict" baselines: lowercase + spelling
+## Tune fellow
+c = nli_esim_config_registry['paper_dict_simple']
+nli_esim_config_registry['paper_dict_tuned'] = c
 
 c = nli_esim_config_registry['paper_dict_simple']
 c['dict_path'] = 'snli/dict_all_spelling.json'
