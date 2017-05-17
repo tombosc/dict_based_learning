@@ -40,8 +40,10 @@ lm_config_registry.set_root_config({
     'mon_freq_train' : 100,
     'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
+    'very_rare_threshold': 170000, # less than 1% of occurences are ranked above
     'n_batches' : 0,
     'monitor_parameters' : False,
+    'fast_checkpoint' : False
 })
 
 
@@ -220,6 +222,7 @@ def new_dictify_addlemma(c):
 c = lm_config_registry['obw_10k_dict1']
 c = new_dictify_addlemma(c)
 lm_config_registry['obw_10k_dict1_wnl'] = c
+
 c = lm_config_registry['obw_10k_dict2']
 c = new_dictify_addlemma(c)
 lm_config_registry['obw_10k_dict2_wnl'] = c
@@ -270,6 +273,7 @@ lm_config_registry['obw_10k_dict2_wnl2'] = c
 c = lm_config_registry['obw_base_10k_slower']
 c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
 c['embedding_path']= 'onebillionword/glove.840B.300d.fitvocab10k.npy'
+c['fast_checkpoint'] = True
 c['dict_path'] = 'onebillionword/dict_obw_identity.json'
 c['emb_dim'] = 500
 c['emb_def_dim'] = 300
@@ -295,9 +299,24 @@ c['def_num_input_words'] = 184045
 lm_config_registry['10k_glove_where_def'] = c
 
 c = lm_config_registry['obw_base_10k_slower']
+c['standalone_def_lookup'] = True
+c['standalone_def_rnn'] = True
+c['fast_checkpoint'] = True
+c['def_reader'] = 'LSTM'
+c['compose_type'] = 'transform_and_sum'
 c['exclude_top_k'] = 10000
 c['vocab_path'] = '' # vocab.txt
 c['def_num_input_words'] = 1000
 c['dict_path'] = 'onebillionword/dict_obw_spelling_cut11.json' #max_def_len=11
 c['dict_vocab_path'] = 'onebillionword/vocab_spelling_dict_weighted.txt'
 lm_config_registry['10k_spelling'] = c
+
+# we will augment dict2 with a separate lookup and a separate dict_vocab
+c = lm_config_registry['obw_10k_dict2_wnl']
+c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_weighted.txt' 
+c['def_num_input_words'] = 10000
+c['standalone_def_lookup'] = True
+c['standalone_def_rnn'] = True
+c['fast_checkpoint'] = True
+c['max_def_per_word'] = 20
+lm_config_registry['obw_10k_dict5_wn'] = c

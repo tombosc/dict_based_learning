@@ -122,7 +122,8 @@ class Data(object):
         if self._layout == 'standard':
             part_map = {'train': 'train.txt',
                         'valid': 'valid.txt',
-                        'test': 'test.txt'}
+                        'test': 'test.txt',
+                        'test_unseen': 'test_unseen.txt'}
         elif self._layout == 'lambada':
             part_map = {'train' : 'train.h5',
                         'valid' : 'lambada_development_plain_text.txt',
@@ -239,11 +240,12 @@ class ExtractiveQAData(Data):
         self._retrieval = retrieval
 
     def get_stream(self, part, batch_size=None, shuffle=False, max_length=None,
-                   raw_text=False, q_ids=False, seed=None):
+                   raw_text=False, q_ids=False, seed=None, dataset=None):
         if not seed:
             seed = fuel.config.default_seed
         rng = numpy.random.RandomState(seed)
-        dataset = self.get_dataset(part)
+        if not dataset:
+            dataset = self.get_dataset(part)
         if shuffle:
             stream = DataStream(
                 dataset,

@@ -77,6 +77,7 @@ def main(config_registry, training_func, **training_func_kwargs):
 def main_evaluate(config_registry, evaluate_func):
     parser = argparse.ArgumentParser("Evaluation script")
     parser.add_argument("--part", default='train', help="Part")
+    parser.add_argument("--dataset", help="Provide a dataset explicitly")
     parser.add_argument("--dest", help="Destination for outputs")
     parser.add_argument("--num-examples", type=int, help="Number of examples to read", default=-1)
     parser.add_argument("--qids", type=str, help="Comma-separate qids")
@@ -102,4 +103,6 @@ def main_evaluate(config_registry, evaluate_func):
     kwargs = {}
     if args.qids:
         kwargs['qids'] = args.qids
+    if args.dataset:
+        kwargs['dataset'] = args.dataset
     evaluate_func(config, args.tar_path, args.part, args.num_examples, args.dest, **kwargs)

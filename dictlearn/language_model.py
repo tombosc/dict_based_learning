@@ -8,6 +8,7 @@ from blocks.bricks.base import application
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.lookup import LookupTable
 
+from dictlearn.theano_util import unk_ratio
 from dictlearn.ops import WordToIdOp, RetrievalOp
 from dictlearn.aggregation_schemes import Perplexity
 from dictlearn.stuff import DebugLSTM
@@ -58,6 +59,7 @@ class LanguageModel(Initializable):
                  standalone_def_rnn=True,
                  disregard_word_embeddings=False,
                  compose_type='sum',
+                 very_rare_threshold=170000,
                  **kwargs):
         # TODO(tombosc): document
         if emb_dim == 0:
@@ -72,6 +74,7 @@ class LanguageModel(Initializable):
         if (num_input_words != def_num_input_words) and (not standalone_def_lookup):
             raise NotImplementedError()
 
+        self._very_rare_threshold = very_rare_threshold
         self._num_input_words = num_input_words
         self._num_output_words = num_output_words
         self._vocab = vocab
@@ -187,6 +190,10 @@ class LanguageModel(Initializable):
         output_word_ids = (tensor.lt(word_ids, self._num_output_words) * word_ids
                           + tensor.ge(word_ids, self._num_output_words) * self._vocab.unk)
 
+        application_call.add_auxiliary_variable(
+            unk_ratio(input_word_ids, mask, self._vocab.unk),
+            name='unk_ratio')
+
         # Run the main rnn with combined inputs
         word_embs = self._main_lookup.apply(input_word_ids)
         application_call.add_auxiliary_variable(
@@ -225,6 +232,11 @@ class LanguageModel(Initializable):
         self.add_perplexity_measure(application_call, minus_logs,
                                targets_mask * (1-missing_embs.T[:-1]),
                                "perplexity_after_word_embs")
+
+        very_rare_mask = tensor.ge(word_ids, self._very_rare_threshold).astype('int32')
+        self.add_perplexity_measure(application_call, minus_logs,
+                               targets_mask * (very_rare_mask.T[:-1]),
+                               "perplexity_after_very_rare")
 
         if self._retrieval:
             has_def = tensor.zeros_like(output_word_ids)

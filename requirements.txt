@@ -1,2 +1,2 @@
 tqdm
-h5py
+nltk
