@@ -151,6 +151,10 @@ qar['squad9'] = c
 qar['squad10'] = tune_depth_and_dropout(qar['squad7'])
 # the baseline with spelling
 qar['squad11'] = tune_depth_and_dropout(qar['squad8'])
+c = qar['squad11']
+# fix the old hack with the dimensionality
+c['emb_dim'] = 300
+qar['squad11b'] = c
 # the baseline with the dictionary only
 qar['squad6'] = tune_depth_and_dropout(qar['squad5'])
 # dictionary + spelling
