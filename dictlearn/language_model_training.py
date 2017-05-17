@@ -94,6 +94,7 @@ def initialize_data_and_model(config):
                        c['standalone_def_rnn'],
                        c['disregard_word_embeddings'],
                        c['compose_type'],
+                       c['very_rare_threshold'],
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
@@ -272,6 +273,7 @@ def train_language_model(new_training_job, config, save_path, params,
                 pprint.pformat(train_monitored_vars, width=120))
     logger.info("monitored variables during valid:" + "\n" +
                 pprint.pformat(monitored_vars, width=120))
+
 
     main_loop = MainLoop(
         algorithm,

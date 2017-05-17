@@ -40,6 +40,7 @@ lm_config_registry.set_root_config({
     'mon_freq_train' : 100,
     'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
+    'very_rare_threshold': 170000, # less than 1% of occurences are ranked above
     'n_batches' : 0,
     'monitor_parameters' : False,
     'fast_checkpoint' : False
@@ -312,10 +313,10 @@ lm_config_registry['10k_spelling'] = c
 
 # we will augment dict2 with a separate lookup and a separate dict_vocab
 c = lm_config_registry['obw_10k_dict2_wnl']
-c['dict_vocab_path'] = 'onebillionword/vocab_spelling_dict_weighted.txt'
+c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_weighted.txt' 
 c['def_num_input_words'] = 10000
 c['standalone_def_lookup'] = True
 c['standalone_def_rnn'] = True
 c['fast_checkpoint'] = True
-c['max_def_per_word'] = 10
+c['max_def_per_word'] = 20
 lm_config_registry['obw_10k_dict5_wn'] = c
