@@ -607,7 +607,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     c = json.load(open(c))
 
     # Very ugly absolute path fix
-    ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/"
+    ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/data/"
     from six import string_types
     for k in c:
         if isinstance(c[k], string_types):
@@ -622,6 +622,10 @@ def evaluate(c, tar_path, *args, **kwargs):
 
     logging.info("Updating config with " + str(kwargs))
     c.update(**kwargs)
+
+    # NOTE: This assures we don't miss crucial definition for some def heavy words
+    # usually it is a good idea
+    c['max_def_per_word'] = c['max_def_per_word'] * 2
 
     assert tar_path.endswith("tar")
     dest_path = os.path.dirname(tar_path)
@@ -713,11 +717,10 @@ def evaluate(c, tar_path, *args, **kwargs):
     #         for v_name, v in [("vocab_all", vocab_all), ("vocab", reference_vocab)]:
     #             logging.info("Calculating {} embeddings for {}".format(name, v_name))
 
-
     # Predict
     predict_fnc = theano.function(cg.inputs, pred)
     results = {}
-    batch_size = 14
+    batch_size = 1
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
         stream = data.get_stream(subset, batch_size=batch_size, seed=778)

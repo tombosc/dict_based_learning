@@ -345,7 +345,7 @@ class Retrieval(object):
     def __init__(self, vocab_text, dictionary,
                  max_def_length=1000, exclude_top_k=None,
                  with_too_long_defs='drop', vocab_def=None,
-                 max_def_per_word=1000000, add_bod_eod=True):
+                 max_def_per_word=1000000, add_bod_eod=True, seed=777):
         """Retrieves the definitions.
         vocab_text
             The vocabulary for text
@@ -363,6 +363,7 @@ class Retrieval(object):
         """
         self._vocab_text = vocab_text
         self._add_bod_eod = add_bod_eod
+        self._rng = numpy.random.RandomState(seed)
         if vocab_def is None:
             self._vocab_def = self._vocab_text
         else:
@@ -402,6 +403,11 @@ class Retrieval(object):
             "N_queried_words": 0,
             "N_queried_missed_words": 0,
         }
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if "_rng" not in self.__dict__:
+            self._rng = numpy.random.RandomState(777)
 
     def retrieve(self, batch):
         """Retrieves all definitions for a batch of words sequences.
@@ -476,7 +482,7 @@ class Retrieval(object):
                 # End of debug info
 
                 if self._max_def_per_word < len(word_def_indices[word]):
-                    word_defs = numpy.random.choice(word_def_indices[word],
+                    word_defs = self._rng.choice(word_def_indices[word],
                         self._max_def_per_word, replace=False)
                 else:
                     word_defs = word_def_indices[word]

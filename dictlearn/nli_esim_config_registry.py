@@ -55,8 +55,10 @@ nli_esim_config_registry.set_root_config({
     'mon_freq': int((500000) / 32) / 2, # 2 times per epoch
     'save_freq_epochs': 1,
     'mon_freq_valid': int((500000) / 32) / 2,
-    'n_batches': 50 * (500000 / 32) # ~50 epochs of SNLI
+    'n_batches': 150 * (500000 / 32) # ~50 epochs of SNLI
 })
+
+assert nli_esim_config_registry['root']['batch_size'] == 32, "Correct n_batches"
 
 ### Establish baseline ###
 c = nli_esim_config_registry['root']
@@ -141,7 +143,7 @@ nli_esim_config_registry['paper_baseline_10k'] = c
 
 c = nli_esim_config_registry['baseline']
 c['train_emb'] = 0
-c['n_batches'] = 100000
+c['n_batches'] = 150 * (500000 / c['batch_size'])
 c['translate_dim'] = 100
 c['vocab'] = 'snli/vocab_all.txt'
 c['num_input_words'] = -1
@@ -169,7 +171,7 @@ c['embedding_path'] = ''
 c['num_input_words'] = 5000
 c['num_input_def_words'] = 11000
 c['compose_type'] = 'sum'
-c['n_batches'] = 70 * (500000 / c['batch_size'])
+c['n_batches'] = 150 * (500000 / c['batch_size'])
 c['train_emb'] = 1
 c['embedding_path'] = ''
 c['embedding_def_path'] = ''
@@ -180,13 +182,14 @@ nli_esim_config_registry['paper_dict_simple'] = c
 
 c = nli_esim_config_registry['paper_dict_simple']
 c['dict_path'] = 'snli/dict_all_spelling.json'
-c['n_batches'] = 100000
+c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
+c['n_batches'] = 150 * (500000 / c['batch_size'])
 c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
 nli_esim_config_registry['paper_baseline_spelling'] = c
 
 c = nli_esim_config_registry['paper_baseline_spelling']
 c['dict_path'] = 'snli/dict_all_only_lowercase.json'
-c['n_batches'] = 100000
+c['n_batches'] = 150 * (500000 / c['batch_size'])
 c['reader_type'] = 'mean'
 nli_esim_config_registry['paper_baseline_lowercase'] = c
 

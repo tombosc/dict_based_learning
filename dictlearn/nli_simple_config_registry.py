@@ -167,7 +167,6 @@ c['combiner_reader_translate'] = False
 snli_config_registry['paper_dict_simple'] = c
 
 ## More tuned fellow
-## Should be same as results_snli_8_05_sum_small_dict_3k_exclude1k_embdim=100_udrop=0.2_bs256_noreg
 c = snli_config_registry['paper_dict_simple']
 c['def_dim'] = 100
 c['def_emb_dim'] = 100
@@ -177,25 +176,32 @@ c['batch_size'] = 256
 c['combiner_dropout'] = 0.2
 c['combiner_dropout_type'] = 'per_unit'
 c['num_input_def_words'] = 11000
-c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_vocab.txt'
+c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma_add_all.json'
+c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_vocab.txt'
 c['dropout'] = 0.15
 c['l2'] = 0.0
 c['combiner_reader_translate'] = False
 snli_config_registry['paper_dict_tuned'] = c
+
+c = snli_config_registry['paper_dict_tuned']
+c['dict_path'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_spelling.json'
+c['vocab_def'] = 'snli/dict_all_3_05_lowercase_lemma_add_all_spelling_vocab.txt'
+c['combiner_reader_translate'] = False
+snli_config_registry['paper_dict_tuned_with_spelling'] = c
 
 # C) "Dict" baselines: lowercase + spelling
 
 c = snli_config_registry['paper_dict_simple']
 c['dict_path'] = 'snli/dict_all_spelling.json'
 c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
-c['n_batches'] = 100000
+c['n_batches'] = 200000
 c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
 snli_config_registry['paper_baseline_spelling'] = c
 
 c = snli_config_registry['paper_dict_tuned']
 c['dict_path'] = 'snli/dict_all_spelling.json'
 c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
-c['n_batches'] = 100000
+c['n_batches'] = 200000
 c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
 snli_config_registry['paper_baseline_spelling_tuned'] = c
 
@@ -203,7 +209,7 @@ c = snli_config_registry['paper_baseline_spelling']
 c['dict_path'] = 'snli/dict_all_only_lowercase.json'
 # TODO: Add vocab here
 # c['vocab_def'] = 'snli/dict_all_only_lowercase_vocab.txt'
-c['n_batches'] = 100000
+c['n_batches'] = 200000
 c['reader_type'] = 'mean'
 snli_config_registry['paper_baseline_lowercase'] = c
 
