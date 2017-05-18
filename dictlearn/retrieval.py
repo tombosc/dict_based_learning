@@ -93,6 +93,18 @@ class Dictionary(object):
             self._meta_data[word] = {"sourceDictionary": "identity"}
         self.save()
 
+    def remove_out_of_vocabulary(self, vocab):
+        """
+        remove definitions that are outside of a vocabulary vocab
+        """
+        for word, word_meta in zip(self._data.keys(), self._meta_data.keys()):
+            word_id = vocab.word_to_id(word)
+            if word_id == vocab.unk:
+                del self._data[word]
+                del self._meta_data[word]
+        self.save()
+
+
     def add_spelling(self, vocab, only_if_no_def=True):
         for word in vocab.words:
             # only add spelling to the words without defs
