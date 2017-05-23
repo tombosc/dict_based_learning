@@ -128,6 +128,7 @@ qar['squad7'] = c
 # spelling
 def change_dict_to_spelling(c):
     c['dict_path'] = 'squad/squad_from_scratch/dict_spelling2.json'
+    # BUG: should be vocab_chars.txt instead
     c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_with_chars.txt'
     return c
 c = change_dict_to_spelling(qar['squad5'])
