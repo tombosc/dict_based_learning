@@ -51,27 +51,30 @@ logger = logging.getLogger()
 def initialize_data_and_model(config):
     c = config
     fuel_path = fuel.config.data_path[0]
-    vocab=None
+    vocab_main = None
     if c['vocab_path']:
-        vocab = Vocabulary(
+        vocab_main = Vocabulary(
             os.path.join(fuel.config.data_path[0], c['vocab_path']))
+    data = LanguageModellingData(c['data_path'], c['layout'], vocab=vocab_main)
 
-    data = LanguageModellingData(c['data_path'], c['layout'], vocab=vocab)
+    vocab_main = data.vocab
+
     retrieval = None
     if c['dict_path'] and not c['embedding_path']:
         dict_full_path = os.path.join(fuel_path, c['dict_path'])
         dict_ = Dictionary(dict_full_path)
         logger.debug("Loaded dictionary with {} entries"
                      .format(dict_.num_entries()))
-        vocab_dict = data.vocab
+        vocab_def = data.vocab
         if c['dict_vocab_path']:
             if not c['standalone_def_lookup']:
                 raise ValueError("Standalone def lookup mandatory with separate vocabs")
-            vocab_dict = Vocabulary(
+            vocab_def = Vocabulary(
                 os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
                 
-        retrieval = Retrieval(vocab_dict, dict_,
+        retrieval = Retrieval(vocab_main, dict_,
                               c['max_def_length'], c['exclude_top_k'],
+                              vocab_def = vocab_def,
                               max_def_per_word=c['max_def_per_word'])
     elif c['embedding_path']:
         assert(c['dict_path'])

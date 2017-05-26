@@ -42,6 +42,8 @@ def main():
         help="If true will crawl also lower-cased version")
     parser.add_argument("--crawl-also-lemma", default=0, type=int,
         help="If true will crawl also lemma version")
+    parser.add_argument("--remove-out-of-vocabulary", action="store_true",
+                        help="Remove entries of dict which do not appear in vocab")
     parser.add_argument("vocab", help="Vocabulary path")
     parser.add_argument("dict", help="Destination path for the dictionary")
     args = parser.parse_args()
@@ -82,6 +84,8 @@ def main():
             dict_.crawl_lowercase(vocab)
         elif args.add_identity:
             dict_.add_identity_mapping(vocab)
+        elif args.remove_out_of_vocabulary:
+            dict_.remove_out_of_vocabulary(vocab)
         else:
             raise ValueError("don't know what to do")
     finally:

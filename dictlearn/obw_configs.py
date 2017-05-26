@@ -269,6 +269,11 @@ c = lm_config_registry['obw_10k_dict2_wnl']
 c['max_def_per_word'] = 20 # covers > 99% of the defs
 lm_config_registry['obw_10k_dict2_wnl2'] = c
 
+c = lm_config_registry['obw_10k_dict1_wnl']
+c['max_def_per_word'] = 20 # covers > 99% of the defs
+lm_config_registry['obw_10k_dict1_wnl2'] = c
+
+
 # NEW GLOVE
 c = lm_config_registry['obw_base_10k_slower']
 c['vocab_path'] = 'onebillionword/vocab_glove_10k.txt'
@@ -311,12 +316,23 @@ c['dict_path'] = 'onebillionword/dict_obw_spelling_cut11.json' #max_def_len=11
 c['dict_vocab_path'] = 'onebillionword/vocab_spelling_dict_weighted.txt'
 lm_config_registry['10k_spelling'] = c
 
+c = lm_config_registry['10k_spelling']
+c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k_wm.txt'
+c['dict_path'] = 'onebillionword/dict_obw_spelling_cut11_restr_wnll.json' 
+lm_config_registry['10k_spelling_where_def'] = c
+
+
 # we will augment dict2 with a separate lookup and a separate dict_vocab
 c = lm_config_registry['obw_10k_dict2_wnl']
-c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_weighted.txt' 
+c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_excl_10k.txt' 
 c['def_num_input_words'] = 10000
 c['standalone_def_lookup'] = True
 c['standalone_def_rnn'] = True
 c['fast_checkpoint'] = True
 c['max_def_per_word'] = 20
 lm_config_registry['obw_10k_dict5_wn'] = c
+
+c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_excl_weighted_10k.txt' 
+lm_config_registry['obw_10k_dict6_wn'] = c
+
+
