@@ -113,6 +113,8 @@ nli_esim_config_registry['paper_dict_simple'] = c
 ## Tune fellow
 c = nli_esim_config_registry['paper_dict_simple']
 c['dropout'] = 0.7
+c['dim'] = 100
+c['num_input_def_words'] = 11000
 c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_vocab.txt'
 c['combiner_dropout'] = 0.5
 nli_esim_config_registry['paper_dict_tuned'] = c
@@ -128,11 +130,6 @@ c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
 c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
 nli_esim_config_registry['paper_baseline_spelling'] = c
 
-c = nli_esim_config_registry['paper_dict_tuned']
-c['dict_path'] = 'snli/dict_all_spelling.json'
-c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
-c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
-nli_esim_config_registry['paper_baseline_spelling'] = c
 
 c = nli_esim_config_registry['paper_baseline_spelling']
 c['dict_path'] = 'snli/dict_all_only_lowercase.json'
