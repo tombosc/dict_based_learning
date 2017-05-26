@@ -76,7 +76,7 @@ c['num_input_words'] = 5000
 c['emb_dim'] = 100
 nli_esim_config_registry['paper_baseline_5k'] = c
 
-c = nli_esim_config_registry['baseline']
+c = nli_esim_config_registry['root']
 c['train_emb'] = 0
 c['n_batches'] = 150 * (500000 / c['batch_size'])
 c['translate_dim'] = 100
