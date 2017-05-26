@@ -50,15 +50,18 @@ def main():
     dict_ = Dictionary(args.dict)
 
     try:
-        port = get_free_port()
-        popen = start_corenlp(port)
-        url = "http://localhost:{}".format(port)
         if args.api_key:
+            port = get_free_port()
+            popen = start_corenlp(port)
+            url = "http://localhost:{}".format(port)
             dict_.crawl_wordnik(
                 vocab, args.api_key, url,
                 crawl_also_lowercase=args.crawl_also_lowercase,
                 crawl_also_lemma=args.crawl_also_lemma)
         elif args.wordnet:
+            port = get_free_port()
+            popen = start_corenlp(port)
+            url = "http://localhost:{}".format(port)
             dict_.crawl_wordnet(url)
         elif args.add_lemma_defs or args.add_lower_lemma_defs:
             # NOTE(kudkudak): A bit ugly, but this covers case where

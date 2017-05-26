@@ -607,12 +607,14 @@ def evaluate(c, tar_path, *args, **kwargs):
     c = json.load(open(c))
 
     # Very ugly absolute path fix
-    ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/data/"
+    ABS_PATHS = ["data/", "/mnt/users/jastrzebski/local/dict_based_learning/data/",
+        "/data/cf9ffb48-61bd-40dc-a011-b2e7e5acfd72/"]
     from six import string_types
-    for k in c:
-        if isinstance(c[k], string_types):
-            if c[k].startswith(ABS_PATH):
-                c[k] = c[k][len(ABS_PATH):]
+    for abs_path in ABS_PATHS:
+        for k in c:
+            if isinstance(c[k], string_types):
+                if c[k].startswith(abs_path):
+                    c[k] = c[k][len(abs_path):]
 
     # Make data paths nice
     for path in ['dict_path', 'embedding_def_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
@@ -720,7 +722,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     # Predict
     predict_fnc = theano.function(cg.inputs, pred)
     results = {}
-    batch_size = 1
+    batch_size = 14
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
         stream = data.get_stream(subset, batch_size=batch_size, seed=778)
