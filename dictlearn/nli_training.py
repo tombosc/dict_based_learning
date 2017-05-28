@@ -73,6 +73,27 @@ from dictlearn.nli_simple_model import LSTMReadDefinitions, MeanPoolReadDefiniti
 from blocks.serialization import secure_dump, dump_and_add_to_dump
 from blocks.extensions import SimpleExtension
 
+class OnLogStatusExceed(object):
+    """Trigger a callback when a certain log record is found.
+
+    Parameters
+    ----------
+    record_name : str
+        The record name to check.
+
+    """
+    def __init__(self, record_name, max_val):
+        self.record_name = record_name
+        self.max_val = max_val
+
+    def __call__(self, log):
+        return bool(log.status.get(self.record_name, -numpy.inf) >= self.max_val)
+
+    def __eq__(self, other):
+        return (type(other) == type(self) and
+                other.record_name == self.record_name)
+
+
 # vocab defaults to data.vocab
 # vocab_text defaults to vocab
 # Vocab def defaults to vocab
@@ -563,7 +584,9 @@ def train_snli_model(new_training_job, config, save_path, params, fast_start, fu
             after_training=True),
         Printing(every_n_batches=c['mon_freq_valid']),
         PrintMessage(msg="save_path={}".format(save_path), every_n_batches=c['mon_freq']),
-        FinishAfter(after_n_batches=c['n_batches'])])
+        FinishAfter(after_n_batches=c['n_batches']).add_condition(['after_batch'],
+            OnLogStatusExceed('iterations_done', c['n_batches']))])
+
     logger.info(extensions)
 
     ### Run training ###
@@ -607,12 +630,14 @@ def evaluate(c, tar_path, *args, **kwargs):
     c = json.load(open(c))
 
     # Very ugly absolute path fix
-    ABS_PATH = "/mnt/users/jastrzebski/local/dict_based_learning/data/"
+    ABS_PATHS = ["data/", "/mnt/users/jastrzebski/local/dict_based_learning/data/",
+        "/data/cf9ffb48-61bd-40dc-a011-b2e7e5acfd72/"]
     from six import string_types
-    for k in c:
-        if isinstance(c[k], string_types):
-            if c[k].startswith(ABS_PATH):
-                c[k] = c[k][len(ABS_PATH):]
+    for abs_path in ABS_PATHS:
+        for k in c:
+            if isinstance(c[k], string_types):
+                if c[k].startswith(abs_path):
+                    c[k] = c[k][len(abs_path):]
 
     # Make data paths nice
     for path in ['dict_path', 'embedding_def_path', 'embedding_path', 'vocab', 'vocab_def', 'vocab_text']:
@@ -720,7 +745,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     # Predict
     predict_fnc = theano.function(cg.inputs, pred)
     results = {}
-    batch_size = 1
+    batch_size = 14
     for subset in ['valid', 'test']:
         logging.info("Predicting on " + subset)
         stream = data.get_stream(subset, batch_size=batch_size, seed=778)
