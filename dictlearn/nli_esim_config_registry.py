@@ -130,6 +130,12 @@ c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
 c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
 nli_esim_config_registry['paper_baseline_spelling'] = c
 
+c = nli_esim_config_registry['paper_dict_tuned']
+c['dict_path'] = 'snli/dict_all_spelling.json'
+c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
+c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
+nli_esim_config_registry['paper_baseline_spelling_tuned'] = c
+
 
 c = nli_esim_config_registry['paper_baseline_spelling']
 c['dict_path'] = 'snli/dict_all_only_lowercase.json'
