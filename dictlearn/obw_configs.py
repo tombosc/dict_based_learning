@@ -40,7 +40,7 @@ lm_config_registry.set_root_config({
     'mon_freq_train' : 100,
     'mon_freq_valid' : 1000,
     'save_freq_batches' : 1000,
-    'very_rare_threshold': 170000, # less than 1% of occurences are ranked above
+    'very_rare_threshold': [1000,100,10], 
     'n_batches' : 0,
     'monitor_parameters' : False,
     'fast_checkpoint' : False
@@ -166,53 +166,6 @@ c = lm_config_registry['obw_10k_dict2']
 c = new_dictify(c)
 lm_config_registry['obw_10k_dict2_wn'] = c
 
-# BEGIN OLD GLOVE
-# these use same embedding size for GloVe and trainable which is a problem
-# to compare with baselines which use emb_dim=500
-# also they use huge vocab and thus huge embedding matrix, that's why they are 
-# restricted to 300k
-# the 2 first are not trainable (i.e. there isn't a core of 10k trainable 
-# embeddings, they only use the frozen embeddings)
-# They used old implem where the dict was generated on the fly, so can't run 
-# them anymore
-c = lm_config_registry['obw_base_10k_slower']
-c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['emb_def_dim'] = 300
-c['emb_dim'] = 300
-lm_config_registry['obw_base_10k_glove300k'] = c
-
-c['num_input_words'] = 300005
-lm_config_registry['obw_base_300k_glove300k'] = c
-
-c = lm_config_registry['obw_base_10k_slower']
-c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['dict_path'] = 'onebillionword/dict_obw_identity_300k.json'
-c['emb_dim'] = 300
-c['emb_def_dim'] = 300
-c['exclude_top_k'] = 10000
-c['def_reader'] = 'mean'
-c['standalone_def_lookup'] = True
-c['compose_type'] = 'transform_and_sum'
-lm_config_registry['obw_base_10k_tr_glove_300k'] = c
-
-c['embedding_path']= 'onebillionword/wn/glove.840B.300d_300k_common.npy'
-lm_config_registry['obw_base_10k_tr_glove_300k_restr'] = c
-
-# The following is a baseline for these (emb_dim=300)
-c = lm_config_registry['obw_base_10k_slower']
-c['emb_dim'] = 300
-lm_config_registry['obw_base_10k_emb300'] = c
-
-# This one is basically 30k trainable restricted to vocab that's also in glove 
-# in the 0-30 range... 
-# TODO(tombosc): double check and delete
-c = lm_config_registry['obw_base_10k_slower']
-c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k.txt'
-c['num_input_words'] = 30000
-lm_config_registry['obw_base_10k_restr_wnl_30k'] = c
-
-# END OLD GLOVE
-
 def new_dictify_addlemma(c):
     c['dict_path'] = 'onebillionword/wn/dict_obw_wn.json'
     c['max_def_per_word'] = 10 # covers > 95% (of defs, not occurences)
@@ -335,4 +288,10 @@ lm_config_registry['obw_10k_dict5_wn'] = c
 c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_excl_weighted_10k.txt' 
 lm_config_registry['obw_10k_dict6_wn'] = c
 
+# Corrected restricted runs
+c['dict_path'] = 'onebillionword/dict_obw_wn_inter_glove.json'
+lm_config_registry['obw_10k_dict6_wn_R'] = c
 
+c = lm_config_registry['10k_spelling_where_def']
+c['dict_path'] = 'onebillionword/dict_obw_spelling_cut11_restr_wnglove.json' 
+lm_config_registry['spelling_R'] = c
