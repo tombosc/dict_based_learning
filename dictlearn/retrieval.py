@@ -392,28 +392,35 @@ class Retrieval(object):
             # confusing
             raise Exception("Cannot perform exclude_top_k based on vocabulary without frequency information.")
 
-        self._max_def_per_word = max_def_per_word
-        # TODO(kudkudak): To follow conventions - def dropping etc should also be performed in crawl_dict.py
+        # TODO(kudkudak):
+        # To follow conventions - def dropping etc should also be performed in crawl_dict.py
+        # TODO (rizar):
+        # ... or maybe it's moving everything to the preprocessing that was a mistake
 
+        self._max_def_length = max_def_length
         if with_too_long_defs not in {"drop", "crop"}:
             raise NotImplementedError("Not implemented " + with_too_long_defs)
-
         self._with_too_long_defs = with_too_long_defs
 
-        # Note: there are 2 types of quantities we track
-        # - absolute quantities (e.g. N_words)
-        # - freq-dep quantities (e.g. N_queried_words)
+        self._max_def_per_word = max_def_per_word
+        if with_too_many_defs not in {"random", "exclude"}:
+            raise NotImplementedError("Not implemented " + with_too_many_defs)
+        self._with_too_many_defs = with_too_many_defs
+
         self._debug_info = {
             "missed_word_sample": [],
 
             "N_words": 0,
-            "N_missed_words": 0,
+            "N_excluded_words": 0,
+
+            "N_distinct_words": 0,
+            "N_missed_distinct_words": 0,
 
             "N_def": 0,
             "N_dropped_def": 0,
 
             "N_queried_words": 0,
-            "N_queried_missed_words": 0,
+            "N_missed_words": 0,
         }
 
     def __setstate__(self, state):
@@ -445,10 +452,12 @@ class Retrieval(object):
                     word = vec2str(word)
                 if not word:
                     continue
+                self._debug_info['N_words'] += 1
                 word_id = self._vocab_text.word_to_id(word)
                 if (self._exclude_top_k
                         and word_id != self._vocab_text.unk
                         and word_id < self._exclude_top_k):
+                    self._debug_info['N_excluded_words'] += 1
                     continue
 
                 if word not in word_def_indices:
@@ -457,8 +466,8 @@ class Retrieval(object):
                     word_defs = self._dictionary.get_definitions(word)
 
                     # Debug info
-                    self._debug_info['N_words'] += 1
-                    self._debug_info['N_missed_words'] += (len(word_defs) == 0)
+                    self._debug_info['N_distinct_words'] += 1
+                    self._debug_info['N_missed_distinct_words'] += (len(word_defs) == 0)
                     # End of debug info
 
                     for i, def_ in enumerate(word_defs):
@@ -484,13 +493,13 @@ class Retrieval(object):
                         definitions.append(final_def_)
 
                 # Debug info
+                self._debug_info['N_queried_words'] += 1
                 if len(word_def_indices[word]) == 0:
-                    self._debug_info['N_queried_missed_words'] += 1
+                    self._debug_info['N_missed_words'] += 1
                     if len(self._debug_info['missed_word_sample']) == 10000:
                         self._debug_info['missed_word_sample'][numpy.random.randint(10000)] = word
                     else:
                         self._debug_info['missed_word_sample'].append(word)
-                self._debug_info['N_queried_words'] += 1
                 # End of debug info
 
                 if self._max_def_per_word < len(word_def_indices[word]):
