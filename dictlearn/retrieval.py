@@ -355,9 +355,10 @@ class Dictionary(object):
 class Retrieval(object):
 
     def __init__(self, vocab_text, dictionary,
-                 max_def_length=1000, exclude_top_k=None,
-                 with_too_long_defs='drop', vocab_def=None,
-                 max_def_per_word=1000000, add_bod_eod=True, seed=777):
+                 max_def_length=1000, with_too_long_defs='drop',
+                 max_def_per_word=1000000, with_too_many_defs='random',
+                 exclude_top_k=None, vocab_def=None,
+                 add_bod_eod=True, seed=777):
         """Retrieves the definitions.
         vocab_text
             The vocabulary for text
@@ -381,7 +382,6 @@ class Retrieval(object):
         else:
             self._vocab_def = vocab_def
         self._dictionary = dictionary
-        self._max_def_length = max_def_length
         if exclude_top_k == -1:
             logger.debug("Exclude definition of all dictionary words")
             exclude_top_k = vocab_text.size()
@@ -465,6 +465,15 @@ class Retrieval(object):
                     # The first time a word is encountered in a batch
                     word_defs = self._dictionary.get_definitions(word)
 
+                    if self._max_def_per_word < len(word_defs):
+                        if self._with_too_many_defs == 'random':
+                            word_defs = self._rng.choice(
+                                word_defs, self._max_def_per_word, replace=False)
+                        else:
+                            # (rizar): if there's too many definition for a words,
+                            # maybe let's just accept that it's a "semantic prime"?
+                            word_defs = []
+
                     # Debug info
                     self._debug_info['N_distinct_words'] += 1
                     self._debug_info['N_missed_distinct_words'] += (len(word_defs) == 0)
@@ -502,13 +511,7 @@ class Retrieval(object):
                         self._debug_info['missed_word_sample'].append(word)
                 # End of debug info
 
-                if self._max_def_per_word < len(word_def_indices[word]):
-                    word_defs = self._rng.choice(word_def_indices[word],
-                        self._max_def_per_word, replace=False)
-                else:
-                    word_defs = word_def_indices[word]
-
-                for def_index in word_defs:
+                for def_index in word_def_indices[word]:
                     def_map.append((seq_pos, word_pos, def_index))
 
         return definitions, def_map

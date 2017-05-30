@@ -131,17 +131,21 @@ def initialize_data_and_model(config):
         vocab = Vocabulary(
             os.path.join(fuel.config.data_path[0], c['vocab_path']))
     data = ExtractiveQAData(path=c['data_path'], vocab=vocab, layout=c['layout'])
-    # TODO: fix me, I'm so ugly
+    # TODO: fix me, I'm so ugly (I mean the access of a private attribute)
     if c['dict_path']:
         dict_vocab = data.vocab
         if c['dict_vocab_path']:
             dict_vocab = Vocabulary(
                 os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
         data._retrieval = Retrieval(
-            dict_vocab, Dictionary(
+            data.vocab, Dictionary(
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
-            c['max_def_length'], c['exclude_top_k'],
-            with_too_long_defs=c['with_too_long_defs'])
+            max_def_length=c['max_def_length'],
+            with_too_long_defs=c['with_too_long_defs'],
+            max_def_per_word=c['max_def_per_word'],
+            with_too_many_defs=c['with_too_many_defs'],
+            # This should fix --exclude_top_k
+            vocab_def=dict_vocab)
     logger.debug("Data loaded")
     qam = ExtractiveQAModel(
         c['dim'], c['emb_dim'], c['readout_dims'],
@@ -428,6 +432,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path,
         is_correct = correct_answer_span == predicted_answer_span
         context = example['contexts_text'][0]
         question = example['questions_text'][0]
+        context_def_map = example['contexts_def_map']
 
         # pretty print
         outcome = 'correct' if is_correct else 'wrong'
@@ -439,6 +444,10 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path,
                                                     predicted_answer_span.stop,
                                                     outcome),
               detokenize(answer))
+        print(u"COST: {}".format(float(result['costs'][0])))
+        print(u"DEFINITIONS AVAILABLE FOR:")
+        for pos in set(context_def_map[:, 1]):
+            print(context[pos])
         print()
 
         # update statistics

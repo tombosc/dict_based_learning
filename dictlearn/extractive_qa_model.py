@@ -6,7 +6,7 @@ from theano.gradient import disconnected_grad
 from collections import OrderedDict
 
 from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
-from blocks.bricks.base import application
+from blocks.bricks.base import application, Brick
 from blocks.bricks.simple import Rectifier
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent.misc import Bidirectional

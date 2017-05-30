@@ -14,8 +14,12 @@ qa_config_registry.set_root_config({
     'max_length' : 100,
     'batch_size' : 32,
     'batch_size_valid' : 32,
+
+    # retrieval hacks
     'max_def_length' : 1000,
     'with_too_long_defs' : 'drop',
+    'max_def_per_word' : 1000,
+    'with_too_many_defs' : 'random',
     'exclude_top_k' : 0,
 
     # model
@@ -186,3 +190,10 @@ qar['squad_glove9'] = c
 # glove + dict + spelling
 # recursion
 # bigrams
+
+# POST PAPER CONFIGS
+c = qar['squad13']
+c['exclude_top_k'] = 0
+c['max_def_per_word'] = 30
+c['with_too_many_defs'] = 'exclude'
+qar['squad14'] = c
