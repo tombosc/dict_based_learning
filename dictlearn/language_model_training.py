@@ -25,6 +25,8 @@ from blocks.extensions.training import TrackTheBest
 from blocks.extensions.saveload import Load, Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
+                                          
+from blocks.extensions.stopping import FinishIfNoImprovementAfter
 from blocks.extensions.predicates import OnLogRecord
 
 from blocks.main_loop import MainLoop
@@ -38,7 +40,7 @@ from dictlearn.theano_util import parameter_stats
 from dictlearn.data import LanguageModellingData
 from dictlearn.extensions import (
     DumpTensorflowSummaries, StartFuelServer, LoadNoUnpickling,
-    RetrievalPrintStats)
+    RetrievalPrintStats, IntermediateCheckpoint)
 
 from dictlearn.language_model import LanguageModel
 from dictlearn.retrieval import Retrieval, Dictionary
@@ -85,8 +87,14 @@ def initialize_data_and_model(config):
         if not c['standalone_def_lookup']:
             raise ValueError("Standalone def lookup mandatory")
 
+        vocab_def = data.vocab
+        if c['dict_vocab_path']:
+            vocab_def = Vocabulary(
+                os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
+ 
         retrieval = Retrieval(data.vocab, dict_, max_def_length=1,
                               exclude_top_k=c['exclude_top_k'],
+                              vocab_def = vocab_def,
                               max_def_per_word=1, add_bod_eod=False)
 
     lm = LanguageModel(c['emb_dim'], c['emb_def_dim'], c['dim'], c['num_input_words'],
@@ -221,21 +229,44 @@ def train_language_model(new_training_job, config, save_path, params,
     if c['fast_checkpoint']:
         load = (LoadNoUnpickling(state_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job))
+        cp_args = {
+            'save_main_loop': False,
+            'save_separately' : ['log', 'iteration_state'],
+            'parameters': trained_parameters
+        }
+
         checkpoint = Checkpoint(state_path,
-                                parameters=trained_parameters,
-                                save_main_loop=False,
-                                save_separately=['log','iteration_state'],
                                 before_training=not fast_start,
                                 every_n_batches=c['save_freq_batches'],
-                                after_training=not fast_start)
+                                after_training=not fast_start,
+                                **cp_args)
+
+        if c['checkpoint_every_n_batches']:
+            intermediate_cp = IntermediateCheckpoint(
+                                 state_path,
+                                 every_n_batches=c['checkpoint_every_n_batches'],
+                                 after_training=False,
+                                 **cp_args)
     else:
         load = (Load(main_loop_path, load_iteration_state=True, load_log=True)
             .set_conditions(before_training=not new_training_job))
+        cp_args = {
+            'save_separately' : ['iteration_state'],
+            'parameters': trained_parameters
+        }
+
         checkpoint = Checkpoint(main_loop_path,
-                                save_separately=['iteration_state'],
                                 before_training=not fast_start,
                                 every_n_batches=c['save_freq_batches'],
-                                after_training=not fast_start)
+                                after_training=not fast_start,
+                                **cp_args)
+
+        if c['checkpoint_every_n_batches']:
+            intermediate_cp = IntermediateCheckpoint(
+                                 main_loop_path,
+                                 every_n_batches=c['checkpoint_every_n_batches'],
+                                 after_training=False,
+                                 **cp_args)
 
     checkpoint = checkpoint.add_condition(
                                 ['after_batch', 'after_epoch'],
@@ -262,13 +293,19 @@ def train_language_model(new_training_job, config, save_path, params,
             every_n_batches=c['mon_freq_train']),
         validation,
         track_the_best,
-        checkpoint,
+        checkpoint])
+    if c['checkpoint_every_n_batches']:
+        extensions.append(intermediate_cp)
+    extensions.extend([
         DumpTensorflowSummaries(
             save_path,
             every_n_batches=c['mon_freq_train'],
             after_training=True),
         Printing(on_resumption=True,
                  every_n_batches=c['mon_freq_train']),
+        FinishIfNoImprovementAfter(
+            track_the_best.notification_name,
+            iterations=10),
         FinishAfter(after_n_batches=c['n_batches'])
     ])
 
