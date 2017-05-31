@@ -28,7 +28,7 @@ from six import iteritems
 from blocks.extensions import SimpleExtension
 from blocks.extensions.monitoring import MonitoringExtension
 from blocks.serialization import load, load_parameters
-from blocks.extensions.saveload import Load
+from blocks.extensions.saveload import Load, Checkpoint
 
 from dictlearn.util import get_free_port
 
@@ -357,3 +357,26 @@ class StartFuelServer(SimpleExtension):
         if ret.returncode is not None:
             raise Exception()
         atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
+
+class IntermediateCheckpoint(Checkpoint):
+    """
+    Allows checkpointing intermediate models every_n_batches or
+    every_n_epochs
+    """
+    def __init__(self, *args, **kwargs):
+        super(IntermediateCheckpoint, self).__init__(*args, **kwargs)
+        self.base_path = self.path
+        # every epoch or batch
+        if len(self._conditions) != 1:
+            raise ValueError("too many conditions")
+        condition = self._conditions[0]
+        name, predicate, args = condition
+        if (not predicate) or (not predicate.num):
+            raise ValueError("wrong condition is not every n ...")
+        self.every_n = predicate.num
+
+    def do(self, *args, **kwargs):
+        iterations_done = self.main_loop.log.status['iterations_done']
+        self.path = "{}.after_batch_{}.tar".format(self.base_path, iterations_done)
+        super(IntermediateCheckpoint, self).do(*args, **kwargs)
+
