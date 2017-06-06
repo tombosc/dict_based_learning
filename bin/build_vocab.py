@@ -25,19 +25,22 @@ def main():
     parser = argparse.ArgumentParser("Builds a dictionary")
     parser.add_argument("--top-k", type=int, help="Top most frequent words to leave")
     parser.add_argument(
-        "--weight-dict-entries", default=None,
+        "--vocab-text", default=None,
+        help="Vocab corresponding to the main if text is a dictionary.")
+    parser.add_argument(
+        "--weight-dict-entries", action='store_true',
         help="Weight dict entries according to the freqs from a vocab.")
     parser.add_argument(
         "--exclude-top-k", type=int,
         help="Ignore definitions of a number of most frequent words")
-    parser.add_argument("text", help="The text to use. Pass file names separated by comma to concatenate texts")
+    parser.add_argument("text", help="The text to use. Can be a text file or .h5 or a dictionary with format.json in which case you need to use --vocab-text as well.")
     parser.add_argument("vocab", help="Destination")
     args = parser.parse_args()
 
     text = []
-    if args.weight_dict_entries:
+    if args.vocab_text:
         text = collections.defaultdict(int)
-        vocab_text = Vocabulary(args.weight_dict_entries)
+        vocab_text = Vocabulary(args.vocab_text)
     for f_name in args.text.split(","):
         logging.info("Processing " + f_name)
         if f_name.endswith('.h5'):
@@ -56,9 +59,11 @@ def main():
                     continue
 
                 for def_ in list_defs:
-                    if args.weight_dict_entries:
-                        for def_word in def_:
+                    for def_word in def_:
+                        if args.weight_dict_entries:
                             text[def_word] += vocab_text.word_freq(word)
+                        else:
+                            text[def_word] += 1
         else:
             with open(f_name) as file_:
                 def data():
