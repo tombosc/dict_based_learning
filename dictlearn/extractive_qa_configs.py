@@ -34,6 +34,7 @@ qa_config_registry.set_root_config({
     'annealing_start_epoch' : 10,
     'grad_clip_threshold' : 5.0,
     'emb_dropout' : 0,
+    'emb_dropout_type' : 'regular',
     'dropout' : 0.,
     'random_unk' : False,
     'def_word_gating' : "none",
@@ -46,7 +47,8 @@ qa_config_registry.set_root_config({
     'save_freq_batches' : 1000,
     'save_freq_epochs' : 1,
     # that corresponds to about 12 epochs
-    'n_batches' : 33000,
+    'n_batches' : 0,
+    'n_epochs' : 0,
     'monitor_parameters' : False
 })
 qar = qa_config_registry
@@ -206,5 +208,8 @@ c = qar['squad_glove6']
 c['emb_dropout'] = 0.5
 qar['squad_glove10'] = c
 c = qar['squad10']
+c['emb_dropout_type'] = 'same_mask'
 c['emb_dropout'] = 0.5
+c['n_epochs'] = 30
+c['annealing_start_epoch'] = 20
 qar['squad15'] = c

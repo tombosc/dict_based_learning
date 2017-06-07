@@ -265,8 +265,13 @@ def train_extractive_qa(new_training_job, config, save_path,
         # a new dropout with exactly same mask at different steps
         emb_vars = VariableFilter(roles=[EMBEDDINGS])(regularized_cg)
         emb_dropout_mask = get_dropout_mask(emb_vars[0], c['emb_dropout'])
-        regularized_cg = apply_dropout2(regularized_cg, emb_vars, c['emb_dropout'],
-                                        dropout_mask=emb_dropout_mask)
+        if c['emb_dropout_type'] == 'same_mask':
+            regularized_cg = apply_dropout2(regularized_cg, emb_vars, c['emb_dropout'],
+                                            dropout_mask=emb_dropout_mask)
+        elif c['emb_dropout_type'] == 'regular':
+            regularized_cg = apply_dropout(regularized_cg, emb_vars, c['emb_dropout'])
+        else:
+            raise ValueError("unknown dropout type {}".format(c['emb_dropout_type']))
         train_cost = regularized_cg.outputs[0]
         train_monitored_vars = regularized_cg.outputs[1:]
 
@@ -358,7 +363,8 @@ def train_extractive_qa(new_training_job, config, save_path,
             before_training=not fast_start),
         Printing(after_epoch=True,
                  every_n_batches=c['mon_freq_train']),
-        FinishAfter(after_n_batches=c['n_batches']),
+        FinishAfter(after_n_batches=c['n_batches'],
+                    after_n_epochs=c['n_epochs']),
         Annealing(c['annealing_learning_rate'],
                   after_n_epochs=c['annealing_start_epoch']),
         LoadNoUnpickling(best_tar_path,
