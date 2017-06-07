@@ -9,7 +9,7 @@ $DBL/bin/build_vocab.py train.h5,dev.h5 vocab_combined.txt
 
 # Builds a basic Wordnet dictionary.
 # It should not matter which vocab is used.
-# $DBL/bin/crawl_dict.py --wordnet vocab_combined.txt dict_wordnet.json 2>log_dict_wordnet.txt
+$DBL/bin/crawl_dict.py --wordnet vocab_combined.txt dict_wordnet.json 2>log_dict_wordnet.txt
 
 rsync --progress -L dict_wordnet.json dict_wordnet2.2.json
 $DBL/bin/crawl_dict.py --add-lower-lemma-defs vocab_combined.txt dict_wordnet2.2.json
