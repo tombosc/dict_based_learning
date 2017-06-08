@@ -1,16 +1,22 @@
 """A dictionary-equipped extractive QA model."""
+import logging
+logger = logging.getLogger(__name__)
+
 import theano
 from theano import tensor
 from theano.gradient import disconnected_grad
+from theano.sandbox.rng_mrg import MRG_RandomStreams
 
 from collections import OrderedDict
 
+import blocks.config
 from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
-from blocks.bricks.base import application
+from blocks.bricks.base import application, Brick
 from blocks.bricks.simple import Rectifier
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
+from blocks.roles import VariableRole, add_role
 from blocks.select import Selector
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
@@ -20,12 +26,19 @@ from dictlearn.lookup import (
 from dictlearn.theano_util import unk_ratio
 
 
+class EmbeddingRole(VariableRole):
+    pass
+
+EMBEDDINGS = EmbeddingRole()
+
+
 def flip01(x):
     return x.transpose((1, 0, 2))
 
 
 def flip12(x):
     return x.transpose((0, 2, 1))
+
 
 
 class ExtractiveQAModel(Initializable):
@@ -165,6 +178,7 @@ class ExtractiveQAModel(Initializable):
                 + tensor.ge(text, self._num_input_words)[:, :, None] * disconnected_grad(embs))
         if def_embs:
             embs = self._combiner.apply(embs, mask, def_embs, def_map)
+        add_role(embs, EMBEDDINGS)
         encoded = flip01(
             self._encoder_rnn.apply(
                 self._encoder_fork.apply(

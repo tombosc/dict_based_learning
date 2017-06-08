@@ -53,11 +53,12 @@ from dictlearn.datasets import SQuADDataset
 from dictlearn.extensions import (
     DumpTensorflowSummaries, LoadNoUnpickling, StartFuelServer,
     RetrievalPrintStats)
-from dictlearn.extractive_qa_model import ExtractiveQAModel
+from dictlearn.extractive_qa_model import ExtractiveQAModel, EMBEDDINGS
 from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import Retrieval, Dictionary
 from dictlearn.squad_evaluate import normalize_answer
 from dictlearn.util import vec2str
+from dictlearn.theano_util import get_dropout_mask, apply_dropout2
 
 logger = logging.getLogger()
 
@@ -131,17 +132,21 @@ def initialize_data_and_model(config):
         vocab = Vocabulary(
             os.path.join(fuel.config.data_path[0], c['vocab_path']))
     data = ExtractiveQAData(path=c['data_path'], vocab=vocab, layout=c['layout'])
-    # TODO: fix me, I'm so ugly
+    # TODO: fix me, I'm so ugly (I mean the access of a private attribute)
     if c['dict_path']:
         dict_vocab = data.vocab
         if c['dict_vocab_path']:
             dict_vocab = Vocabulary(
                 os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
         data._retrieval = Retrieval(
-            dict_vocab, Dictionary(
+            data.vocab, Dictionary(
                 os.path.join(fuel.config.data_path[0], c['dict_path'])),
-            c['max_def_length'], c['exclude_top_k'],
-            with_too_long_defs=c['with_too_long_defs'])
+            max_def_length=c['max_def_length'],
+            with_too_long_defs=c['with_too_long_defs'],
+            max_def_per_word=c['max_def_per_word'],
+            with_too_many_defs=c['with_too_many_defs'],
+            # This should fix --exclude_top_k
+            vocab_def=dict_vocab)
     logger.debug("Data loaded")
     qam = ExtractiveQAModel(
         c['dim'], c['emb_dim'], c['readout_dims'],
@@ -248,6 +253,7 @@ def train_extractive_qa(new_training_job, config, save_path,
     train_monitored_vars = list(monitored_vars)
     if c['dropout']:
         regularized_cg = ComputationGraph([cost] + train_monitored_vars)
+        # Dima: the dropout that I implemented first
         bidir_outputs, = VariableFilter(
             bricks=[Bidirectional], roles=[OUTPUT])(cg)
         readout_layers = VariableFilter(
@@ -256,6 +262,16 @@ def train_extractive_qa(new_training_job, config, save_path,
         logger.debug("applying dropout to {}".format(
             ", ".join([v.name for v in  dropout_vars])))
         regularized_cg = apply_dropout(regularized_cg, dropout_vars, c['dropout'])
+        # a new dropout with exactly same mask at different steps
+        emb_vars = VariableFilter(roles=[EMBEDDINGS])(regularized_cg)
+        emb_dropout_mask = get_dropout_mask(emb_vars[0], c['emb_dropout'])
+        if c['emb_dropout_type'] == 'same_mask':
+            regularized_cg = apply_dropout2(regularized_cg, emb_vars, c['emb_dropout'],
+                                            dropout_mask=emb_dropout_mask)
+        elif c['emb_dropout_type'] == 'regular':
+            regularized_cg = apply_dropout(regularized_cg, emb_vars, c['emb_dropout'])
+        else:
+            raise ValueError("unknown dropout type {}".format(c['emb_dropout_type']))
         train_cost = regularized_cg.outputs[0]
         train_monitored_vars = regularized_cg.outputs[1:]
 
@@ -347,7 +363,8 @@ def train_extractive_qa(new_training_job, config, save_path,
             before_training=not fast_start),
         Printing(after_epoch=True,
                  every_n_batches=c['mon_freq_train']),
-        FinishAfter(after_n_batches=c['n_batches']),
+        FinishAfter(after_n_batches=c['n_batches'],
+                    after_n_epochs=c['n_epochs']),
         Annealing(c['annealing_learning_rate'],
                   after_n_epochs=c['annealing_start_epoch']),
         LoadNoUnpickling(best_tar_path,
@@ -428,6 +445,7 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path,
         is_correct = correct_answer_span == predicted_answer_span
         context = example['contexts_text'][0]
         question = example['questions_text'][0]
+        context_def_map = example['contexts_def_map']
 
         # pretty print
         outcome = 'correct' if is_correct else 'wrong'
@@ -439,6 +457,10 @@ def evaluate_extractive_qa(config, tar_path, part, num_examples, dest_path,
                                                     predicted_answer_span.stop,
                                                     outcome),
               detokenize(answer))
+        print(u"COST: {}".format(float(result['costs'][0])))
+        print(u"DEFINITIONS AVAILABLE FOR:")
+        for pos in set(context_def_map[:, 1]):
+            print(context[pos])
         print()
 
         # update statistics

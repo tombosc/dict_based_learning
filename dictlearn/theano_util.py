@@ -9,6 +9,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams
 from theano.scan_module.scan_op import Scan
 from toolz import unique
 from blocks.config import config
+from blocks.roles import add_role, DROPOUT
 
 
 def apply_dropout(var, drop_prob, rng=None,
@@ -23,6 +24,34 @@ def apply_dropout(var, drop_prob, rng=None,
         divisor = custom_divisor
 
     return var * rng.binomial(var.shape, p=1 - drop_prob, dtype=theano.config.floatX) / divisor
+
+
+def get_dropout_mask(var, drop_prob, rng=None, seed=None):
+    if not rng and not seed:
+        seed = config.default_seed
+    if not rng:
+        rng = MRG_RandomStreams(seed)
+    # we assume that the batch dimension is the first one
+    mask_shape = tensor.stack([var.shape[0], var.shape[-1]])
+    return rng.binomial(mask_shape, p=1 - drop_prob,
+                        dtype=theano.config.floatX)
+
+
+def apply_dropout2(computation_graph, variables, drop_prob,
+                   rng=None, seed=None, dropout_mask=None):
+    """Support using the same dropout mask at all time steps"""
+    divisor = (1 - drop_prob)
+    if not dropout_mask:
+        dropout_mask = get_dropout_mask(rng, drop_prob, seed)
+
+    replacements = [
+        (var, var * dropout_mask.dimshuffle(*([0] + ['x'] *  (var.ndim - 2) + [1])) / divisor)
+         for var in variables]
+    for variable, replacement in replacements:
+        add_role(replacement, DROPOUT)
+        replacement.tag.replacement_of = variable
+
+    return computation_graph.replace(replacements)
 
 
 def parameter_stats(parameters, algorithm):

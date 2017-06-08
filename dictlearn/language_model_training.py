@@ -73,7 +73,7 @@ def initialize_data_and_model(config):
                 raise ValueError("Standalone def lookup mandatory with separate vocabs")
             vocab_def = Vocabulary(
                 os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
-                
+
         retrieval = Retrieval(vocab_main, dict_,
                               c['max_def_length'], c['exclude_top_k'],
                               vocab_def = vocab_def,
