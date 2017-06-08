@@ -3,6 +3,7 @@ import os
 from dictlearn.language_model_training import initialize_data_and_model
 from dictlearn.obw_configs import lm_config_registry
 from dictlearn.main import main_evaluate
+from dictlearn.retrieval import Dictionary
 from blocks.serialization import load_parameters
 from blocks.model import Model
 from blocks.filter import VariableFilter
@@ -15,7 +16,7 @@ import theano.tensor as T
 def evaluate_lm(config, tar_path, part, num_examples, dest_path, **kwargs):
     c = config
 
-    if part not in ['test_unseen', 'test']:
+    if part not in ['valid', 'test_unseen', 'test']:
         raise ValueError()
 
     data, lm, _ = initialize_data_and_model(c)
@@ -30,7 +31,7 @@ def evaluate_lm(config, tar_path, part, num_examples, dest_path, **kwargs):
 
     perplexities = VariableFilter(name_regex='perplexity.*')(cg)
     proba_out, = VariableFilter(name='proba_out')(cg)
-    unk_ratios = VariableFilter(name_regex='def_unk_ratio.*')(cg)
+    unk_ratios = VariableFilter(name_regex='unk_ratio.*')(cg)
     #num_definitions, = VariableFilter(name='num_definitions')(cg)
     print perplexities
     name_to_aggregate = [p.name for p in perplexities + unk_ratios]
@@ -43,7 +44,10 @@ def evaluate_lm(config, tar_path, part, num_examples, dest_path, **kwargs):
     print "to compute:", compute.keys()
     predict_f = theano.function([words, words_mask], compute)
 
-    batch_size = 50 # size of test_unseen
+    if part == 'test_unseen':
+        batch_size = 50
+    else:
+        batch_size = 50 # size of test_unseen
     stream = data.get_stream(part, batch_size=batch_size, max_length=100)
     raw_data = [] # list of dicts containing the inputs and computed outputs
     i=0
@@ -54,12 +58,16 @@ def evaluate_lm(config, tar_path, part, num_examples, dest_path, **kwargs):
         words = input_data['words']
         words_mask = input_data['words_mask']
         to_save = predict_f(words, words_mask)
-        if part == 'test_unseen':
-            to_save.update(input_data)
+        print to_save['languagemodel_apply_unk_ratio']
+        try:
+            print to_save['languagemodel_apply_def_unk_ratio']
+        except:
+            pass
+        to_save.update(input_data)
         raw_data.append(to_save)
         i+=1
 
-    # aggregate
+    # aggregate 
     aggregated = Counter()
     sum_mask_track = Counter()
     for d in raw_data:
@@ -88,7 +96,11 @@ def evaluate_lm(config, tar_path, part, num_examples, dest_path, **kwargs):
         np.savez(os.path.join(dest_path, "predictions"),
              words = input_data['words'], 
              words_mask = input_data['words_mask'],
-             proba_out = to_save['languagemodel_apply_proba_out'])
+             #unk_ratio = to_save['unk_ratio'],
+             #def_unk_ratio = to_save['def_unk_ratio'],
+             proba_out = to_save['languagemodel_apply_proba_out'],
+             vocab_in = lm._vocab.words[:c['num_input_words']],
+             vocab_out = lm._vocab.words[:c['num_output_words']])
 
     json.dump(aggregated, 
             open(os.path.join(dest_path, "aggregates.json"), "w"),
