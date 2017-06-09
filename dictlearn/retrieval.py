@@ -97,11 +97,18 @@ class Dictionary(object):
         """
         remove definitions that are outside of a vocabulary vocab
         """
-        for word, word_meta in zip(self._data.keys(), self._meta_data.keys()):
+        # TODO: remove from meta too
+        # can't just zip because if meta is empty then nothing happens
+        print("vocab size : {}".format(vocab.size()))
+        print("dict len : {}".format(len(self._data)))
+        count_del = 0
+        for word in self._data.keys():
             word_id = vocab.word_to_id(word)
             if word_id == vocab.unk:
                 del self._data[word]
-                del self._meta_data[word]
+                count_del += 1
+                # del self._meta_data[word] # TODO:
+        print("have deleted {} definitions".format(count_del))
         self.save()
 
 
