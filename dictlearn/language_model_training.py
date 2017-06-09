@@ -75,7 +75,8 @@ def initialize_data_and_model(config):
                 os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
 
         retrieval = Retrieval(vocab_main, dict_,
-                              c['max_def_length'], c['exclude_top_k'],
+                              c['max_def_length'], with_too_long_defs='drop',
+                              exclude_top_k = c['exclude_top_k'],
                               vocab_def = vocab_def,
                               max_def_per_word=c['max_def_per_word'])
     elif c['embedding_path']:
@@ -93,6 +94,7 @@ def initialize_data_and_model(config):
                 os.path.join(fuel.config.data_path[0], c['dict_vocab_path']))
  
         retrieval = Retrieval(data.vocab, dict_, max_def_length=1,
+                              with_too_long_defs='drop',
                               exclude_top_k=c['exclude_top_k'],
                               vocab_def = vocab_def,
                               max_def_per_word=1, add_bod_eod=False)
