@@ -166,7 +166,9 @@ def initialize_data_and_model(config):
         weights_init=(GlorotUniform()
                       if not c['init_width']
                       else Uniform(width=c['init_width'])),
-        recurrent_weights_init=Uniform(width=c['rec_init_width']),
+        recurrent_weights_init=(GlorotUniform()
+                                if not c['rec_init_width']
+                                else Uniform(width=c['rec_init_width'])),
         biases_init=Constant(0.))
     qam.initialize()
     logger.debug("Model created")
