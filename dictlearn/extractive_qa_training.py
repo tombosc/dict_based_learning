@@ -285,7 +285,12 @@ def train_extractive_qa(new_training_job, config, save_path,
         dropout_vars = [bidir_outputs] + readout_layers
         logger.debug("applying dropout to {}".format(
             ", ".join([v.name for v in  dropout_vars])))
-        regularized_cg = apply_dropout(regularized_cg, dropout_vars, c['dropout'])
+        if c['dropout_type'] == 'same_mask':
+            regularized_cg = apply_dropout2(regularized_cg, dropout_vars, c['dropout'])
+        elif c['dropout_type'] == 'regular':
+            regularized_cg = apply_dropout(regularized_cg, dropout_vars, c['dropout'])
+        else:
+            raise ValueError()
         # a new dropout with exactly same mask at different steps
         emb_vars = VariableFilter(roles=[EMBEDDINGS])(regularized_cg)
         emb_dropout_mask = get_dropout_mask(emb_vars[0], c['emb_dropout'])
@@ -295,7 +300,7 @@ def train_extractive_qa(new_training_job, config, save_path,
         elif c['emb_dropout_type'] == 'regular':
             regularized_cg = apply_dropout(regularized_cg, emb_vars, c['emb_dropout'])
         else:
-            raise ValueError("unknown dropout type {}".format(c['emb_dropout_type']))
+            raise ValueError()
         train_cost = regularized_cg.outputs[0]
         train_monitored_vars = regularized_cg.outputs[1:]
 
