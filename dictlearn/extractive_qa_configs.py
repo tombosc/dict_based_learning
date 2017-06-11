@@ -28,14 +28,17 @@ qa_config_registry.set_root_config({
     'emb_dim' : 0,
     'readout_dims' : [],
     'coattention' : True,
+    'init_width' : 0.1,
+    'rec_init_width' : 0.1,
     'learning_rate' : 0.001,
     'momentum' : 0.9,
     'annealing_learning_rate' : 0.0001,
     'annealing_start_epoch' : 10,
     'grad_clip_threshold' : 5.0,
-    'emb_dropout' : 0,
+    'emb_dropout' : 0.0,
     'emb_dropout_type' : 'regular',
     'dropout' : 0.,
+    'dropout_type' : 'regular',
     'random_unk' : False,
     'def_word_gating' : "none",
     'compose_type' : "sum",
@@ -48,7 +51,7 @@ qa_config_registry.set_root_config({
     'save_freq_epochs' : 1,
     # that corresponds to about 12 epochs
     'n_batches' : 0,
-    'n_epochs' : 0,
+    'n_epochs' : 12,
     'monitor_parameters' : False
 })
 qar = qa_config_registry
@@ -204,12 +207,26 @@ c['with_too_many_defs'] = 'exclude'
 qar['squad14'] = c
 
 # dropout of embeddings
-c = qar['squad_glove6']
-c['emb_dropout'] = 0.5
-qar['squad_glove10'] = c
 c = qar['squad10']
 c['emb_dropout_type'] = 'same_mask'
 c['emb_dropout'] = 0.5
 c['n_epochs'] = 30
 c['annealing_start_epoch'] = 20
 qar['squad15'] = c
+
+# hyperparameter cleanup
+c = qar['squad15']
+c['dropout_type'] = 'same_mask'
+c['init_width'] = 0.
+c['rec_init_width'] = 0.
+qar['squad16'] = c
+
+c = qar['squad_glove6']
+c['init_width'] = 0.
+c['rec_init_width'] = 0.
+c['dropout_type'] = 'same_mask'
+c['emb_dropout_type'] = 'same_mask'
+c['emb_dropout'] = 0.5
+c['n_epochs'] = 30
+c['annealing_start_epoch'] = 20
+qar['squad_glove10'] = c

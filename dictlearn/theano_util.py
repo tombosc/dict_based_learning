@@ -41,12 +41,15 @@ def apply_dropout2(computation_graph, variables, drop_prob,
                    rng=None, seed=None, dropout_mask=None):
     """Support using the same dropout mask at all time steps"""
     divisor = (1 - drop_prob)
-    if not dropout_mask:
-        dropout_mask = get_dropout_mask(rng, drop_prob, seed)
 
-    replacements = [
-        (var, var * dropout_mask.dimshuffle(*([0] + ['x'] *  (var.ndim - 2) + [1])) / divisor)
-         for var in variables]
+    replacements = []
+    for var in variables:
+        if dropout_mask:
+            var_dropout_mask = dropout_mask
+        else:
+            var_dropout_mask = get_dropout_mask(var, drop_prob, rng, seed)
+        var_dropout_mask = var_dropout_mask.dimshuffle(*([0] + ['x'] *  (var.ndim - 2) + [1]))
+        replacements.append((var, var * var_dropout_mask / divisor))
     for variable, replacement in replacements:
         add_role(replacement, DROPOUT)
         replacement.tag.replacement_of = variable

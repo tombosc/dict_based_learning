@@ -12,6 +12,7 @@ import logging
 import cPickle
 import subprocess
 import json
+import StringIO
 
 import numpy
 import theano
@@ -22,6 +23,7 @@ import blocks
 from blocks.initialization import Uniform, Constant
 from blocks.bricks.recurrent import Bidirectional
 from blocks.bricks.simple import Rectifier
+from blocks.bricks import Initializable
 from blocks.algorithms import (
     Adam, GradientDescent, Adam, StepClipping, CompositeRule)
 from blocks.graph import ComputationGraph, apply_dropout
@@ -39,6 +41,7 @@ from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.monitoring.aggregation import MonitoredQuantity
 from blocks.extensions import SimpleExtension
 from blocks.extensions.predicates import OnLogRecord
+from blocks.utils import find_bricks
 
 import fuel
 from fuel.streams import ServerDataStream
@@ -58,6 +61,8 @@ from dictlearn.vocab import Vocabulary
 from dictlearn.retrieval import Retrieval, Dictionary
 from dictlearn.squad_evaluate import normalize_answer
 from dictlearn.util import vec2str
+from dictlearn.inits import GlorotUniform
+
 from dictlearn.theano_util import get_dropout_mask, apply_dropout2
 
 logger = logging.getLogger()
@@ -158,7 +163,12 @@ def initialize_data_and_model(config):
         reuse_word_embeddings=c['reuse_word_embeddings'],
         random_unk=c['random_unk'],
         def_reader=c['def_reader'],
-        weights_init=Uniform(width=0.1),
+        weights_init=(GlorotUniform()
+                      if not c['init_width']
+                      else Uniform(width=c['init_width'])),
+        recurrent_weights_init=(GlorotUniform()
+                                if not c['rec_init_width']
+                                else Uniform(width=c['rec_init_width'])),
         biases_init=Constant(0.))
     qam.initialize()
     logger.debug("Model created")
@@ -172,7 +182,9 @@ def initialize_data_and_model(config):
 def train_extractive_qa(new_training_job, config, save_path,
                         params, fast_start, fuel_server, seed):
     if seed:
+        logger.debug("Changing Fuel random seed to {}".format(seed))
         fuel.config.default_seed = seed
+        logger.debug("Changing Blocks random seed to {}".format(seed))
         blocks.config.config.default_seed = seed
 
     root_path = os.path.join(save_path, 'training_state')
@@ -239,11 +251,23 @@ def train_extractive_qa(new_training_job, config, save_path,
         trained_parameters = [p for p in trained_parameters
                               if p in def_reading_parameters]
 
+    bricks = find_bricks([qam], lambda brick: isinstance(brick, Initializable))
+    init_schemes = {}
+    for brick in bricks:
+        brick_name = "/".join([b.name for b in brick.get_unique_path()])
+        init_schemes[brick_name] = {}
+        for arg, value in brick.__dict__.items():
+            if arg.endswith('_init'):
+                init_schemes[brick_name][arg] = repr(value)
+    logger.info("Initialization schemes:")
+    logger.info(json.dumps(init_schemes, indent=2))
+
     logger.info("Cost parameters" + "\n" +
                 pprint.pformat(
                     [" ".join((
                        key, str(parameters[key].get_value().shape),
-                       'trained' if parameters[key] in trained_parameters else 'frozen'))
+                       'trained' if parameters[key] in trained_parameters else 'frozen',
+                       str((6 / sum(parameters[key].get_value().shape)) ** 0.5)))
                      for key in sorted(parameters.keys())],
                     width=120))
 
@@ -261,7 +285,12 @@ def train_extractive_qa(new_training_job, config, save_path,
         dropout_vars = [bidir_outputs] + readout_layers
         logger.debug("applying dropout to {}".format(
             ", ".join([v.name for v in  dropout_vars])))
-        regularized_cg = apply_dropout(regularized_cg, dropout_vars, c['dropout'])
+        if c['dropout_type'] == 'same_mask':
+            regularized_cg = apply_dropout2(regularized_cg, dropout_vars, c['dropout'])
+        elif c['dropout_type'] == 'regular':
+            regularized_cg = apply_dropout(regularized_cg, dropout_vars, c['dropout'])
+        else:
+            raise ValueError()
         # a new dropout with exactly same mask at different steps
         emb_vars = VariableFilter(roles=[EMBEDDINGS])(regularized_cg)
         emb_dropout_mask = get_dropout_mask(emb_vars[0], c['emb_dropout'])
@@ -271,7 +300,7 @@ def train_extractive_qa(new_training_job, config, save_path,
         elif c['emb_dropout_type'] == 'regular':
             regularized_cg = apply_dropout(regularized_cg, emb_vars, c['emb_dropout'])
         else:
-            raise ValueError("unknown dropout type {}".format(c['emb_dropout_type']))
+            raise ValueError()
         train_cost = regularized_cg.outputs[0]
         train_monitored_vars = regularized_cg.outputs[1:]
 

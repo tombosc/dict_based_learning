@@ -64,7 +64,8 @@ class ExtractiveQAModel(Initializable):
     def __init__(self, dim, emb_dim, readout_dims,
                  num_input_words, def_num_input_words, vocab,
                  use_definitions, def_word_gating, compose_type, coattention,
-                 def_reader, reuse_word_embeddings, random_unk, **kwargs):
+                 def_reader, reuse_word_embeddings, random_unk, recurrent_weights_init,
+                 **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
@@ -78,6 +79,7 @@ class ExtractiveQAModel(Initializable):
         self._use_definitions = use_definitions
         self._random_unk = random_unk
         self._reuse_word_embeddings = reuse_word_embeddings
+        self.recurrent_weights_init = recurrent_weights_init
 
         lookup_num_words = num_input_words
         if reuse_word_embeddings:
@@ -145,6 +147,11 @@ class ExtractiveQAModel(Initializable):
             input_vars.extend([self.defs, self.def_mask,
                                self.contexts_def_map, self.questions_def_map])
         self.input_vars = OrderedDict([(var.name, var) for var in input_vars])
+
+    def _push_initialization_config(self):
+        super(ExtractiveQAModel, self)._push_initialization_config()
+        self._encoder_rnn.weights_init = self.recurrent_weights_init
+        self._bidir.weights_init = self.recurrent_weights_init
 
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
