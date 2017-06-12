@@ -144,9 +144,6 @@ class LanguageModel(Initializable):
         if self._cache:
             self._cache.weights_init = Constant(0.)
 
-    def _initialize(self):
-        print "in initialize:", self._cache.weights_init
-
     def set_def_embeddings(self, embeddings):
         self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
