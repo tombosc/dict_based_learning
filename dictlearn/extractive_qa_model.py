@@ -64,7 +64,8 @@ class ExtractiveQAModel(Initializable):
     def __init__(self, dim, emb_dim, readout_dims,
                  num_input_words, def_num_input_words, vocab,
                  use_definitions, def_word_gating, compose_type, coattention,
-                 def_reader, reuse_word_embeddings, random_unk, recurrent_weights_init,
+                 def_reader, reuse_word_embeddings, bidir_encoder,
+                 random_unk, recurrent_weights_init,
                  **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
@@ -92,9 +93,15 @@ class ExtractiveQAModel(Initializable):
         children = []
         self._lookup = LookupTable(lookup_num_words, emb_dim)
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
-        self._encoder_rnn = LSTM(dim, name='encoder_rnn')
-        self._question_transform = Linear(dim, dim, name='question_transform')
-        self._bidir_fork = Linear(3 * dim if coattention else 2 * dim, 4 * dim, name='bidir_fork')
+        if bidir_encoder:
+            self._encoder_rnn = Bidirectional(LSTM(dim), name='encoder_rnn')
+            encoded_dim = 2 * dim
+        else:
+            self._encoder_rnn = LSTM(dim, name='bidir_encoder_rnn')
+            encoded_dim = dim
+        self._question_transform = Linear(encoded_dim, encoded_dim, name='question_transform')
+        self._bidir_fork = Linear(
+            3 * encoded_dim if coattention else 2 * encoded_dim, 4 * dim, name='bidir_fork')
         self._bidir = Bidirectional(LSTM(dim), name='bidir')
         children.extend([self._lookup,
                          self._encoder_fork, self._encoder_rnn,

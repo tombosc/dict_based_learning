@@ -43,6 +43,7 @@ qa_config_registry.set_root_config({
     'def_word_gating' : "none",
     'compose_type' : "sum",
     'reuse_word_embeddings' : False,
+    'bidir_encoder' : False,
     'train_only_def_part' : False,
 
     # monitoring and checkpointing
