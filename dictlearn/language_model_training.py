@@ -307,7 +307,8 @@ def train_language_model(new_training_job, config, save_path, params,
                  every_n_batches=c['mon_freq_train']),
         FinishIfNoImprovementAfter(
             track_the_best.notification_name,
-            iterations=10),
+            iterations=10 * c['mon_freq_valid'],
+            every_n_batches=c['mon_freq_valid']),
         FinishAfter(after_n_batches=c['n_batches'])
     ])
 
