@@ -35,6 +35,7 @@ lm_config_registry.set_root_config({
     'def_reader': 'LSTM',
     'standalone_def_rnn' : False,
     'standalone_def_lookup': False,
+    'cache_size': 0, # when 0: no cache
 
     # monitoring and checkpointing
     'mon_freq_train' : 200,
@@ -214,7 +215,6 @@ c['batch_size_valid'] = 32
 c['mon_freq_train'] = 10
 c['mon_freq_valid'] = 100
 c['save_freq_batches'] = 100
-c['checkpoint_every_n_batches'] = 300
 lm_config_registry['debug_2'] = c
 
 c['emb_def_dim'] = 3
@@ -403,3 +403,17 @@ lm_config_registry['obw_hybrid_1s'] = c
 c['data_path'] = 'onebillionword10s'
 c['vocab_path'] = 'onebillionword10s/vocab_10k_w_spelling.txt'
 lm_config_registry['obw_hybrid_10s'] = c
+
+c = lm_config_registry['obw_base_10k_slower'] 
+c['data_path'] = 'onebillionword1s'
+c['dict_path'] = 'dict_obw_wn_R.json'
+c['vocab_path'] = 'vocab_10k_R.txt'
+c['num_input_words'] = 10000
+c['exclude_top_k'] = 10000
+#c['def_num_input_words'] = 184271
+c['max_def_per_word'] = 20
+c['compose_type'] = 'transform_and_sum'
+c['standalone_def_rnn'] = True
+c['standalone_def_lookup'] = False
+c['cache_size'] = 184271
+lm_config_registry['obw_recursive_1_1s'] = c
