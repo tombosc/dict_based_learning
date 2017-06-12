@@ -46,17 +46,20 @@ class LSTMReadDefinitions(Initializable):
 
     fork_and_rnn: None or tuple (Linear, RNN)
     """
-    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None, fork_and_rnn=None, **kwargs):
+    def __init__(self, num_input_words, emb_dim, dim, vocab, lookup=None,
+                 fork_and_rnn=None, cache=None, **kwargs):
 
+        self._vocab = vocab
+        self._cache = cache
+        children = []
+        if cache:
+            children.append(cache)
         if num_input_words > 0:
             logger.info("Restricting def vocab to " + str(num_input_words))
             self._num_input_words = num_input_words
         else:
             self._num_input_words = vocab.size()
 
-        self._vocab = vocab
-
-        children = []
 
         if lookup is None:
             self._def_lookup = LookupTable(self._num_input_words, emb_dim, name='def_lookup')
@@ -81,15 +84,22 @@ class LSTMReadDefinitions(Initializable):
         Returns vector per each word in sequence using the dictionary based lookup
         """
         # Short listing
-        defs = (T.lt(defs, self._num_input_words) * defs
-                + T.ge(defs, self._num_input_words) * self._vocab.unk)
+        defs_sl_main = (T.lt(defs, self._num_input_words) * defs
+                   + T.ge(defs, self._num_input_words) * self._vocab.unk)
+        defs_sl_cache = (T.ge(defs, self._num_input_words) * defs
+                   + T.lt(defs, self._num_input_words) * self._vocab.unk)
+
         application_call.add_auxiliary_variable(
-            unk_ratio(defs, def_mask, self._vocab.unk),
+            unk_ratio(defs_sl_main, def_mask, self._vocab.unk),
             name='def_unk_ratio')
 
-        embedded_def_words = self._def_lookup.apply(defs)
+        embedded_def_words = self._def_lookup.apply(defs_sl_main)
+        cached_embeddings = self._cache.apply(defs_sl_cache) 
+        final_embeddings = (T.lt(defs, self._num_input_words).dimshuffle(0,1,'x') * embedded_def_words
+                + T.ge(defs, self._num_input_words).dimshuffle(0, 1, 'x') * cached_embeddings)
+
         def_embeddings = self._def_rnn.apply(
-            T.transpose(self._def_fork.apply(embedded_def_words), (1, 0, 2)),
+            T.transpose(self._def_fork.apply(final_embeddings), (1, 0, 2)),
             mask=def_mask.T)[0][-1]
 
         return def_embeddings
@@ -264,10 +274,17 @@ class MeanPoolCombiner(Initializable):
     def apply(self, application_call,
               word_embs, words_mask,
               def_embeddings, def_map, train_phase=False, word_ids=False, call_name=""):
+        """ return a triple:
+        * final embeddings
+        * unique def embeddings
+        * position of the def embeddings in the sentence (so that id can be retrieved)
+        """
         batch_shape = word_embs.shape
+        # batch_shape[1] = bs?
         flat_indices = def_map[:, 0] * batch_shape[1] + def_map[:, 1] # Index of word in flat
+        unique_indices = T.extra_ops.Unique()(flat_indices)
 
-        # def_map is (seq_pos, word_pos, def_index)
+        # def_map is a list of (seq_pos, word_pos, def_index)
         # def_embeddings is (id, emb_dim)
 
         def_sum = T.zeros((batch_shape[0] * batch_shape[1], def_embeddings.shape[1]))
@@ -294,6 +311,12 @@ class MeanPoolCombiner(Initializable):
                 gates[:, None] * def_embeddings[def_map[:, 2]])
         else:
             raise NotImplementedError()
+        
+        # we take the newly computed embeddings.
+        # we want to update the lookup but we don't have access to the word ids here
+        # we can return the updated embeddings along with their positions in the text
+        updated_embeddings = def_mean[unique_indices]
+
         def_mean = def_mean.reshape((batch_shape[0], batch_shape[1], -1))
 
         application_call.add_auxiliary_variable(
@@ -393,5 +416,5 @@ class MeanPoolCombiner(Initializable):
             masked_root_mean_square(final_embeddings, words_mask),
             name=call_name + '_merged_input_rootmean2')
 
-        return final_embeddings
+        return final_embeddings, updated_embeddings, unique_indices
 
