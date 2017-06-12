@@ -215,19 +215,31 @@ c['n_epochs'] = 30
 c['annealing_start_epoch'] = 20
 qar['squad15'] = c
 
-# hyperparameter cleanup
 c = qar['squad15']
 c['dropout_type'] = 'same_mask'
 c['init_width'] = 0.
 c['rec_init_width'] = 0.
 qar['squad16'] = c
 
-c = qar['squad_glove6']
-c['init_width'] = 0.
-c['rec_init_width'] = 0.
-c['dropout_type'] = 'same_mask'
-c['emb_dropout_type'] = 'same_mask'
-c['emb_dropout'] = 0.5
-c['n_epochs'] = 30
-c['annealing_start_epoch'] = 20
-qar['squad_glove10'] = c
+# Better hyperparameters
+
+def emb_dropout_and_glorot(c):
+    c['init_width'] = 0.
+    c['rec_init_width'] = 0.
+    c['dropout_type'] = 'same_mask'
+    c['emb_dropout_type'] = 'same_mask'
+    c['emb_dropout'] = 0.5
+    c['n_epochs'] = 30
+    c['annealing_start_epoch'] = 20
+    return c
+
+# baseline
+qar['squad16'] = emb_dropout_and_glorot(c['squad10'])
+# dict
+qar['squad17'] = emb_dropout_and_glorot(c['squad6'])
+# spelling
+qar['squad18'] = emb_dropout_and_glorot(c['squad11'])
+# dict+spelling
+qar['squad19'] = emb_dropout_and_glorot(c['squad13'])
+# glove
+qar['squad_glove10'] = emb_dropout_and_glorot(c['squad_glove6'])

@@ -191,7 +191,7 @@ class ExtractiveQAModel(Initializable):
                 tensor.lt(text, self._num_input_words)[:, :, None] * embs
                 + tensor.ge(text, self._num_input_words)[:, :, None] * disconnected_grad(embs))
         if def_embs:
-            embs = self._combiner.apply(embs, mask, def_embs, def_map)
+            embs, _, _ = self._combiner.apply(embs, mask, def_embs, def_map)
         add_role(embs, EMBEDDINGS)
         encoded = flip01(
             self._encoder_rnn.apply(
