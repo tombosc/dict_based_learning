@@ -136,12 +136,16 @@ class LanguageModel(Initializable):
         self._pre_softmax = Linear(dim, self._num_output_words)
         self._softmax = NDimensionalSoftmax()
         children.extend([self._pre_softmax, self._softmax])
+
         super(LanguageModel, self).__init__(children=children, **kwargs)
 
     def _push_initialization_config(self):
         super(LanguageModel, self)._push_initialization_config()
         if self._cache:
-            self._cache.weights_init = Constant(0.) #TODO(tombosc) doesn't work
+            self._cache.weights_init = Constant(0.)
+
+    def _initialize(self):
+        print "in initialize:", self._cache.weights_init
 
     def set_def_embeddings(self, embeddings):
         self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))

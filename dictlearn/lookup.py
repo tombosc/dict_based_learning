@@ -52,8 +52,6 @@ class LSTMReadDefinitions(Initializable):
         self._vocab = vocab
         self._cache = cache
         children = []
-        if cache:
-            children.append(cache)
         if num_input_words > 0:
             logger.info("Restricting def vocab to " + str(num_input_words))
             self._num_input_words = num_input_words
