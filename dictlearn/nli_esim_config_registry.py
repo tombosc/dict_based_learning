@@ -68,17 +68,17 @@ assert nli_esim_config_registry['root']['batch_size'] == 32, "Correct n_batches"
 
 c = nli_esim_config_registry['root']
 c['num_input_words'] = 3000
-c['emb_dim'] = 100
+c['emb_dim'] = 300
 nli_esim_config_registry['paper_baseline_3k'] = c
 
 c = nli_esim_config_registry['root']
 c['num_input_words'] = 5000
-c['emb_dim'] = 100
+c['emb_dim'] = 300
 nli_esim_config_registry['paper_baseline_5k'] = c
 
 c = nli_esim_config_registry['root']
 c['train_emb'] = 0
-c['n_batches'] = 150 * (500000 / c['batch_size'])
+c['n_batches'] = 100 * (500000 / c['batch_size'])
 c['translate_dim'] = 100
 c['vocab'] = 'snli/vocab_all.txt'
 c['num_input_words'] = -1
@@ -93,7 +93,7 @@ c['def_dim'] = 100
 c['translate_dim'] = 100
 c['combiner_shortcut'] = True
 c['combiner_reader_translate'] = False
-c['dict_path'] = 'snli/wordnet_dict_add_lower_lemma.json'
+c['dict_path'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma.json'
 c['exclude_top_k'] = 1000
 c['share_def_lookup'] = False
 c['reader_type'] = 'mean' # Tune?
@@ -103,7 +103,7 @@ c['embedding_path'] = ''
 c['num_input_words'] = 3000
 c['num_input_def_words'] = 3000
 c['compose_type'] = 'sum'
-c['n_batches'] = 150 * (500000 / c['batch_size'])
+c['n_batches'] = 100 * (500000 / c['batch_size'])
 c['train_emb'] = 1
 c['embedding_path'] = ''
 c['embedding_def_path'] = ''
@@ -115,13 +115,13 @@ c = nli_esim_config_registry['paper_dict_simple']
 c['dropout'] = 0.7
 c['dim'] = 100
 c['num_input_def_words'] = 11000
-c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_vocab.txt'
+c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma_vocab.txt'
 c['combiner_dropout'] = 0.5
 nli_esim_config_registry['paper_dict_tuned'] = c
 
 c = nli_esim_config_registry['paper_dict_tuned']
-c['dict_path']  = 'snli/wordnet_dict_add_lower_lemma_lowerlemma.json'
-c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma_vocab.txt'
+c['dict_path']  = 'snli/wordnet_dict_add_lower_lemma_lowerlemma_spelling.json'
+c['vocab_def'] = 'snli/wordnet_dict_add_lower_lemma_lowerlemma_spelling_vocab.txt'
 nli_esim_config_registry['paper_dict_tuned_spelling'] = c
 
 c = nli_esim_config_registry['paper_dict_simple']
@@ -136,6 +136,9 @@ c['vocab_def'] = 'snli/dict_all_spelling_vocab.txt' # Otherwise chars are UNK
 c['reader_type'] = 'rnn' # As pointed out by Dima reader should be LSTM for spelling
 nli_esim_config_registry['paper_baseline_spelling_tuned'] = c
 
+c = nli_esim_config_registry['paper_baseline_spelling_tuned']
+c['dim'] = 300
+nli_esim_config_registry['paper_baseline_spelling_tuned_dim=300'] = c
 
 c = nli_esim_config_registry['paper_baseline_spelling']
 c['dict_path'] = 'snli/dict_all_only_lowercase.json'
