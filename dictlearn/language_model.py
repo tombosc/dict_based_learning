@@ -141,7 +141,8 @@ class LanguageModel(Initializable):
         perplexity = tensor.exp(costs.sum() / mask.sum())
         perplexity.tag.aggregation_scheme = Perplexity(
             costs.sum(), mask.sum())
-        application_call.add_auxiliary_variable(perplexity, name=name)
+        full_name = "perplexity_" + name
+        application_call.add_auxiliary_variable(perplexity, name=full_name)
         return costs
 
     @application
@@ -224,15 +225,15 @@ class LanguageModel(Initializable):
         targets_mask = mask.T[1:]
         costs = self.add_perplexity_measure(application_call, minus_logs,
                                targets_mask,
-                               "perplexity")
+                               "")
 
         missing_embs = tensor.eq(input_word_ids, self._vocab.unk).astype('int32') # (bs, L)
         self.add_perplexity_measure(application_call, minus_logs,
                                targets_mask * missing_embs.T[:-1],
-                               "perplexity_after_mis_word_embs")
+                               "after_mis_word_embs")
         self.add_perplexity_measure(application_call, minus_logs,
                                targets_mask * (1-missing_embs.T[:-1]),
-                               "perplexity_after_word_embs")
+                               "after_word_embs")
 
         word_counts = self._word_to_count(words)
         very_rare_masks = []
@@ -242,7 +243,7 @@ class LanguageModel(Initializable):
             very_rare_masks.append(very_rare_mask)
             self.add_perplexity_measure(application_call, minus_logs,
                                    very_rare_mask,
-                                   "perplexity_after_very_rare_" + str(threshold))
+                                   "after_very_rare_" + str(threshold))
 
         if self._retrieval:
             has_def = tensor.zeros_like(output_word_ids)
@@ -250,12 +251,12 @@ class LanguageModel(Initializable):
             mask_targets_has_def = has_def.T[:-1] * targets_mask # (L-1, bs)
             self.add_perplexity_measure(application_call, minus_logs,
                                    mask_targets_has_def,
-                                   "perplexity_after_def_embs")
+                                   "after_def_embs")
 
             for thresh, very_rare_mask in zip(self._very_rare_threshold, very_rare_masks):
                 self.add_perplexity_measure(application_call, minus_logs,
                                    very_rare_mask * mask_targets_has_def,
-                                   "perplexity_after_def_very_rare_" + str(thresh))
+                                   "after_def_very_rare_" + str(thresh))
 
             application_call.add_auxiliary_variable(
                     mask_targets_has_def.T, name='mask_def_emb')
