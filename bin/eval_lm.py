@@ -30,13 +30,21 @@ def evaluate_lm(config, tar_path, part, num_examples, dest_path, **kwargs):
         cg.set_parameter_values(load_parameters(src))
 
     perplexities = VariableFilter(name_regex='perplexity.*')(cg)
+    mask_sums = [p.tag.aggregation_scheme.denominator for p in perplexities]
+    CEs = [p.tag.aggregation_scheme.numerator for p in perplexities]
+
     proba_out, = VariableFilter(name='proba_out')(cg)
     unk_ratios = VariableFilter(name_regex='unk_ratio.*')(cg)
     #num_definitions, = VariableFilter(name='num_definitions')(cg)
     print perplexities
-    name_to_aggregate = [p.name for p in perplexities + unk_ratios]
+    print CEs
+    print mask_sums
+    name_to_aggregate = [p.name for p in perplexities]
+    for CE, mask_sum, name in zip(CEs, mask_sums, name_to_aggregate):
+        CE.name = name + "_num"
+        mask_sum.name = name + "_denom"
 
-    compute_l = perplexities + unk_ratios
+    compute_l = CEs + mask_sums + unk_ratios
     if part == 'test_unseen':
         compute_l.append(proba_out)
 
@@ -45,42 +53,39 @@ def evaluate_lm(config, tar_path, part, num_examples, dest_path, **kwargs):
     predict_f = theano.function([words, words_mask], compute)
 
     if part == 'test_unseen':
-        batch_size = 50
+        batch_size = 1
     else:
-        batch_size = 50 # size of test_unseen
+        batch_size = 128 # size of test_unseen
     stream = data.get_stream(part, batch_size=batch_size, max_length=100)
     raw_data = [] # list of dicts containing the inputs and computed outputs
     i=0
     print "start computing"
     for input_data in stream.get_epoch_iterator(as_dict=True):
-        if i and i%10==0:
+        if i and i%100==0:
             print "iteration:", i
         words = input_data['words']
         words_mask = input_data['words_mask']
         to_save = predict_f(words, words_mask)
-        print to_save['languagemodel_apply_unk_ratio']
-        try:
-            print to_save['languagemodel_apply_def_unk_ratio']
-        except:
-            pass
         to_save.update(input_data)
         raw_data.append(to_save)
         i+=1
 
-    # aggregate 
+    # aggregate in the log space 
     aggregated = Counter()
     sum_mask_track = Counter()
     for d in raw_data:
-        coef = d['words_mask'].sum()
+        coef = d['words_mask'].sum() # over timesteps and batches
         for name in name_to_aggregate:
-            aggregated[name] += d[name] * coef
-            sum_mask_track[name] += coef
+            aggregated[name] += d[name+"_num"]
+            sum_mask_track[name] += d[name+"_denom"]
 
     for k,v in aggregated.iteritems():
-        aggregated[k] = v/sum_mask_track[k]
+        print "k, v, m:", k, v, sum_mask_track[k]
+        aggregated[k] = np.exp(v/sum_mask_track[k])
 
     n_params = sum([np.prod(p.shape.eval()) for p in cg.parameters])
     aggregated['n_params'] = n_params
+    print "aggregated stats:", aggregated
     print "# of parameters {}".format(n_params)
 
 
