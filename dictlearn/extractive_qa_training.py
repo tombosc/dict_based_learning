@@ -161,6 +161,7 @@ def initialize_data_and_model(config):
         def_word_gating=c['def_word_gating'],
         compose_type=c['compose_type'],
         reuse_word_embeddings=c['reuse_word_embeddings'],
+        bidir_encoder=c['bidir_encoder'],
         random_unk=c['random_unk'],
         def_reader=c['def_reader'],
         weights_init=(GlorotUniform()
@@ -277,9 +278,9 @@ def train_extractive_qa(new_training_job, config, save_path,
     train_monitored_vars = list(monitored_vars)
     if c['dropout']:
         regularized_cg = ComputationGraph([cost] + train_monitored_vars)
-        # Dima: the dropout that I implemented first
+        # TODO: don't access private attributes
         bidir_outputs, = VariableFilter(
-            bricks=[Bidirectional], roles=[OUTPUT])(cg)
+            bricks=[qam._bidir], roles=[OUTPUT])(cg)
         readout_layers = VariableFilter(
             bricks=[Rectifier], roles=[OUTPUT])(cg)
         dropout_vars = [bidir_outputs] + readout_layers

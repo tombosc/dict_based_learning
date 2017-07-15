@@ -35,6 +35,7 @@ lm_config_registry.set_root_config({
     'def_reader': 'LSTM',
     'standalone_def_rnn' : False,
     'standalone_def_lookup': False,
+    'cache_size': 0, # when 0: no cache
 
     # monitoring and checkpointing
     'mon_freq_train' : 200,
@@ -454,7 +455,6 @@ c['dict_path'] = 'dict_obw_wn_spelling_R.json'
 lm_config_registry['obw_hybrid_R_f'] = c
 
 
-
 c = lm_config_registry['obw_10k_dict2_wnl2_1s']
 c['def_reader'] = 'mean'
 lm_config_registry['obw_10k_dict2_m_1s'] = c
@@ -470,4 +470,3 @@ c['dict_vocab_path'] = 'custom_embeddings/vocab_s2sg_50kI.txt'
 c['embedding_path']= 'custom_embeddings/embeddings_s2sg_50kI.npy'
 c['def_num_input_words'] = 147306
 lm_config_registry['10k_s2sg_50kI_1s'] = c
-

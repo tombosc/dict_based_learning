@@ -107,7 +107,8 @@ def initialize_data_and_model(config):
                        c['standalone_def_rnn'],
                        c['disregard_word_embeddings'],
                        c['compose_type'],
-                       c['very_rare_threshold'],
+                       very_rare_threshold=c['very_rare_threshold'],
+                       cache_size=c['cache_size'],
                        weights_init=Uniform(width=0.1),
                        biases_init=Constant(0.))
     lm.initialize()
@@ -144,7 +145,7 @@ def train_language_model(new_training_job, config, save_path, params,
         words.tag.test_value = test_value_data[0]
         words_mask.tag.test_value = test_value_data[1]
 
-    costs = lm.apply(words, words_mask)
+    costs, updates = lm.apply(words, words_mask)
     cost = rename(costs.mean(), 'mean_cost')
 
     cg = Model(cost)
@@ -163,10 +164,19 @@ def train_language_model(new_training_job, config, save_path, params,
 
     parameters = cg.get_parameter_dict()
     trained_parameters = parameters.values()
+    saved_parameters = parameters.values()
     if c['embedding_path']:
         logger.debug("Exclude word embeddings from the trained parameters")
         trained_parameters = [p for p in trained_parameters
                               if not p == lm.get_def_embeddings_params()]
+        saved_parameters = [p for p in saved_parameters
+                              if not p == lm.get_def_embeddings_params()]
+
+
+    if c['cache_size'] != 0:
+        logger.debug("Enable fake recursivity for looking up embeddings")
+        trained_parameters = [p for p in trained_parameters
+                              if not p == lm.get_cache_params()]
 
     logger.info("Cost parameters" + "\n" +
                 pprint.pformat(
@@ -185,6 +195,10 @@ def train_language_model(new_training_job, config, save_path, params,
         cost=cost,
         parameters=trained_parameters,
         step_rule=CompositeRule(rules))
+
+    if c['cache_size'] != 0:
+        algorithm.add_updates(updates)
+
     train_monitored_vars = list(monitored_vars)
     if c['grad_clip_threshold']:
         train_monitored_vars.append(algorithm.total_gradient_norm)
@@ -195,6 +209,7 @@ def train_language_model(new_training_job, config, save_path, params,
 
     if c['monitor_parameters']:
         train_monitored_vars.extend(parameter_stats(parameters, algorithm))
+
 
     # We use a completely random seed on purpose. With Fuel server
     # it's currently not possible to restore the state of the training
@@ -234,7 +249,7 @@ def train_language_model(new_training_job, config, save_path, params,
         cp_args = {
             'save_main_loop': False,
             'save_separately' : ['log', 'iteration_state'],
-            'parameters': trained_parameters
+            'parameters': saved_parameters
         }
 
         checkpoint = Checkpoint(state_path,
@@ -254,7 +269,7 @@ def train_language_model(new_training_job, config, save_path, params,
             .set_conditions(before_training=not new_training_job))
         cp_args = {
             'save_separately' : ['iteration_state'],
-            'parameters': trained_parameters
+            'parameters': saved_parameters
         }
 
         checkpoint = Checkpoint(main_loop_path,

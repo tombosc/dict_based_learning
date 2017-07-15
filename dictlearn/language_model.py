@@ -7,6 +7,7 @@ from blocks.bricks import (Initializable, Linear, NDimensionalSoftmax, MLP,
 from blocks.bricks.base import application
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.lookup import LookupTable
+from blocks.initialization import Constant
 
 from dictlearn.theano_util import unk_ratio
 from dictlearn.ops import WordToIdOp, RetrievalOp, WordToCountOp
@@ -60,6 +61,7 @@ class LanguageModel(Initializable):
                  disregard_word_embeddings=False,
                  compose_type='sum',
                  very_rare_threshold=[10],
+                 cache_size=0,
                  **kwargs):
         # TODO(tombosc): document
         if emb_dim == 0:
@@ -85,10 +87,18 @@ class LanguageModel(Initializable):
         self._word_to_id = WordToIdOp(self._vocab)
         self._word_to_count = WordToCountOp(self._vocab)
 
+        children = []
+        self._cache = None
+        if cache_size > 0:
+            #TODO(tombosc) do we implement cache as LookupTable or theano matrix?
+            #self._cache = theano.shared(np.zeros((def_num_input_words, emb_dim)))
+            self._cache = LookupTable(cache_size, emb_dim,
+                                      name='cache_def_embeddings')
+            children.append(self._cache)
+
         if self._retrieval:
             self._retrieve = RetrievalOp(retrieval)
 
-        children = []
         self._main_lookup = LookupTable(self._num_input_words, emb_dim, name='main_lookup')
         self._main_fork = Linear(emb_dim, 4 * dim, name='main_fork')
         self._main_rnn = DebugLSTM(dim, name='main_rnn') # TODO(tombosc): use regular LSTM?
@@ -108,7 +118,7 @@ class LanguageModel(Initializable):
                     fork_and_rnn = (self._main_fork, self._main_rnn)
                 self._def_reader = LSTMReadDefinitions(def_num_input_words, emb_def_dim,
                                                        dim, vocab, lookup,
-                                                       fork_and_rnn)
+                                                       fork_and_rnn, cache=self._cache)
             
             elif def_reader == 'mean':
                 self._def_reader = MeanPoolReadDefinitions(def_num_input_words, emb_def_dim,
@@ -129,12 +139,19 @@ class LanguageModel(Initializable):
 
         super(LanguageModel, self).__init__(children=children, **kwargs)
 
+    def _push_initialization_config(self):
+        super(LanguageModel, self)._push_initialization_config()
+        if self._cache:
+            self._cache.weights_init = Constant(0.)
+
     def set_def_embeddings(self, embeddings):
         self._def_reader._def_lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
     def get_def_embeddings_params(self):
         return self._def_reader._def_lookup.parameters[0]
 
+    def get_cache_params(self):
+        return self._cache.W
 
     def add_perplexity_measure(self, application_call, minus_logs, mask, name):
         costs = (minus_logs * mask).sum(axis=0)
@@ -162,31 +179,14 @@ class LanguageModel(Initializable):
             defs, def_mask, def_map = self._retrieve(words)
             def_embeddings = self._def_reader.apply(defs, def_mask)
 
-            # Compute the spans corresponding to text positions
-            #num_defs = tensor.zeros((1 + words.shape[0] * words.shape[1],), dtype='int32')
-            #num_defs = tensor.inc_subtensor(
-            #    num_defs[1 + def_map[:, 0] * words.shape[1] + def_map[:, 1]], 1)
-            #cum_sum_defs = tensor.cumsum(num_defs)
-            #def_spans = tensor.concatenate([cum_sum_defs[:-1, None], cum_sum_defs[1:, None]],
-            #                               axis=1)
-            
-            #application_call.add_auxiliary_variable(def_spans, name='def_spans')
-
-            ## Mean-pooling of definitions
-            #def_sum = tensor.zeros((words.shape[0] * words.shape[1], def_embeddings.shape[1]))
-            #def_sum = tensor.inc_subtensor(
-            #    def_sum[def_map[:, 0] * words.shape[1] + def_map[:, 1]],
-            #    def_embeddings)
-            #def_lens = (def_spans[:, 1] - def_spans[:, 0]).astype(theano.config.floatX)
-            #def_mean = def_sum / tensor.maximum(def_lens[:, None], 1)
-            #def_mean = def_mean.reshape((words.shape[0], words.shape[1], -1))
-
             # Auxililary variable for debugging
             application_call.add_auxiliary_variable(
                 def_embeddings.shape[0], name="num_definitions")
 
-        # shortlisting
+
         word_ids = self._word_to_id(words)
+
+        # shortlisting
         input_word_ids = (tensor.lt(word_ids, self._num_input_words) * word_ids
                           + tensor.ge(word_ids, self._num_input_words) * self._vocab.unk)
         output_word_ids = (tensor.lt(word_ids, self._num_output_words) * word_ids
@@ -202,9 +202,16 @@ class LanguageModel(Initializable):
             masked_root_mean_square(word_embs, mask), name='word_emb_RMS')
 
         if self._retrieval:
-            rnn_inputs = self._combiner.apply(word_embs, mask, def_embeddings, def_map)
+            rnn_inputs, updated, positions = self._combiner.apply(word_embs, mask, def_embeddings, def_map)
         else:
             rnn_inputs = word_embs
+
+        updates = []
+        if self._cache:
+            flat_word_ids = word_ids.flatten()
+            flat_word_ids_to_update = flat_word_ids[positions]
+            # computing updates for cache
+            updates = [(self._cache.W, tensor.set_subtensor(self._cache.W[flat_word_ids_to_update], updated))]
 
         application_call.add_auxiliary_variable(
             masked_root_mean_square(word_embs, mask), name='main_rnn_in_RMS')
@@ -261,4 +268,4 @@ class LanguageModel(Initializable):
             application_call.add_auxiliary_variable(
                     mask_targets_has_def.T, name='mask_def_emb')
 
-        return costs
+        return costs, updates
