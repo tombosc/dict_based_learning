@@ -37,6 +37,7 @@ import pprint
 import pandas as pd
 import subprocess
 import tqdm
+import cPickle as pickle
 import json
 import numpy
 import theano
@@ -632,6 +633,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     # Very ugly absolute path fix
     ABS_PATHS = ["data/", "/mnt/users/jastrzebski/local/dict_based_learning/data/",
         "/data/cf9ffb48-61bd-40dc-a011-b2e7e5acfd72/"]
+
     from six import string_types
     for abs_path in ABS_PATHS:
         for k in c:
@@ -678,11 +680,17 @@ def evaluate(c, tar_path, *args, **kwargs):
 
     pred = model.apply(s1_decoded, s1_mask, s2_decoded, s2_mask, def_mask=def_mask, defs=defs, s1_def_map=s1_def_map,
         s2_def_map=s2_def_map, train_phase=False)
+
     cg = ComputationGraph([pred])
     if c.get("bn", True):
         bn_params = [p for p in VariableFilter(bricks=[BatchNormalization])(cg) if hasattr(p, "set_value")]
     else:
         bn_params = []
+
+    to_evaluate = {"pred": pred}
+    if kwargs['model'] == "esim":
+        s2s_att_weights, = VariableFilter(name='s2s_att_weights')(cg)
+        to_evaluate.update({'s2s_att_weights': s2s_att_weights})
 
     # Load model
     model = Model(cg.outputs)
@@ -721,9 +729,9 @@ def evaluate(c, tar_path, *args, **kwargs):
 
     # NOTE(kudkudak): We need this to have comparable mean rank and embedding scores
     reference_vocab = Vocabulary(os.path.join(fuel.config.data_path[0], c['data_path'], 'vocab.txt'))
-    vocab_all = Vocabulary(os.path.join(fuel.config.data_path[0], c['data_path'], 'vocab_all.txt')) # Can include OOV words, which is interesting
-    retrieval_all = Retrieval(vocab_text=used_vocab, dictionary=used_dict, max_def_length=c['max_def_length'],
-        exclude_top_k=0, max_def_per_word=c['max_def_per_word'])
+    # vocab_all = Vocabulary(os.path.join(fuel.config.data_path[0], c['data_path'], 'vocab_all.txt')) # Can include OOV words, which is interesting
+    # retrieval_all = Retrieval(vocab_text=used_vocab, dictionary=used_dict, max_def_length=c['max_def_length'],
+    #     exclude_top_k=0, max_def_per_word=c['max_def_per_word'])
     # logging.info("Calculating dict and word embeddings for vocab.txt and vocab_all.txt")
     # for name in ['s1_word_embeddings', 's1_dict_word_embeddings']:
     #     variables = VariableFilter(name=name)(cg)
@@ -743,7 +751,7 @@ def evaluate(c, tar_path, *args, **kwargs):
     #             logging.info("Calculating {} embeddings for {}".format(name, v_name))
 
     # Predict
-    predict_fnc = theano.function(cg.inputs, pred)
+    predict_fnc = theano.function(cg.inputs, to_evaluate)
     results = {}
     batch_size = 14
     for subset in ['valid', 'test']:
@@ -751,13 +759,17 @@ def evaluate(c, tar_path, *args, **kwargs):
         stream = data.get_stream(subset, batch_size=batch_size, seed=778)
         it = stream.get_epoch_iterator()
         rows = []
+        logs = []
         for ex in tqdm.tqdm(it, total=10000/batch_size):
             ex = dict(zip(stream.sources, ex))
             inp = [ex[v.name] for v in cg.inputs]
-            prob = predict_fnc(*inp)
-            label_pred = np.argmax(prob, axis=1)
+            outs = predict_fnc(*inp)
+            pred = outs['pred']
+            label_pred = np.argmax(pred, axis=1)
 
-            for id in range(len(prob)):
+
+
+            for id in range(len(pred)):
                 s1_decoded = used_vocab.decode(ex['sentence1'][id]).split()
                 s2_decoded = used_vocab.decode(ex['sentence2'][id]).split()
 
@@ -781,7 +793,9 @@ def evaluate(c, tar_path, *args, **kwargs):
 
                 # mean rank word (UNK is max rank)
                 # NOTE(kudkudak): Will break if we reindex unk between vocabs :P
-                s1_mean_rank = np.mean([reference_vocab.size() if reference_vocab.word_to_id(used_vocab.id_to_word(w)) == reference_vocab.unk else reference_vocab.word_to_id(used_vocab.id_to_word(w)) for w in s1_no_pad])
+                s1_mean_rank = np.mean([reference_vocab.size() if
+                    reference_vocab.word_to_id(used_vocab.id_to_word(w)) == reference_vocab.unk
+                    else reference_vocab.word_to_id(used_vocab.id_to_word(w)) for w in s1_no_pad])
 
                 s2_mean_rank = np.mean([reference_vocab.size()
                     if reference_vocab.word_to_id(used_vocab.id_to_word(w)) == reference_vocab.unk else
@@ -796,10 +810,16 @@ def evaluate(c, tar_path, *args, **kwargs):
                     "s2_mean_freq": s2_mean_freq,
                     "s1_mean_rank": s1_mean_rank,
                     "s2_mean_rank": s2_mean_rank,
-                    "p_0": prob[id, 0], "p_1": prob[id, 1], "p_2": prob[id, 2]})
+                    "p_0": pred[id, 0], "p_1": pred[id, 1], "p_2": pred[id, 2]})
+
+                if kwargs['model'] == "esim":
+                    # valid/test in SNLI are small so this format should be fine
+                    logs.append({"s2s_att_weights": outs['s2s_att_weights'][id]})
 
         preds = pd.DataFrame(rows, columns=rows[0].keys())
         preds.to_csv(os.path.join(dest_path, prefix + '_predictions_{}.csv'.format(subset)))
+        pickle.dump(logs, open(os.path.join(dest_path, prefix + '_logs_{}.pkl'.format(subset)), "w"))
+
         results[subset] = {}
         results[subset]['misclassification'] = 1 - np.mean(preds.pred == preds.true_label)
 

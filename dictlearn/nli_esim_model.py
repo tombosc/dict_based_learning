@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__file__)
 
 from blocks.bricks import Initializable, Linear, MLP, BatchNormalizedMLP
-from blocks.bricks import Softmax, Rectifier, Sequence, Tanh
+from blocks.bricks import Softmax, Rectifier, Sequence, Tanh, NDimensionalSoftmax
 from blocks.bricks.bn import BatchNormalization
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.base import application, lazy
@@ -119,6 +119,10 @@ class ESIM(Initializable):
         children.append(self._mlp)
         children.append(self._pred)
 
+        ## Softmax
+        self._ndim_softmax = NDimensionalSoftmax()
+        children.append(self._ndim_softmax)
+
         super(ESIM, self).__init__(children=children, **kwargs)
 
     def get_embeddings_lookups(self):
@@ -213,6 +217,11 @@ class ESIM(Initializable):
         # (seq_len, batch_size, seq_len)
         E = E.dimshuffle(1, 0, 2)
         assert E.ndim == 3
+
+        s2s_att_weights = self._ndim_softmax.apply(E, extra_ndim=1)
+        application_call.add_auxiliary_variable(
+            s2s_att_weights.copy(), name='s2s_att_weights')
+
         # (batch_size, seq_len, seq_len)
 
         ### Compute tilde vectors (eq. 12 and 13) ###
