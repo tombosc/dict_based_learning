@@ -14,8 +14,12 @@ qa_config_registry.set_root_config({
     'max_length' : 100,
     'batch_size' : 32,
     'batch_size_valid' : 32,
+
+    # retrieval hacks
     'max_def_length' : 1000,
     'with_too_long_defs' : 'drop',
+    'max_def_per_word' : 1000,
+    'with_too_many_defs' : 'random',
     'exclude_top_k' : 0,
 
     # model
@@ -24,16 +28,22 @@ qa_config_registry.set_root_config({
     'emb_dim' : 0,
     'readout_dims' : [],
     'coattention' : True,
+    'init_width' : 0.1,
+    'rec_init_width' : 0.1,
     'learning_rate' : 0.001,
     'momentum' : 0.9,
     'annealing_learning_rate' : 0.0001,
     'annealing_start_epoch' : 10,
     'grad_clip_threshold' : 5.0,
+    'emb_dropout' : 0.0,
+    'emb_dropout_type' : 'regular',
     'dropout' : 0.,
+    'dropout_type' : 'regular',
     'random_unk' : False,
     'def_word_gating' : "none",
     'compose_type' : "sum",
     'reuse_word_embeddings' : False,
+    'bidir_encoder' : False,
     'train_only_def_part' : False,
 
     # monitoring and checkpointing
@@ -41,7 +51,8 @@ qa_config_registry.set_root_config({
     'save_freq_batches' : 1000,
     'save_freq_epochs' : 1,
     # that corresponds to about 12 epochs
-    'n_batches' : 33000,
+    'n_batches' : 0,
+    'n_epochs' : 12,
     'monitor_parameters' : False
 })
 qar = qa_config_registry
@@ -128,7 +139,8 @@ qar['squad7'] = c
 # spelling
 def change_dict_to_spelling(c):
     c['dict_path'] = 'squad/squad_from_scratch/dict_spelling2.json'
-    c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_with_chars.txt'
+    # BUG: should be vocab_chars.txt instead
+    c['dict_vocab_path'] = 'squad/squad_from_scratch/vocab_chars.txt'
     return c
 c = change_dict_to_spelling(qar['squad5'])
 # for some reason this was helpful
@@ -185,3 +197,49 @@ qar['squad_glove9'] = c
 # glove + dict + spelling
 # recursion
 # bigrams
+
+# POST PAPER CONFIGS
+
+# try to change the set of words that we exclude
+c = qar['squad13']
+c['exclude_top_k'] = 0
+c['max_def_per_word'] = 30
+c['with_too_many_defs'] = 'exclude'
+qar['squad14'] = c
+
+# dropout of embeddings
+c = qar['squad10']
+c['emb_dropout_type'] = 'same_mask'
+c['emb_dropout'] = 0.5
+c['n_epochs'] = 30
+c['annealing_start_epoch'] = 20
+qar['squad15'] = c
+
+c = qar['squad15']
+c['dropout_type'] = 'same_mask'
+c['init_width'] = 0.
+c['rec_init_width'] = 0.
+qar['squad16'] = c
+
+# Better hyperparameters
+
+def emb_dropout_and_glorot(c):
+    c['init_width'] = 0.
+    c['rec_init_width'] = 0.
+    c['dropout_type'] = 'same_mask'
+    c['emb_dropout_type'] = 'same_mask'
+    c['emb_dropout'] = 0.5
+    c['n_epochs'] = 30
+    c['annealing_start_epoch'] = 20
+    return c
+
+# baseline
+qar['squad16'] = emb_dropout_and_glorot(c['squad10'])
+# dict
+qar['squad17'] = emb_dropout_and_glorot(c['squad6'])
+# spelling
+qar['squad18'] = emb_dropout_and_glorot(c['squad11'])
+# dict+spelling
+qar['squad19'] = emb_dropout_and_glorot(c['squad13'])
+# glove
+qar['squad_glove10'] = emb_dropout_and_glorot(c['squad_glove6'])

@@ -28,7 +28,7 @@ from six import iteritems
 from blocks.extensions import SimpleExtension
 from blocks.extensions.monitoring import MonitoringExtension
 from blocks.serialization import load, load_parameters
-from blocks.extensions.saveload import Load
+from blocks.extensions.saveload import Load, Checkpoint
 
 from dictlearn.util import get_free_port
 
@@ -146,12 +146,18 @@ class RetrievalPrintStats(SimpleExtension):
         if self._retrieval is not None:
             d = self._retrieval._debug_info
             record_tuples = []
-            record_tuples.append(("retrieval_mis_ratio", d['N_missed_words'] / max(1, float(d['N_words']))))
+            record_tuples.append(
+                ("retrieval_distinct_mis_ratio",
+                 d['N_missed_distinct_words'] / max(1, float(d['N_distinct_words']))))
             record_tuples.append(("retrieval_N_words", d['N_words']))
+            record_tuples.append(("retrieval_N_excluded_words", d['N_excluded_words']))
+            record_tuples.append(("retrieval_N_distinct_words", d['N_distinct_words']))
             record_tuples.append(("retrieval_N_queried_words", d['N_queried_words']))
-            record_tuples.append(("retrieval_mis_query_ratio", d['N_queried_missed_words']
-                                                               /  max(1, float(d['N_queried_words']))))
-            record_tuples.append(("retrieval_drop_def_ratio", d['N_dropped_def'] /  max(1, float(d['N_def']))))
+            record_tuples.append(("retrieval_mis_ratio",
+                                  d['N_missed_words']
+                                  /  max(1, float(d['N_queried_words']))))
+            record_tuples.append(("retrieval_drop_def_ratio",
+                                  d['N_dropped_def'] /  max(1, float(d['N_def']))))
             if len(d['missed_word_sample']) >= 20:
                 record_tuples.append(("retrieval_missed_word_sample",
                     numpy.random.choice(d['missed_word_sample'], 20, replace=False)))
@@ -357,3 +363,26 @@ class StartFuelServer(SimpleExtension):
         if ret.returncode is not None:
             raise Exception()
         atexit.register(lambda: os.kill(ret.pid, signal.SIGINT))
+
+class IntermediateCheckpoint(Checkpoint):
+    """
+    Allows checkpointing intermediate models every_n_batches or
+    every_n_epochs
+    """
+    def __init__(self, *args, **kwargs):
+        super(IntermediateCheckpoint, self).__init__(*args, **kwargs)
+        self.base_path = self.path
+        # every epoch or batch
+        if len(self._conditions) != 1:
+            raise ValueError("too many conditions")
+        condition = self._conditions[0]
+        name, predicate, args = condition
+        if (not predicate) or (not predicate.num):
+            raise ValueError("wrong condition is not every n ...")
+        self.every_n = predicate.num
+
+    def do(self, *args, **kwargs):
+        iterations_done = self.main_loop.log.status['iterations_done']
+        self.path = "{}.after_batch_{}.tar".format(self.base_path, iterations_done)
+        super(IntermediateCheckpoint, self).do(*args, **kwargs)
+

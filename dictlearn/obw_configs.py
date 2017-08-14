@@ -35,12 +35,14 @@ lm_config_registry.set_root_config({
     'def_reader': 'LSTM',
     'standalone_def_rnn' : False,
     'standalone_def_lookup': False,
+    'cache_size': 0, # when 0: no cache
 
     # monitoring and checkpointing
-    'mon_freq_train' : 100,
-    'mon_freq_valid' : 1000,
-    'save_freq_batches' : 1000,
-    'very_rare_threshold': 170000, # less than 1% of occurences are ranked above
+    'mon_freq_train' : 200,
+    'mon_freq_valid' : 2000,
+    'save_freq_batches' : 2000,
+    'checkpoint_every_n_batches': 100000,
+    'very_rare_threshold': [1000,100,10], 
     'n_batches' : 0,
     'monitor_parameters' : False,
     'fast_checkpoint' : False
@@ -166,53 +168,6 @@ c = lm_config_registry['obw_10k_dict2']
 c = new_dictify(c)
 lm_config_registry['obw_10k_dict2_wn'] = c
 
-# BEGIN OLD GLOVE
-# these use same embedding size for GloVe and trainable which is a problem
-# to compare with baselines which use emb_dim=500
-# also they use huge vocab and thus huge embedding matrix, that's why they are 
-# restricted to 300k
-# the 2 first are not trainable (i.e. there isn't a core of 10k trainable 
-# embeddings, they only use the frozen embeddings)
-# They used old implem where the dict was generated on the fly, so can't run 
-# them anymore
-c = lm_config_registry['obw_base_10k_slower']
-c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['emb_def_dim'] = 300
-c['emb_dim'] = 300
-lm_config_registry['obw_base_10k_glove300k'] = c
-
-c['num_input_words'] = 300005
-lm_config_registry['obw_base_300k_glove300k'] = c
-
-c = lm_config_registry['obw_base_10k_slower']
-c['embedding_path']= 'onebillionword/glove.840B.300d.300005.npy'
-c['dict_path'] = 'onebillionword/dict_obw_identity_300k.json'
-c['emb_dim'] = 300
-c['emb_def_dim'] = 300
-c['exclude_top_k'] = 10000
-c['def_reader'] = 'mean'
-c['standalone_def_lookup'] = True
-c['compose_type'] = 'transform_and_sum'
-lm_config_registry['obw_base_10k_tr_glove_300k'] = c
-
-c['embedding_path']= 'onebillionword/wn/glove.840B.300d_300k_common.npy'
-lm_config_registry['obw_base_10k_tr_glove_300k_restr'] = c
-
-# The following is a baseline for these (emb_dim=300)
-c = lm_config_registry['obw_base_10k_slower']
-c['emb_dim'] = 300
-lm_config_registry['obw_base_10k_emb300'] = c
-
-# This one is basically 30k trainable restricted to vocab that's also in glove 
-# in the 0-30 range... 
-# TODO(tombosc): double check and delete
-c = lm_config_registry['obw_base_10k_slower']
-c['vocab_path'] = 'onebillionword/wn/vocab_restricted_wnlemma_10k.txt'
-c['num_input_words'] = 30000
-lm_config_registry['obw_base_10k_restr_wnl_30k'] = c
-
-# END OLD GLOVE
-
 def new_dictify_addlemma(c):
     c['dict_path'] = 'onebillionword/wn/dict_obw_wn.json'
     c['max_def_per_word'] = 10 # covers > 95% (of defs, not occurences)
@@ -260,6 +215,10 @@ c['batch_size_valid'] = 32
 c['mon_freq_train'] = 10
 c['mon_freq_valid'] = 100
 c['save_freq_batches'] = 100
+c['checkpoint_every_n_batches'] = 1000
+c['data_path'] = 'onebillionword1s'
+c['momentum'] = 0
+c['learning_rate'] = 0.2
 lm_config_registry['debug_2'] = c
 
 c['emb_def_dim'] = 3
@@ -335,4 +294,179 @@ lm_config_registry['obw_10k_dict5_wn'] = c
 c['dict_vocab_path'] = 'onebillionword/wn/vocab_obw_wn_excl_weighted_10k.txt' 
 lm_config_registry['obw_10k_dict6_wn'] = c
 
+# Corrected restricted runs
+c['dict_path'] = 'onebillionword/dict_obw_wn_inter_glove.json'
+lm_config_registry['obw_10k_dict6_wn_R'] = c
 
+c = lm_config_registry['10k_spelling_where_def']
+c['dict_path'] = 'onebillionword/dict_obw_spelling_cut11_restr_wnglove.json' 
+lm_config_registry['spelling_R'] = c
+
+c = lm_config_registry['obw_10k_dict1_wnl2']
+c['data_path'] = 'onebillionword1s'
+c['dict_path'] = 'dict_obw_wn.json'
+lm_config_registry['obw_10k_dict1_wnl2_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['obw_10k_dict1_wnl2_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['obw_10k_dict1_wnl2_f'] = c
+
+
+
+c = lm_config_registry['obw_10k_dict2_wnl2']
+c['data_path'] = 'onebillionword1s'
+c['dict_path'] = 'dict_obw_wn.json'
+lm_config_registry['obw_10k_dict2_wnl2_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['obw_10k_dict2_wnl2_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['obw_10k_dict2_wnl2_f'] = c
+
+
+c = lm_config_registry['obw_base_10k_slower']
+c['data_path'] = 'onebillionword1s'
+lm_config_registry['obw_base_10k_slower_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['obw_base_10k_slower_10s'] = c
+
+c = lm_config_registry['10k_glove_lin']
+c['data_path'] = 'onebillionword1s'
+c['vocab_path'] = ''
+c['dict_path'] = 'dict_obw_identity.json'
+c['dict_vocab_path'] = 'vocab_glove.840B.300d.txt'
+c['embedding_path']= 'glove.840B.300d.full.npy'
+c['def_num_input_words'] = 2196022
+c['def_reader'] = 'LSTM'
+c['standalone_def_rnn'] = True
+lm_config_registry['10k_glove_lin_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['10k_glove_lin_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['10k_glove_lin_f'] = c
+
+c = lm_config_registry['obw_base_10k_lemma_lcf']
+c['data_path'] = 'onebillionword1s'
+c['dict_path'] = 'dict_obw_llc.json'
+lm_config_registry['obw_10k_llc_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['obw_10k_llc_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['obw_10k_llc_f'] = c
+
+
+c = lm_config_registry['10k_spelling']
+c['data_path'] = 'onebillionword1s'
+c['dict_path'] = 'dict_obw_spelling.json' #max_def_len=11
+c['dict_vocab_path'] = 'vocab_spelling_dict_weighted.txt'
+lm_config_registry['10k_spelling_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['10k_spelling_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['10k_spelling_f'] = c
+
+c = lm_config_registry['obw_10k_dict6_wn']
+c['data_path'] = 'onebillionword1s'
+c['dict_path'] = 'dict_obw_wn.json'
+c['dict_vocab_path'] = 'vocab_obw_wn_excl_weighted_10k.txt' 
+lm_config_registry['obw_10k_dict6_wn_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['obw_10k_dict6_wn_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['obw_10k_dict6_wn_f'] = c
+
+
+c = lm_config_registry['obw_10k_dict6_wn_1s']
+c['standalone_def_rnn'] = False
+lm_config_registry['obw_10k_dict7_wn_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['obw_10k_dict7_wn_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['obw_10k_dict7_wn_f'] = c
+
+# dict where def, train where def, glove where def, spelling where def
+c = lm_config_registry['10k_spelling_1s']
+c['dict_path'] = 'dict_obw_spelling_R.json' 
+lm_config_registry['spelling_R_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['spelling_R_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['spelling_R_f'] = c
+
+
+c = lm_config_registry['train_where_def']
+c['data_path'] = 'onebillionword1s'
+c['vocab_path'] = 'vocab_10k_R.txt'
+c['num_input_words'] = 184271
+lm_config_registry['obw_full_R2_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['obw_full_R2_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['obw_full_R2_f'] = c
+
+
+c = lm_config_registry['10k_glove_lin_1s']
+c['vocab_path'] = ''
+c['dict_path'] = 'dict_obw_identity_R.json'
+c['def_num_input_words'] = 183343
+lm_config_registry['10k_glove_R_1s'] = c
+c['data_path'] = 'onebillionword10s'
+lm_config_registry['10k_glove_R_10s'] = c
+c['data_path'] = 'onebillionword'
+lm_config_registry['10k_glove_R_f'] = c
+
+
+c = lm_config_registry['obw_10k_dict2_wnl2_1s']
+c['dict_path'] = 'dict_obw_wn_R.json'
+lm_config_registry['obw_10k_dict2_wnl2_R_1s'] = c
+
+c = lm_config_registry['obw_10k_dict2_wnl2_10s']
+c['dict_path'] = 'dict_obw_wn_R.json'
+lm_config_registry['obw_10k_dict2_wnl2_R_10s'] = c
+
+c = lm_config_registry['obw_10k_dict2_wnl2_f']
+c['dict_path'] = 'dict_obw_wn_R.json'
+lm_config_registry['obw_10k_dict2_wnl2_R_f'] = c
+
+c = lm_config_registry['obw_10k_dict2_wnl2']
+c['data_path'] = 'onebillionword1s'
+c['vocab_path'] = 'onebillionword1s/vocab_10k_w_spelling.txt'
+c['dict_path'] = 'dict_obw_wn_spelling.json'
+c['num_input_words'] = 10100
+c['exclude_top_k'] = 10100
+lm_config_registry['obw_hybrid_1s'] = c
+c['data_path'] = 'onebillionword10s'
+c['vocab_path'] = 'onebillionword10s/vocab_10k_w_spelling.txt'
+lm_config_registry['obw_hybrid_10s'] = c
+c['data_path'] = 'onebillionword'
+c['vocab_path'] = 'onebillionword/vocab_10k_w_spelling.txt'
+lm_config_registry['obw_hybrid_f'] = c
+
+# Hybrid restricted
+c = lm_config_registry['obw_hybrid_1s']
+c['dict_path'] = 'dict_obw_wn_spelling_R.json'
+lm_config_registry['obw_hybrid_R_1s'] = c
+
+c = lm_config_registry['obw_hybrid_10s']
+c['dict_path'] = 'dict_obw_wn_spelling_R.json'
+lm_config_registry['obw_hybrid_R_10s'] = c
+
+c = lm_config_registry['obw_hybrid_f']
+c['dict_path'] = 'dict_obw_wn_spelling_R.json'
+lm_config_registry['obw_hybrid_R_f'] = c
+
+
+c = lm_config_registry['obw_10k_dict2_wnl2_1s']
+c['def_reader'] = 'mean'
+lm_config_registry['obw_10k_dict2_m_1s'] = c
+# This one is meant to be identical to the cache with mean
+c['max_def_length'] = 100
+c['dict_path'] = 'dict_obw_wn_R.json'
+c['vocab_path'] = 'vocab_10k_R.txt'
+lm_config_registry['obw_10k_dict2_m_R_1s'] = c
+
+# test embeddings
+c = lm_config_registry['10k_glove_lin_1s']
+c['dict_vocab_path'] = 'custom_embeddings/vocab_s2sg_50kI.txt'
+c['embedding_path']= 'custom_embeddings/embeddings_s2sg_50kI.npy'
+c['def_num_input_words'] = 147306
+lm_config_registry['10k_s2sg_50kI_1s'] = c

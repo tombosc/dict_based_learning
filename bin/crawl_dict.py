@@ -89,7 +89,7 @@ def main():
         else:
             raise ValueError("don't know what to do")
     finally:
-        if popen and popen.returncode is None:
+        if 'popen' in locals() and popen and popen.returncode is None:
             popen.kill()
 
 if __name__ == "__main__":

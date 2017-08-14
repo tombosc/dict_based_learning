@@ -1,16 +1,22 @@
 """A dictionary-equipped extractive QA model."""
+import logging
+logger = logging.getLogger(__name__)
+
 import theano
 from theano import tensor
 from theano.gradient import disconnected_grad
+from theano.sandbox.rng_mrg import MRG_RandomStreams
 
 from collections import OrderedDict
 
+import blocks.config
 from blocks.bricks import Initializable, Linear, NDimensionalSoftmax, MLP, Tanh, Rectifier
-from blocks.bricks.base import application
+from blocks.bricks.base import application, Brick
 from blocks.bricks.simple import Rectifier
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent.misc import Bidirectional
 from blocks.bricks.lookup import LookupTable
+from blocks.roles import VariableRole, add_role
 from blocks.select import Selector
 
 from dictlearn.ops import WordToIdOp, RetrievalOp
@@ -20,12 +26,19 @@ from dictlearn.lookup import (
 from dictlearn.theano_util import unk_ratio
 
 
+class EmbeddingRole(VariableRole):
+    pass
+
+EMBEDDINGS = EmbeddingRole()
+
+
 def flip01(x):
     return x.transpose((1, 0, 2))
 
 
 def flip12(x):
     return x.transpose((0, 2, 1))
+
 
 
 class ExtractiveQAModel(Initializable):
@@ -51,7 +64,9 @@ class ExtractiveQAModel(Initializable):
     def __init__(self, dim, emb_dim, readout_dims,
                  num_input_words, def_num_input_words, vocab,
                  use_definitions, def_word_gating, compose_type, coattention,
-                 def_reader, reuse_word_embeddings, random_unk, **kwargs):
+                 def_reader, reuse_word_embeddings, bidir_encoder,
+                 random_unk, recurrent_weights_init,
+                 **kwargs):
         self._vocab = vocab
         if emb_dim == 0:
             emb_dim = dim
@@ -65,6 +80,7 @@ class ExtractiveQAModel(Initializable):
         self._use_definitions = use_definitions
         self._random_unk = random_unk
         self._reuse_word_embeddings = reuse_word_embeddings
+        self.recurrent_weights_init = recurrent_weights_init
 
         lookup_num_words = num_input_words
         if reuse_word_embeddings:
@@ -77,9 +93,15 @@ class ExtractiveQAModel(Initializable):
         children = []
         self._lookup = LookupTable(lookup_num_words, emb_dim)
         self._encoder_fork = Linear(emb_dim, 4 * dim, name='encoder_fork')
-        self._encoder_rnn = LSTM(dim, name='encoder_rnn')
-        self._question_transform = Linear(dim, dim, name='question_transform')
-        self._bidir_fork = Linear(3 * dim if coattention else 2 * dim, 4 * dim, name='bidir_fork')
+        if bidir_encoder:
+            self._encoder_rnn = Bidirectional(LSTM(dim), name='encoder_rnn')
+            encoded_dim = 2 * dim
+        else:
+            self._encoder_rnn = LSTM(dim, name='bidir_encoder_rnn')
+            encoded_dim = dim
+        self._question_transform = Linear(encoded_dim, encoded_dim, name='question_transform')
+        self._bidir_fork = Linear(
+            3 * encoded_dim if coattention else 2 * encoded_dim, 4 * dim, name='bidir_fork')
         self._bidir = Bidirectional(LSTM(dim), name='bidir')
         children.extend([self._lookup,
                          self._encoder_fork, self._encoder_rnn,
@@ -133,6 +155,11 @@ class ExtractiveQAModel(Initializable):
                                self.contexts_def_map, self.questions_def_map])
         self.input_vars = OrderedDict([(var.name, var) for var in input_vars])
 
+    def _push_initialization_config(self):
+        super(ExtractiveQAModel, self)._push_initialization_config()
+        self._encoder_rnn.weights_init = self.recurrent_weights_init
+        self._bidir.weights_init = self.recurrent_weights_init
+
     def set_embeddings(self, embeddings):
         self._lookup.parameters[0].set_value(embeddings.astype(theano.config.floatX))
 
@@ -164,7 +191,8 @@ class ExtractiveQAModel(Initializable):
                 tensor.lt(text, self._num_input_words)[:, :, None] * embs
                 + tensor.ge(text, self._num_input_words)[:, :, None] * disconnected_grad(embs))
         if def_embs:
-            embs = self._combiner.apply(embs, mask, def_embs, def_map)
+            embs, _, _ = self._combiner.apply(embs, mask, def_embs, def_map)
+        add_role(embs, EMBEDDINGS)
         encoded = flip01(
             self._encoder_rnn.apply(
                 self._encoder_fork.apply(

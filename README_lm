@@ -1,0 +1,178 @@
+This file describes how to build dictionaries and vocabularies used in obw_config.py (language modelling on OBW)
+
+One billion word is actually around 0.8 Billion words.
+
+It is split in :
+- 99% in train, itself split in 99
+- 1% in heldout, itself split in 50
+
+onebillionword/train_and_heldout.txt contains both. It is not to be used for training, only to build dictionaries.
+
+We take 1 split of heldout set as the test set (that's what they do in OBW article).
+$ wc test.txt
+6075 153583 829492 test.txt
+
+There are several variants with truncated training set. The last 2000 lines of the train set are removed to form a validation set. Every variant will have its own folder and will contain train.txt, valid.txt, test.txt, test_unseen.txt
+- 1 split of train in onebillionword/
+304068  7718949 41652030 train.txt
+2000  50727 274379 valid.txt
+- 10 first splits of train in onebillionword10s/
+3060393  77651883 419011823 train.txt
+2000  51026 275838 valid.txt
+- full train in onebillionword1s/
+30299028  768595680 4147017549 train.txt
+2000  50846 273759 valid.txt
+
+Vocabs:
+python bin/build_vocab.py data1/onebillionword10s/train.txt data1/onebillionword10s/vocab.txt
+
+We leave at the root "general" dict which works whatever the # of splits we consider for training set.
+It can be used for spelling, GloVe, OBW...
+
+We use vocab_full.txt which is the vocab built using:
+$ cat train.txt test.txt > train_and_test.txt
+$ bin/build_vocab.py data1/onebillionword/train_and_heldout.txt data1/onebillionword/vocab_full.txt
+i.e. the entire train and heldout!
+
+Why do we use train+test:
+We use the full vocab to get definitions all at once (i.e. put the same defs for lower case and lemmas)
+When we do the restricted runs, we want an intersection of the vocabs also on the validation set.
+We do NOT use vocab_full for anything else than building dictionaries.
+
+- dict_wn.json: full wordnet
+- dict_obw_wn.json: Result (289311 entries)
+	To create it:
+	* first copy dict_wn.json in dict_obw_wn.json (cause crawl_dict.py when adding lemmas work in place)
+	* $ python bin/crawl_dict.py --add-lower-lemma-defs data1/onebillionword/vocab_full.txt data1/dict_obw_wn.json
+
+To use a model with a dict, one can use data1/dict_obw_wn.json with the same vocabulary.
+For GloVe, one needs to pass another vocabulary (GloVe vocab) in dict_vocab_path and also path a dict_path which is the identity.
+We can still use exclude_top_k to not query words that are ranked above ... in the *vocab_text*.
+
+IDENTITY DICT: 
+Useful for GloVe, lemma and lowercase baseline
+- Generate identity dict:
+$ python bin/crawl_dict.py --add-identity data1/onebillionword/vocab_full.txt data1/dict_obw_identity.json
+2438541 entries, similar to vocab_full # of lines.
+
+LEMMA
+cp dict_obw_identity.json dict_obw_llc.json
+cp dict_obw_identity_meta.json dict_obw_llc_meta.json
+python bin/crawl_dict.py --add-lower-lemma-defs data1/onebillionword/vocab_full.txt data1/dict_obw_llc.json
+Once again, same # of entries as vocab_full has lines and same # of entries as identity dict (but more defs per entry).
+
+GLOVE:
+- Pack GloVe: generate embedding matrix
+$ python bin/pack_glove.py /data/lisa/data/glove.840B.300d.txt data1/glove.840B.300d.full.npy
+
+- Generate GloVe vocab:
+Select the first column of glove raw txt:
+$ cut -d ' ' -f 1 /data/lisa/data/glove.840B.300d.txt > data1/vocab_glove.840B.300d.txt
+then we add the 5 special tokens in the beginning and also add fake counts.
+Result is:
+2196022 data1/vocab_glove.840B.300d.txt
+
+(Config:
+vocab_path='' as we will use regular vocab.txt
+dict_path should be identity dict (based on train + heldout)
+dict_vocab_path='vocab_glove.840B.300d.txt'
+embedding_path='glove.840B.300d.full.npy'
+def_num_input_words='2196022' # entire vocab)
+
+
+SPELLING:
+We create 1 dict that will contains spelled out characters of the key.
+python bin/crawl_dict.py --add-spelling data1/onebillionword/vocab_full.txt data1/dict_obw_spelling.json
+Then we create a vocab that contains these characters (prefixed by # for differentiating with proper words)
+python bin/build_vocab.py --weight-dict-entries --vocab-text data1/onebillionword/vocab_full.txt data1/dict_obw_spelling.json data1/vocab_spelling_dict_weighted.txt
+
+DICT6: separate vocab (so separate lookup), separate RNN
+$ python bin/build_vocab.py --weight-dict-entries --exclude-top-k=10000 --vocab-text data1/onebillionword/vocab_full.txt data1/dict_obw_wn.json data1/vocab_obw_wn_excl_weighted_10k.txt
+
+RESTRICTED RUNS:
+Goal of these runs is to do fair comparisons between embeddings, i.e. with identical coverage.
+
+## Copy dicts (because crawl_dict.py work in place)
+cp dict_obw_spelling.json dict_obw_spelling_R.json
+cp dict_obw_spelling_meta.json dict_obw_spelling_R_meta.json
+cp dict_obw_wn.json dict_obw_wn_R.json
+cp dict_obw_wn_meta.json dict_obw_wn_R_meta.json
+cp data1/dict_obw_identity.json data1/dict_obw_identity_R.json
+cp data1/dict_obw_identity_meta.json data1/dict_obw_identity_R_meta.json   
+
+## Remove from these words not in GloVe
+python bin/crawl_dict.py --remove-out-of-vocabulary data1/vocab_glove.840B.300d.txt data1/dict_obw_spelling_R.json
+vocab size : 2196022
+dict len : 2438541
+have deleted 1626567 definitions
+# of entries in resulting spelling dict: 811974
+
+python bin/crawl_dict.py --remove-out-of-vocabulary data1/vocab_glove.840B.300d.txt data1/dict_obw_identity_R.json 
+vocab size : 2196022
+dict len : 2438541
+have deleted 1626567 definitions
+
+python bin/crawl_dict.py --remove-out-of-vocabulary data1/vocab_glove.840B.300d.txt data1/dict_obw_wn_R.json
+vocab size : 2196022
+dict len : 289311
+have deleted 95871 definitions
+# of entries in resulting spelling dict: 193440
+
+## Remove not in WordNet:
+First generate a vocab restricted to wordnet.
+$ python bin/remove_from_vocab.py data1/onebillionword/vocab_full.txt data1/dict_obw_wn.json data1/vocab_only_in_wn_llc.txt
+remove 2239804 words
+198737 words remain
+
+Pass all the previously restricted to GloVe dicts again but through this new vocab:
+$ python bin/crawl_dict.py --remove-out-of-vocabulary data1/vocab_only_in_wn_llc.txt data1/dict_obw_spelling_R.json
+vocab size : 198737
+dict len : 811974
+have deleted 628631 definitions
+
+$ python bin/crawl_dict.py --remove-out-of-vocabulary data1/vocab_only_in_wn_llc.txt data1/dict_obw_identity_R.json
+vocab size : 198737
+dict len : 811974
+have deleted 628631 definitions
+
+$ python bin/crawl_dict.py --remove-out-of-vocabulary data1/vocab_only_in_wn_llc.txt data1/dict_obw_wn_R.json
+vocab size : 198737
+dict len : 193440
+have deleted 10101 definitions
+
+## Result:
+spelling_R.json and identity_R.json have 183343 entries
+whereas wn_R.json has only 183339 entries (it lacks 4 special tokens, not UNK)
+
+TRAIN WHERE DEF:
+We create a vocab that contains all the 10k first words but then only keeps the word that are in the dict that have glove and definitions intersected.
+
+python bin/remove_from_vocab.py --top_k=10000 data1/onebillionword/vocab_full.txt data1/dict_obw_identity_R.json data1/vocab_10k_R.txt
+keep 10000 highest ranked tokens
+remove 2254270 words
+184271 words remain
+
+HYBRID SPELLING/WN:
+This "not restricted" variant has every possible WN def and spelling everywhere.
+$ cp dict_obw_wn.json dict_obw_wn_spelling.json
+$ cp dict_obw_wn_meta.json dict_obw_wn_spelling_meta.json
+$ python bin/crawl_dict.py --add-spelling data1/onebillionword/vocab_full.txt data1/dict_obw_wn_spelling.json
+For all different split sizes, we copy data1/*/vocab.txt in data1/*/vocab_10k_w_spelling.txt and add after line 10k first 100 characters used in spelling dict.
+
+RESTRICTED HYBRID:
+Take wn_R.json dict
+Add spelling
+Remove spelling everywhere that's not in the vocab_R.txt
+
+
+TEST SET FOR DEF READER:
+Find sentences where words that never appeared in training set appear AND have a wordnet def:
+To generate part of the files in wn/ (2 last args of the command line):
+$ python bin/find_new_occurence.py data/onebillionword/vocab_heldout.txt data/onebillionword/vocab.txt data/onebillionword/wn/dict_wn.json data/onebillionword/heldout.txt data/onebillionword/test_unseen.txt data/onebillionword/wn/additional_heldout_defs.json
+
+For 1s:
+$ tail --lines=+306068 onebillionword/train.txt > onebillionword1s/rest_of_train.txt
+
+WARNING:
+- full_R2 is built with another vocab_path based on the full vocab...
+so there is a problem in the very rare thresholds!
